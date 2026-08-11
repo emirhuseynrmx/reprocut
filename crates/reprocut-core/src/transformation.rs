@@ -130,6 +130,11 @@ impl Operation {
 pub struct ContentDigest([u8; 32]);
 
 impl ContentDigest {
+    /// Restores an identity already validated as exactly 32 bytes.
+    pub const fn from_bytes(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+
     /// Hashes a stable byte encoding.
     pub fn of(bytes: &[u8]) -> Self {
         let digest = Sha256::digest(bytes);

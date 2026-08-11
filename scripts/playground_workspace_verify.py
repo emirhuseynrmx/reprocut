@@ -153,16 +153,30 @@ def compose_workspace() -> str:
     return "\n".join([core, wrap("reprocut_workspace", workspace), "fn main() {}"])
 
 
+def compose_state() -> str:
+    core = compose_core().replace("fn main() {}\n", "")
+    schema = read("crates/reprocut-state/src/schema.rs")
+    state = (
+        read("crates/reprocut-state/src/lib.rs")
+        .replace("mod schema;", f"mod schema {{ {schema} }}")
+        .replace("use reprocut_core::", "use crate::reprocut_core::")
+    )
+    return "\n".join([core, wrap("reprocut_state", state), "fn main() {}"])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--append", type=Path, required=True)
-    parser.add_argument("--scope", choices=("full", "core", "workspace"), default="full")
+    parser.add_argument(
+        "--scope", choices=("full", "core", "workspace", "state"), default="full"
+    )
     args = parser.parse_args()
 
     workspace = {
         "full": compose_cli,
         "core": compose_core,
         "workspace": compose_workspace,
+        "state": compose_state,
     }[args.scope]()
     code = workspace + "\n" + args.append.resolve().read_text(encoding="utf-8")
     payload = json.dumps(

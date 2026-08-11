@@ -1,0 +1,20 @@
+[package]
+name = "reprocut-state"
+description = "Crash-safe SQLite session journal for ReproCut"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+reprocut-core = { path = "../reprocut-core" }
+rusqlite.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
