@@ -17,8 +17,8 @@ pub use policy::{
     PolicyError,
 };
 pub use reducer::{
-    ordered_frontier, reduce, reduce_hierarchical, FrontierPartition, ReductionResult,
-    ReductionUnit,
+    ordered_frontier, reduce, reduce_hierarchical, reduce_hierarchical_frontiers,
+    FrontierPartition, ReductionResult, ReductionUnit,
 };
 pub use transformation::{
     ByteRange, CandidateRank, ContentDigest, FrontierClass, Operation, ProjectPath, Transformation,

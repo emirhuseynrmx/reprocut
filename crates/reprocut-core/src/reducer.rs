@@ -113,6 +113,28 @@ pub fn reduce_hierarchical<F>(
 where
     F: FnMut(&[&ReductionUnit]) -> CandidateVerdict,
 {
+    reduce_hierarchical_frontiers(units, directory_groups, |frontier| {
+        frontier
+            .iter()
+            .map(|candidate| Some(evaluate(candidate)))
+            .collect()
+    })
+}
+
+/// Reduces with one ordered batch callback per independent search frontier.
+///
+/// The callback may omit unnecessary higher-rank results by returning `None`.
+/// A preserved candidate is accepted only when it and every earlier rank have
+/// terminal evidence, making completion order irrelevant to the result.
+#[allow(clippy::too_many_lines)]
+pub fn reduce_hierarchical_frontiers<F>(
+    units: &[ReductionUnit],
+    directory_groups: &[Vec<u32>],
+    mut evaluate: F,
+) -> ReductionResult
+where
+    F: FnMut(&[Vec<&ReductionUnit>]) -> Vec<Option<CandidateVerdict>>,
+{
     let mut active = (0..units.len()).collect::<Vec<_>>();
     let mut candidate_indices = Vec::with_capacity(units.len());
     let mut candidate_units = Vec::with_capacity(units.len());
@@ -130,8 +152,10 @@ where
         if candidate_indices.len() == active.len() {
             continue;
         }
-        attempts = attempts.saturating_add(1);
-        if evaluate(&candidate_units) == CandidateVerdict::Preserved {
+        let frontier = [candidate_units.clone()];
+        let verdicts = evaluate(&frontier);
+        attempts = attempts.saturating_add(count_terminal(&verdicts));
+        if earliest_preserved(&verdicts, frontier.len()) == Some(0) {
             std::mem::swap(&mut active, &mut candidate_indices);
             accepted_sizes.push(active.len());
         }
@@ -140,31 +164,30 @@ where
     let mut granularity = 2_usize;
     while active.len() >= 2 {
         let active_len = active.len();
-        let mut accepted = false;
-        for plan in ordered_frontier(active_len, granularity) {
+        let plans = ordered_frontier(active_len, granularity);
+        let mut index_frontier = Vec::with_capacity(plans.len());
+        let mut unit_frontier = Vec::with_capacity(plans.len());
+        for plan in &plans {
             fill_partition(
                 units,
                 &active,
-                &plan,
+                plan,
                 &mut candidate_indices,
                 &mut candidate_units,
             );
-            attempts = attempts.saturating_add(1);
-            if evaluate(&candidate_units) != CandidateVerdict::Preserved {
-                continue;
-            }
-            std::mem::swap(&mut active, &mut candidate_indices);
+            index_frontier.push(candidate_indices.clone());
+            unit_frontier.push(candidate_units.clone());
+        }
+        let verdicts = evaluate(&unit_frontier);
+        attempts = attempts.saturating_add(count_terminal(&verdicts));
+        if let Some(winner) = earliest_preserved(&verdicts, unit_frontier.len()) {
+            active = std::mem::take(&mut index_frontier[winner]);
             accepted_sizes.push(active.len());
-            granularity = match plan.class() {
+            granularity = match plans[winner].class() {
                 FrontierClass::Subset => 2,
                 FrontierClass::Complement => granularity.saturating_sub(1).max(2),
                 _ => unreachable!("ordered_frontier emits only subset and complement plans"),
             };
-            accepted = true;
-            break;
-        }
-
-        if accepted {
             continue;
         }
         if granularity >= active_len {
@@ -186,8 +209,10 @@ where
             &mut candidate_indices,
             &mut candidate_units,
         );
-        attempts = attempts.saturating_add(1);
-        if evaluate(&candidate_units) == CandidateVerdict::Preserved {
+        let frontier = [candidate_units.clone()];
+        let verdicts = evaluate(&frontier);
+        attempts = attempts.saturating_add(count_terminal(&verdicts));
+        if earliest_preserved(&verdicts, frontier.len()) == Some(0) {
             std::mem::swap(&mut active, &mut candidate_indices);
             accepted_sizes.push(active.len());
         } else {
@@ -202,6 +227,22 @@ where
         attempts,
         accepted_sizes,
     }
+}
+
+fn count_terminal(verdicts: &[Option<CandidateVerdict>]) -> u64 {
+    u64::try_from(verdicts.iter().filter(|verdict| verdict.is_some()).count()).unwrap_or(u64::MAX)
+}
+
+fn earliest_preserved(verdicts: &[Option<CandidateVerdict>], frontier_len: usize) -> Option<usize> {
+    let available = verdicts.len().min(frontier_len);
+    for (index, verdict) in verdicts[..available].iter().enumerate() {
+        match verdict {
+            Some(CandidateVerdict::Preserved) => return Some(index),
+            Some(CandidateVerdict::Rejected | CandidateVerdict::Inconclusive) => {}
+            None => return None,
+        }
+    }
+    None
 }
 
 fn fill_partition<'a>(

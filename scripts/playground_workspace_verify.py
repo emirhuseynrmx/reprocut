@@ -44,69 +44,16 @@ def workspace_source() -> str:
 
 
 def compose_cli() -> str:
-    model = read("crates/reprocut-core/src/model.rs")
-    oracle = read("crates/reprocut-core/src/oracle.rs").replace("use crate::{", "use super::{", 1)
-    reducer = read("crates/reprocut-core/src/reducer.rs").replace(
-        "use crate::{CandidateVerdict, FrontierClass};",
-        "use super::{CandidateVerdict, FrontierClass};",
-    )
-    policy = read("crates/reprocut-core/src/policy.rs").replace(
-        "use crate::CandidateVerdict;", "use super::CandidateVerdict;"
-    )
-    winner = read("crates/reprocut-core/src/winner.rs")
-    core = f"""mod reprocut_core {{
-mod model {{ {model} }}
-mod oracle {{ {oracle} }}
-mod policy {{ {policy} }}
-mod reducer {{ {reducer} }}
-mod winner {{ {winner} }}
-pub use model::{{
-    CandidateVerdict, ContainmentMechanism, DiagnosticAnchor, DiagnosticChannel,
-    ExecutionObservation, FailureFingerprint, TerminationReason,
-}};
-pub use oracle::{{FailureOracle, OracleError}};
-pub use policy::{{
-    wilson_interval, AggregateDecision, AggregateEvidence, ConfidenceInterval, EvaluationPolicy,
-    PolicyError,
-}};
-pub use reducer::{{reduce, ReductionResult, ReductionUnit}};
-pub use winner::LowestWinner;
-}}
-"""
-    runner = read("crates/reprocut-runner/src/lib.rs").replace(
-        "use reprocut_core::", "use crate::reprocut_core::"
-    )
-    workspace = workspace_source().replace(
-        "use reprocut_core::", "use crate::reprocut_core::"
-    )
-    engine = (
-        read("crates/reprocut-engine/src/lib.rs")
-        .replace("use reprocut_core::", "use crate::reprocut_core::")
-        .replace("use reprocut_runner::", "use crate::reprocut_runner::")
-        .replace("use reprocut_workspace::", "use crate::reprocut_workspace::")
-        .replace(
-            "Result<reprocut_core::ExecutionObservation, EngineError>",
-            "Result<crate::reprocut_core::ExecutionObservation, EngineError>",
-        )
-    )
+    engine = compose_engine().removesuffix("fn main() {}")
     report = read("crates/reprocut-report/src/lib.rs")
     cli = (
         without_inner_attributes(read("crates/reprocut-cli/src/main.rs"))
+        .replace("use reprocut_core::", "use crate::reprocut_core::")
         .replace("use reprocut_engine::", "use crate::reprocut_engine::")
         .replace("use reprocut_report::", "use crate::reprocut_report::")
         .replace("use reprocut_workspace::", "use crate::reprocut_workspace::")
     )
-    return "\n".join(
-        [
-            "#![forbid(unsafe_code)]",
-            core,
-            wrap("reprocut_runner", runner),
-            wrap("reprocut_workspace", workspace),
-            wrap("reprocut_engine", engine),
-            wrap("reprocut_report", report),
-            cli,
-        ]
-    )
+    return "\n".join([engine, wrap("reprocut_report", report), cli])
 
 
 def compose_core() -> str:
@@ -172,12 +119,66 @@ def compose_scheduler() -> str:
     return "\n".join([core, wrap("reprocut_engine", scheduler), "fn main() {}"])
 
 
+def compose_engine() -> str:
+    core = compose_core().replace("fn main() {}\n", "")
+    workspace = workspace_source().replace(
+        "use reprocut_core::", "use crate::reprocut_core::"
+    )
+    schema = read("crates/reprocut-state/src/schema.rs")
+    state = (
+        read("crates/reprocut-state/src/lib.rs")
+        .replace("mod schema;", f"mod schema {{ {schema} }}")
+        .replace("use reprocut_core::", "use crate::reprocut_core::")
+    )
+    scheduler = read("crates/reprocut-engine/src/scheduler.rs").replace(
+        "use reprocut_core::", "use crate::reprocut_core::"
+    )
+    runner = r'''
+use std::{ffi::OsString, path::PathBuf, time::Duration};
+use crate::reprocut_core::ExecutionObservation;
+use thiserror::Error;
+#[derive(Debug, Error)]
+#[error("Playground engine compile stub")]
+pub struct RunnerError;
+pub struct CommandSpec;
+impl CommandSpec {
+    pub fn new(_: PathBuf, _: Vec<OsString>, _: PathBuf, _: Duration, _: usize) -> Self { Self }
+}
+pub struct ProcessRunner;
+impl ProcessRunner {
+    pub fn run(_: &CommandSpec) -> Result<ExecutionObservation, RunnerError> { Err(RunnerError) }
+}
+'''
+    engine = (
+        read("crates/reprocut-engine/src/lib.rs")
+        .replace("mod scheduler;", f"mod scheduler {{ {scheduler} }}")
+        .replace("use reprocut_core::", "use crate::reprocut_core::")
+        .replace("use reprocut_runner::", "use crate::reprocut_runner::")
+        .replace("use reprocut_state::", "use crate::reprocut_state::")
+        .replace("use reprocut_workspace::", "use crate::reprocut_workspace::")
+        .replace(
+            "Result<reprocut_core::ExecutionObservation, EngineError>",
+            "Result<crate::reprocut_core::ExecutionObservation, EngineError>",
+        )
+    )
+    return "\n".join(
+        [
+            core,
+            wrap("reprocut_workspace", workspace),
+            wrap("reprocut_state", state),
+            wrap("reprocut_runner", runner),
+            wrap("reprocut_engine", engine),
+            "fn main() {}",
+        ]
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--append", type=Path, required=True)
     parser.add_argument(
         "--scope",
-        choices=("full", "core", "workspace", "state", "scheduler"),
+        choices=("full", "core", "workspace", "state", "scheduler", "engine"),
         default="full",
     )
     args = parser.parse_args()
@@ -188,6 +189,7 @@ def main() -> int:
         "workspace": compose_workspace,
         "state": compose_state,
         "scheduler": compose_scheduler,
+        "engine": compose_engine,
     }[args.scope]()
     code = workspace + "\n" + args.append.resolve().read_text(encoding="utf-8")
     payload = json.dumps(

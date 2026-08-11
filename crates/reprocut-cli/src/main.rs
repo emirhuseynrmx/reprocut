@@ -12,7 +12,9 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use reprocut_core::{
     DiagnosticAnchor, DiagnosticChannel, EvaluationPolicy, PolicyError, TerminationReason,
 };
-use reprocut_engine::{EngineError, ReductionEngine, ReductionOutcome, ReductionRequest};
+use reprocut_engine::{
+    EngineError, ReductionEngine, ReductionOutcome, ReductionRequest, SessionMode,
+};
 use reprocut_report::{render_report, ReportModel};
 use reprocut_workspace::{ProjectInventory, WorkspaceError};
 use serde::Serialize;
@@ -40,6 +42,8 @@ struct Cli {
 enum Action {
     /// Prove, minimize, and re-verify one failing command.
     Reduce(ReduceArgs),
+    /// Continue an exactly compatible interrupted reduction.
+    Resume(ReduceArgs),
 }
 
 #[derive(Debug, Args)]
@@ -79,6 +83,18 @@ struct ReduceArgs {
     /// Emit one machine-readable JSON value on standard output.
     #[arg(long)]
     json: bool,
+
+    /// Maximum simultaneous candidate commands; zero uses detected hardware parallelism.
+    #[arg(long, default_value_t = 0)]
+    jobs: usize,
+
+    /// SQLite journal path (defaults to ROOT/.reprocut/state.sqlite3).
+    #[arg(long)]
+    state: Option<PathBuf>,
+
+    /// Start a new session without deleting prior journal history.
+    #[arg(long)]
+    restart: bool,
 
     /// Failing command and arguments, placed after `--`.
     #[arg(last = true, required = true, num_args = 1.., value_name = "COMMAND")]
@@ -125,6 +141,8 @@ enum CliError {
     Serialize(#[from] serde_json::Error),
     #[error(transparent)]
     Policy(#[from] PolicyError),
+    #[error("{0}")]
+    InvalidArguments(&'static str),
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -140,6 +158,9 @@ struct ReductionSummary {
     final_verifications: u16,
     inconclusive_attempts: u64,
     cache_hits: u64,
+    jobs: usize,
+    state: Option<String>,
+    resumed: bool,
     oracle_stream: DiagnosticChannel,
     evaluation_policy: PolicySummary,
     kept_files: Vec<String>,
@@ -176,11 +197,17 @@ fn main() -> ExitCode {
 
 fn execute(cli: Cli) -> Result<(), CliError> {
     match cli.action {
-        Action::Reduce(arguments) => reduce_project(arguments),
+        Action::Reduce(arguments) => reduce_project(arguments, false),
+        Action::Resume(arguments) => reduce_project(arguments, true),
     }
 }
 
-fn reduce_project(arguments: ReduceArgs) -> Result<(), CliError> {
+fn reduce_project(arguments: ReduceArgs, resume: bool) -> Result<(), CliError> {
+    if resume && arguments.restart {
+        return Err(CliError::InvalidArguments(
+            "resume and --restart are mutually exclusive",
+        ));
+    }
     let evaluation_policy = evaluation_policy(&arguments)?;
     ensure_output_absent(&arguments.output)?;
     let (program, child_arguments) = split_command(&arguments.command);
@@ -191,7 +218,8 @@ fn reduce_project(arguments: ReduceArgs) -> Result<(), CliError> {
         Duration::from_millis(arguments.timeout_ms),
         arguments.max_output_bytes,
     )
-    .with_evaluation(arguments.oracle_stream.into(), evaluation_policy);
+    .with_evaluation(arguments.oracle_stream.into(), evaluation_policy)
+    .with_runtime(arguments.jobs, session_mode(&arguments, resume));
 
     eprintln!("reprocut: proving a stable baseline and searching safe cuts...");
     let outcome = ReductionEngine::run(&request)?;
@@ -239,6 +267,9 @@ fn build_summary(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> Reductio
         final_verifications: outcome.final_verifications(),
         inconclusive_attempts: outcome.inconclusive_attempts(),
         cache_hits: outcome.cache_hits(),
+        jobs: arguments.jobs,
+        state: outcome.state_path().map(|path| path.display().to_string()),
+        resumed: outcome.resumed(),
         oracle_stream: arguments.oracle_stream.into(),
         evaluation_policy: policy_summary(arguments),
         kept_files: outcome
@@ -255,6 +286,20 @@ fn build_summary(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> Reductio
             anchors: fingerprint.anchors().to_vec(),
             normalization_schema: fingerprint.normalization_schema(),
         },
+    }
+}
+
+fn session_mode(arguments: &ReduceArgs, resume: bool) -> SessionMode {
+    let path = arguments
+        .state
+        .clone()
+        .unwrap_or_else(|| arguments.root.join(".reprocut/state.sqlite3"));
+    if resume {
+        SessionMode::Resume(path)
+    } else if arguments.restart {
+        SessionMode::Restart(path)
+    } else {
+        SessionMode::Create(path)
     }
 }
 

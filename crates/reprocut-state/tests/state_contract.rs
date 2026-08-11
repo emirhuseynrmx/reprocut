@@ -85,6 +85,20 @@ fn duplicate_attempt_messages_are_idempotent() {
     assert_eq!(writer.snapshot().expect("snapshot").attempts(), 1);
 }
 
+#[test]
+fn restart_is_explicit_and_preserves_prior_sessions() {
+    let temporary = tempfile::tempdir().expect("state directory");
+    let database = temporary.path().join("state.sqlite3");
+    drop(StateStore::create(&database, contract("first")).expect("create state"));
+
+    assert!(matches!(
+        StateStore::create(&database, contract("second")),
+        Err(StateError::ExistingSession)
+    ));
+    let restarted = StateStore::restart(&database, contract("second")).expect("explicit restart");
+    assert_eq!(restarted.session_id(), 2);
+}
+
 fn contract(seed: &str) -> SessionContract {
     SessionContract::new(
         ContentDigest::of(format!("source-{seed}").as_bytes()),

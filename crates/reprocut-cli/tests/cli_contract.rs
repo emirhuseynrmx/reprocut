@@ -39,7 +39,9 @@ fn reduce_help_exposes_failure_evidence_controls() {
         .assert()
         .success()
         .stdout(predicate::str::contains("--oracle-stream"))
-        .stdout(predicate::str::contains("--flaky"));
+        .stdout(predicate::str::contains("--flaky"))
+        .stdout(predicate::str::contains("--jobs"))
+        .stdout(predicate::str::contains("--state"));
 }
 
 #[test]
@@ -83,7 +85,18 @@ fn reduces_a_real_failure_and_publishes_a_complete_artifact() {
         .arg(fixture_root())
         .arg("--output")
         .arg(&output)
-        .args(["--timeout-ms", "3000", "--json", "--", &python(), "bug.py"])
+        .arg("--state")
+        .arg(sandbox.path().join("state.sqlite3"))
+        .args([
+            "--jobs",
+            "4",
+            "--timeout-ms",
+            "3000",
+            "--json",
+            "--",
+            &python(),
+            "bug.py",
+        ])
         .assert()
         .success()
         .stderr(predicate::str::contains("stable baseline"))
@@ -95,6 +108,8 @@ fn reduces_a_real_failure_and_publishes_a_complete_artifact() {
     assert_eq!(summary["original_files"], 3);
     assert_eq!(summary["retained_files"], 1);
     assert_eq!(summary["final_verifications"], 3);
+    assert_eq!(summary["jobs"], 4);
+    assert_eq!(summary["resumed"], false);
     assert_eq!(summary["kept_files"], serde_json::json!(["bug.py"]));
 
     assert!(output.join("project/bug.py").is_file());
@@ -106,6 +121,49 @@ fn reduces_a_real_failure_and_publishes_a_complete_artifact() {
     assert!(fs::read_to_string(output.join("report.html"))
         .expect("report is UTF-8")
         .contains(&command_display));
+}
+
+#[test]
+fn resume_reuses_terminal_evidence_and_replays_the_same_chain() {
+    let sandbox = tempdir().expect("sandbox created");
+    let state = sandbox.path().join("state.sqlite3");
+    let first_output = sandbox.path().join("first");
+    let second_output = sandbox.path().join("second");
+
+    Command::cargo_bin("reprocut")
+        .expect("binary is built")
+        .args(["reduce", "--root"])
+        .arg(fixture_root())
+        .arg("--output")
+        .arg(&first_output)
+        .arg("--state")
+        .arg(&state)
+        .args(["--jobs", "4", "--", &python(), "bug.py"])
+        .assert()
+        .success();
+
+    let resumed = Command::cargo_bin("reprocut")
+        .expect("binary is built")
+        .args(["resume", "--root"])
+        .arg(fixture_root())
+        .arg("--output")
+        .arg(&second_output)
+        .arg("--state")
+        .arg(&state)
+        .args(["--jobs", "2", "--json", "--", &python(), "bug.py"])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+
+    let summary: Value = serde_json::from_slice(&resumed.stdout).expect("resume JSON");
+    assert_eq!(summary["resumed"], true);
+    assert!(summary["cache_hits"].as_u64().expect("cache hits") > 0);
+    assert_eq!(summary["kept_files"], serde_json::json!(["bug.py"]));
+    assert_eq!(
+        fs::read(first_output.join("project/bug.py")).expect("first project"),
+        fs::read(second_output.join("project/bug.py")).expect("second project")
+    );
 }
 
 #[test]

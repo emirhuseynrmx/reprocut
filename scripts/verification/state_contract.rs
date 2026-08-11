@@ -47,6 +47,12 @@ mod state_contract {
             StateStore::resume(&database, session("changed")),
             Err(StateError::IncompatibleSession { .. })
         ));
+        assert!(matches!(
+            StateStore::create(&database, session("fresh")),
+            Err(StateError::ExistingSession)
+        ));
+        let restarted = StateStore::restart(&database, session("fresh")).expect("restart");
+        assert_eq!(restarted.session_id(), 2);
     }
 
     fn session(seed: &str) -> SessionContract {

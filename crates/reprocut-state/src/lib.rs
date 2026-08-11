@@ -200,6 +200,8 @@ impl TransitionRecord {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CachedVerdict {
     verdict: CandidateVerdict,
+    observed_runs: u16,
+    inconclusive_runs: u16,
     evidence_json: String,
 }
 
@@ -207,6 +209,16 @@ impl CachedVerdict {
     /// Returns a preserved or rejected result; inconclusive results are never cached.
     pub const fn verdict(&self) -> CandidateVerdict {
         self.verdict
+    }
+
+    /// Returns the original aggregate execution count.
+    pub const fn observed_runs(&self) -> u16 {
+        self.observed_runs
+    }
+
+    /// Returns the original incomplete execution count.
+    pub const fn inconclusive_runs(&self) -> u16 {
+        self.inconclusive_runs
     }
 
     /// Returns the detached aggregate evidence JSON.
@@ -322,9 +334,30 @@ pub struct StateStore {
 impl StateStore {
     /// Creates a new session after applying known migrations.
     pub fn create(path: impl AsRef<Path>, contract: SessionContract) -> Result<Self, StateError> {
-        let path = prepare_path(path.as_ref())?;
+        Self::create_inner(path.as_ref(), contract, false)
+    }
+
+    /// Starts a new session in an existing journal while preserving prior history.
+    pub fn restart(path: impl AsRef<Path>, contract: SessionContract) -> Result<Self, StateError> {
+        Self::create_inner(path.as_ref(), contract, true)
+    }
+
+    fn create_inner(
+        path: &Path,
+        contract: SessionContract,
+        allow_existing: bool,
+    ) -> Result<Self, StateError> {
+        let path = prepare_path(path)?;
         let connection = open_connection(&path)?;
         migrate(&connection)?;
+        let has_session = connection
+            .query_row("SELECT EXISTS(SELECT 1 FROM sessions)", [], |row| {
+                row.get::<_, bool>(0)
+            })
+            .map_err(database_error)?;
+        if has_session && !allow_existing {
+            return Err(StateError::ExistingSession);
+        }
         connection
             .execute(
                 "INSERT INTO sessions(
@@ -433,6 +466,9 @@ pub enum StateError {
     /// No session exists to resume.
     #[error("state database has no session to resume")]
     NoSession,
+    /// A normal start refused to hide resumable state.
+    #[error("state database already contains a session; resume it or explicitly restart")]
+    ExistingSession,
     /// At least one immutable contract field changed.
     #[error("session {session_id} is incompatible with the requested source or configuration")]
     IncompatibleSession {
@@ -549,12 +585,13 @@ fn accept_transition(
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(database_error)?;
     insert_attempt(&transaction, session_id, attempt)?;
-    transaction
+    let changed = transaction
         .execute(
             "INSERT INTO transitions(
                 session_id, ordinal, from_digest, to_digest,
                 attempt_candidate_digest, accepted_size
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(session_id, ordinal) DO NOTHING",
             params![
                 session_id,
                 ordinal,
@@ -565,6 +602,34 @@ fn accept_transition(
             ],
         )
         .map_err(database_error)?;
+    if changed == 0 {
+        let existing = transaction
+            .query_row(
+                "SELECT from_digest, to_digest, attempt_candidate_digest, accepted_size
+                 FROM transitions WHERE session_id = ?1 AND ordinal = ?2",
+                params![session_id, ordinal],
+                |row| {
+                    Ok((
+                        row.get::<_, Vec<u8>>(0)?,
+                        row.get::<_, Vec<u8>>(1)?,
+                        row.get::<_, Vec<u8>>(2)?,
+                        row.get::<_, i64>(3)?,
+                    ))
+                },
+            )
+            .map_err(database_error)?;
+        let expected = (
+            transition.from.as_bytes().to_vec(),
+            transition.to.as_bytes().to_vec(),
+            transition.attempt_candidate.as_bytes().to_vec(),
+            accepted_size,
+        );
+        if existing != expected {
+            return Err(StateError::InvalidRecord(
+                "transition ordinal was reused with different evidence",
+            ));
+        }
+    }
     insert_cache(&transaction, session_id, attempt)?;
     transaction.commit().map_err(database_error)
 }
@@ -655,22 +720,38 @@ fn lookup_cache(
 ) -> Result<Option<CachedVerdict>, StateError> {
     connection
         .query_row(
-            "SELECT verdict, evidence_json FROM cache_entries
-             WHERE session_id = ?1 AND candidate_digest = ?2",
+            "SELECT cache_entries.verdict, attempts.observed_runs,
+                    attempts.inconclusive_runs, cache_entries.evidence_json
+             FROM cache_entries
+             INNER JOIN attempts USING(session_id, candidate_digest)
+             WHERE cache_entries.session_id = ?1 AND cache_entries.candidate_digest = ?2",
             params![session_id, candidate.as_bytes().as_slice()],
             |row| {
                 let verdict = row.get::<_, String>(0)?;
-                Ok((verdict, row.get::<_, String>(1)?))
+                Ok((
+                    verdict,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
             },
         )
         .optional()
         .map_err(database_error)?
-        .map(|(verdict, evidence_json)| {
-            Ok(CachedVerdict {
-                verdict: parse_verdict(&verdict)?,
-                evidence_json,
-            })
-        })
+        .map(
+            |(verdict, observed_runs, inconclusive_runs, evidence_json)| {
+                Ok(CachedVerdict {
+                    verdict: parse_verdict(&verdict)?,
+                    observed_runs: u16::try_from(observed_runs).map_err(|_| {
+                        StateError::Database("invalid observed run count".to_owned())
+                    })?,
+                    inconclusive_runs: u16::try_from(inconclusive_runs).map_err(|_| {
+                        StateError::Database("invalid inconclusive run count".to_owned())
+                    })?,
+                    evidence_json,
+                })
+            },
+        )
         .transpose()
 }
 

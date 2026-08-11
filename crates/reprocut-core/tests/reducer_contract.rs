@@ -1,4 +1,4 @@
-use reprocut_core::{reduce, CandidateVerdict, ReductionUnit};
+use reprocut_core::{reduce, reduce_hierarchical_frontiers, CandidateVerdict, ReductionUnit};
 
 #[test]
 fn removes_every_unit_not_required_for_failure() {
@@ -80,6 +80,66 @@ fn direct_subset_search_escapes_a_complement_only_local_minimum() {
             .collect::<Vec<_>>(),
         vec![2, 3]
     );
+}
+
+#[test]
+fn batched_frontiers_accept_only_a_terminal_prefix_winner() {
+    let units = (0..8)
+        .map(|id| ReductionUnit::new(id, format!("unit-{id}")))
+        .collect::<Vec<_>>();
+    let mut observed_parallel_frontier = false;
+
+    let result = reduce_hierarchical_frontiers(&units, &[], |frontier| {
+        observed_parallel_frontier |= frontier.len() > 1;
+        let mut verdicts = frontier
+            .iter()
+            .map(|candidate| {
+                Some(if candidate.iter().any(|unit| unit.id() == 3) {
+                    CandidateVerdict::Preserved
+                } else {
+                    CandidateVerdict::Rejected
+                })
+            })
+            .collect::<Vec<_>>();
+        if let Some(winner) = verdicts
+            .iter()
+            .position(|verdict| *verdict == Some(CandidateVerdict::Preserved))
+        {
+            verdicts
+                .iter_mut()
+                .skip(winner + 1)
+                .for_each(|slot| *slot = None);
+        }
+        verdicts
+    });
+
+    assert!(observed_parallel_frontier);
+    assert_eq!(
+        result
+            .kept()
+            .iter()
+            .map(ReductionUnit::id)
+            .collect::<Vec<_>>(),
+        vec![3]
+    );
+}
+
+#[test]
+fn missing_evidence_before_a_preserved_rank_is_fail_closed() {
+    let units = (0..4)
+        .map(|id| ReductionUnit::new(id, format!("unit-{id}")))
+        .collect::<Vec<_>>();
+
+    let result = reduce_hierarchical_frontiers(&units, &[], |frontier| {
+        let mut verdicts = vec![Some(CandidateVerdict::Rejected); frontier.len()];
+        if verdicts.len() > 1 {
+            verdicts[0] = None;
+            verdicts[1] = Some(CandidateVerdict::Preserved);
+        }
+        verdicts
+    });
+
+    assert_eq!(result.kept(), units);
 }
 
 fn required_pair_fixture() -> Vec<ReductionUnit> {
