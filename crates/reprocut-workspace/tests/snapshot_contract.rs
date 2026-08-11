@@ -64,3 +64,22 @@ fn snapshot_materialization_writes_only_snapshot_files() {
     );
     assert!(!candidate.root().join("drop.txt").exists());
 }
+
+#[test]
+fn preparation_capture_adds_only_named_regular_files() {
+    let root = tempfile::tempdir().expect("source");
+    fs::write(root.path().join("Cargo.toml"), b"[workspace]\n").expect("manifest");
+    let inventory = ProjectInventory::scan(root.path()).expect("inventory");
+    let snapshot =
+        ProjectSnapshot::from_inventory(&inventory, inventory.units()).expect("snapshot");
+    let candidate = CandidateWorkspace::materialize_snapshot(&snapshot).expect("candidate");
+    fs::write(candidate.root().join("Cargo.lock"), b"version = 4\n").expect("lock");
+    fs::write(candidate.root().join("untrusted.tmp"), b"do not capture").expect("noise");
+
+    let prepared = snapshot
+        .capture_prepared(candidate.root(), &["Cargo.lock"])
+        .expect("prepared snapshot");
+
+    assert_eq!(prepared.file("Cargo.lock").expect("lock"), b"version = 4\n");
+    assert!(prepared.file("untrusted.tmp").is_none());
+}

@@ -13,6 +13,7 @@ reprocut-adapters = { path = "../reprocut-adapters" }
 reprocut-core = { path = "../reprocut-core" }
 reprocut-runner = { path = "../reprocut-runner" }
 reprocut-state = { path = "../reprocut-state" }
+reprocut-syntax = { path = "../reprocut-syntax" }
 reprocut-workspace = { path = "../reprocut-workspace" }
 serde_json.workspace = true
 thiserror.workspace = true

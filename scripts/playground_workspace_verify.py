@@ -134,6 +134,31 @@ def compose_engine() -> str:
     scheduler = read("crates/reprocut-engine/src/scheduler.rs").replace(
         "use reprocut_core::", "use crate::reprocut_core::"
     )
+    pipeline = r'''
+use crate::reprocut_adapters::{Ecosystem, PreparationPlan};
+use crate::reprocut_workspace::ProjectSnapshot;
+use super::PreparationMode;
+use thiserror::Error;
+#[derive(Clone, Debug)]
+pub(crate) struct StructuredCandidate;
+impl StructuredCandidate {
+    pub(crate) fn key(&self) -> &str { "stub" }
+    pub(crate) fn snapshot(&self) -> &ProjectSnapshot { panic!("compile-only stub") }
+    pub(crate) fn preparation(&self) -> Option<&PreparationPlan> { None }
+    pub(crate) fn capture_paths(&self) -> &'static [&'static str] { &[] }
+}
+#[derive(Clone, Copy)]
+pub(crate) enum SyntaxPhase { Delete, Hoist }
+#[derive(Debug, Error)]
+#[error("compile-only pipeline stub")]
+pub(crate) struct PipelineError;
+pub(crate) fn manifest_candidates(
+    _: &ProjectSnapshot, _: Ecosystem, _: PreparationMode,
+) -> Result<Vec<StructuredCandidate>, PipelineError> { Ok(Vec::new()) }
+pub(crate) fn syntax_candidates(
+    _: &ProjectSnapshot, _: SyntaxPhase,
+) -> Result<Vec<StructuredCandidate>, PipelineError> { Ok(Vec::new()) }
+'''
     discovery = read("crates/reprocut-adapters/src/discovery.rs").replace(
         "use reprocut_workspace::", "use crate::reprocut_workspace::"
     )
@@ -165,6 +190,7 @@ impl ProcessRunner {
     engine = (
         read("crates/reprocut-engine/src/lib.rs")
         .replace("mod scheduler;", f"mod scheduler {{ {scheduler} }}")
+        .replace("mod pipeline;", f"mod pipeline {{ {pipeline} }}")
         .replace("use reprocut_adapters::", "use crate::reprocut_adapters::")
         .replace("use reprocut_core::", "use crate::reprocut_core::")
         .replace("use reprocut_runner::", "use crate::reprocut_runner::")
@@ -216,6 +242,55 @@ def compose_adapters() -> str:
     )
 
 
+def compose_pipeline() -> str:
+    adapters = compose_adapters().removesuffix("fn main() {}")
+    syntax = r'''
+use std::path::Path;
+use crate::reprocut_core::{ByteRange, Operation, ProjectPath};
+use thiserror::Error;
+#[derive(Clone, Copy)]
+pub enum SyntaxLanguage { Rust }
+impl SyntaxLanguage { pub fn from_path(_: &Path) -> Option<Self> { None } }
+#[derive(Clone, Copy)]
+pub enum SyntaxStrategy { DeleteNode, HoistChild }
+pub struct SyntaxTransform;
+impl SyntaxTransform {
+    pub fn operation(&self, path: ProjectPath) -> Operation {
+        Operation::replace(path, ByteRange::new(0, 1).unwrap(), Vec::new())
+    }
+    pub fn strategy(&self) -> SyntaxStrategy { SyntaxStrategy::DeleteNode }
+    pub fn range(&self) -> ByteRange { ByteRange::new(0, 1).unwrap() }
+}
+#[derive(Debug, Error)]
+pub enum SyntaxError {
+    #[error("invalid syntax")] InvalidSyntax,
+    #[error("invalid UTF-8")] InvalidUtf8,
+    #[error("grammar error")] Grammar,
+}
+pub fn deletion_transforms(_: SyntaxLanguage, _: &[u8]) -> Result<Vec<SyntaxTransform>, SyntaxError> {
+    Ok(Vec::new())
+}
+pub fn hoist_transforms(_: SyntaxLanguage, _: &[u8]) -> Result<Vec<SyntaxTransform>, SyntaxError> {
+    Ok(Vec::new())
+}
+'''
+    source = (
+        read("crates/reprocut-engine/src/pipeline.rs")
+        .replace("use reprocut_adapters::", "use crate::reprocut_adapters::")
+        .replace("reprocut_core::", "crate::reprocut_core::")
+        .replace("use reprocut_syntax::", "use crate::reprocut_syntax::")
+        .replace("use reprocut_workspace::", "use crate::reprocut_workspace::")
+    )
+    engine = f'''
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PreparationMode {{ None, Offline, LifecycleScripts, IsolatedPython }}
+pub(crate) mod pipeline {{ {source} }}
+'''
+    return "\n".join(
+        [adapters, wrap("reprocut_syntax", syntax), wrap("reprocut_engine", engine), "fn main() {}"]
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--append", type=Path, required=True)
@@ -229,6 +304,7 @@ def main() -> int:
             "scheduler",
             "engine",
             "adapters",
+            "pipeline",
         ),
         default="full",
     )
@@ -242,6 +318,7 @@ def main() -> int:
         "scheduler": compose_scheduler,
         "engine": compose_engine,
         "adapters": compose_adapters,
+        "pipeline": compose_pipeline,
     }[args.scope]()
     code = workspace + "\n" + args.append.resolve().read_text(encoding="utf-8")
     payload = json.dumps(

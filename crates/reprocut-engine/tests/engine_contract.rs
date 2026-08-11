@@ -8,8 +8,9 @@ use std::{
     time::Duration,
 };
 
+use reprocut_adapters::Ecosystem;
 use reprocut_core::ReductionUnit;
-use reprocut_engine::{EngineError, ReductionEngine, ReductionRequest};
+use reprocut_engine::{EngineError, PreparationMode, ReductionEngine, ReductionRequest};
 
 #[test]
 fn real_python_failure_is_stabilized_reduced_and_verified() {
@@ -54,6 +55,32 @@ fn a_successful_baseline_is_not_presented_as_a_failure() {
     let error = ReductionEngine::run(&request).expect_err("successful command is not a failure");
 
     assert!(matches!(error, EngineError::BaselineSucceeded));
+}
+
+#[test]
+fn syntax_fixpoint_removes_grammar_valid_noise_and_reverifies_the_snapshot() {
+    let source = tempfile::tempdir().expect("source tempdir");
+    let original = b"def unused():\n    print('noise')\n\ndef fail():\n    raise RuntimeError('REPROCUT_SENTINEL')\n\nfail()\n";
+    fs::write(source.path().join("bug.py"), original).expect("fixture");
+    let request = ReductionRequest::new(
+        source.path().to_path_buf(),
+        python_executable(),
+        vec![OsString::from("bug.py")],
+        Duration::from_secs(5),
+        64 * 1_024,
+    )
+    .with_ecosystem(Ecosystem::Python, PreparationMode::Offline);
+
+    let outcome = ReductionEngine::run(&request).expect("structured reduction");
+    let reduced = outcome.snapshot().file("bug.py").expect("retained source");
+
+    assert!(reduced.len() < original.len());
+    assert!(!String::from_utf8_lossy(reduced).contains("unused"));
+    assert!(!outcome.accepted_structured_edits().is_empty());
+    assert_eq!(
+        fs::read(source.path().join("bug.py")).expect("source"),
+        original
+    );
 }
 
 fn fixture_copy() -> tempfile::TempDir {

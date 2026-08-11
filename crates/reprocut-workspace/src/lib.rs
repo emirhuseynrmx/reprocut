@@ -182,6 +182,13 @@ impl ProjectSnapshot {
         self.digest
     }
 
+    /// Returns the saturating sum of immutable file byte lengths.
+    pub fn total_bytes(&self) -> u64 {
+        self.files.iter().fold(0_u64, |total, file| {
+            total.saturating_add(u64::try_from(file.contents.len()).unwrap_or(u64::MAX))
+        })
+    }
+
     /// Returns a new snapshot with one canonical transformation applied.
     pub fn with_transformation(
         &self,
@@ -228,6 +235,36 @@ impl ProjectSnapshot {
         let index = self.file_index(path)?;
         let mut files = self.files.clone();
         files[index] = snapshot_file(path.to_owned(), contents);
+        Ok(Self::from_files(files))
+    }
+
+    /// Captures prepared versions of existing files plus an explicit regular-file allowlist.
+    pub fn capture_prepared(
+        &self,
+        prepared_root: &Path,
+        additional_paths: &[&str],
+    ) -> Result<Self, WorkspaceError> {
+        let mut files = Vec::with_capacity(self.files.len().saturating_add(additional_paths.len()));
+        for file in &self.files {
+            let contents = read_prepared_regular_file(prepared_root, &file.path, true)?
+                .expect("required prepared files return bytes");
+            let digest = ContentDigest::of(&contents);
+            if digest == file.digest {
+                files.push(file.clone());
+            } else {
+                files.push(snapshot_file(file.path.clone(), contents));
+            }
+        }
+        for &path in additional_paths {
+            safe_relative(path)?;
+            if files.iter().any(|file| file.path == path) {
+                continue;
+            }
+            if let Some(contents) = read_prepared_regular_file(prepared_root, path, false)? {
+                files.push(snapshot_file(path.to_owned(), contents));
+            }
+        }
+        files.sort_unstable_by(|left, right| left.path.cmp(&right.path));
         Ok(Self::from_files(files))
     }
 
@@ -560,6 +597,37 @@ fn snapshot_digest(files: &[SnapshotFile]) -> ContentDigest {
         encoded.extend_from_slice(file.digest.as_bytes());
     }
     ContentDigest::of(&encoded)
+}
+
+fn read_prepared_regular_file(
+    root: &Path,
+    relative: &str,
+    required: bool,
+) -> Result<Option<Vec<u8>>, WorkspaceError> {
+    let path = root.join(safe_relative(relative)?);
+    let metadata = match fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if !required && error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(source) => {
+            return Err(WorkspaceError::Io {
+                operation: "inspect prepared snapshot file",
+                path,
+                source,
+            });
+        }
+    };
+    if !metadata.file_type().is_file() {
+        return Err(WorkspaceError::MissingTransformationTarget {
+            path: relative.to_owned(),
+        });
+    }
+    fs::read(&path)
+        .map(Some)
+        .map_err(|source| WorkspaceError::Io {
+            operation: "read prepared snapshot file",
+            path,
+            source,
+        })
 }
 
 fn copy_regular_file(source_path: &Path, destination: &Path) -> Result<(), WorkspaceError> {

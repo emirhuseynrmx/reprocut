@@ -232,6 +232,8 @@ struct ReductionSummary {
     original_files: usize,
     retained_files: usize,
     attempts: u64,
+    file_attempts: u64,
+    structured_attempts: u64,
     baseline_runs: u16,
     final_verifications: u16,
     inconclusive_attempts: u64,
@@ -242,6 +244,7 @@ struct ReductionSummary {
     oracle_stream: DiagnosticChannel,
     evaluation_policy: PolicySummary,
     kept_files: Vec<String>,
+    accepted_structured_edits: Vec<String>,
     fingerprint: FingerprintSummary,
 }
 
@@ -361,7 +364,12 @@ fn build_summary(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> Reductio
         prepare: arguments.prepare,
         original_files: outcome.original_files(),
         retained_files: outcome.snapshot().files().len(),
-        attempts: outcome.reduction().attempts(),
+        attempts: outcome
+            .reduction()
+            .attempts()
+            .saturating_add(outcome.structured_attempts()),
+        file_attempts: outcome.reduction().attempts(),
+        structured_attempts: outcome.structured_attempts(),
         baseline_runs: outcome.baseline_runs(),
         final_verifications: outcome.final_verifications(),
         inconclusive_attempts: outcome.inconclusive_attempts(),
@@ -377,6 +385,7 @@ fn build_summary(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> Reductio
             .iter()
             .map(|file| file.path().to_owned())
             .collect(),
+        accepted_structured_edits: outcome.accepted_structured_edits().to_vec(),
         fingerprint: FingerprintSummary {
             exit_code: fingerprint.exit_code(),
             signal: fingerprint.signal(),
@@ -470,7 +479,10 @@ fn report_model(
         command: display_command(&arguments.command),
         original_files: outcome.original_files(),
         retained_files: outcome.snapshot().files().len(),
-        attempts: outcome.reduction().attempts(),
+        attempts: outcome
+            .reduction()
+            .attempts()
+            .saturating_add(outcome.structured_attempts()),
         inconclusive_attempts: outcome.inconclusive_attempts(),
         cache_hits: outcome.cache_hits(),
         accepted_sizes,

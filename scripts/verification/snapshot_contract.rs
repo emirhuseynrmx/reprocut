@@ -31,4 +31,23 @@ mod snapshot_contract {
             b"01X89"
         );
     }
+
+    #[test]
+    fn preparation_capture_adds_only_explicit_lockfiles() {
+        let source = tempfile::tempdir().expect("source");
+        fs::write(source.path().join("Cargo.toml"), b"[workspace]\n").expect("fixture");
+        let inventory = ProjectInventory::scan(source.path()).expect("inventory");
+        let snapshot =
+            ProjectSnapshot::from_inventory(&inventory, inventory.units()).expect("snapshot");
+        let candidate = CandidateWorkspace::materialize_snapshot(&snapshot).expect("candidate");
+        fs::write(candidate.root().join("Cargo.lock"), b"version = 4\n").expect("lock");
+        fs::write(candidate.root().join("noise.tmp"), b"noise").expect("noise");
+
+        let captured = snapshot
+            .capture_prepared(candidate.root(), &["Cargo.lock"])
+            .expect("capture");
+
+        assert_eq!(captured.file("Cargo.lock").expect("lock"), b"version = 4\n");
+        assert!(captured.file("noise.tmp").is_none());
+    }
 }

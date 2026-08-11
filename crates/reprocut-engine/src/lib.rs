@@ -1,8 +1,13 @@
 //! End-to-end reduction orchestration for ReproCut.
 
 mod scheduler;
+mod pipeline;
 
 pub use scheduler::{CandidatePlan, FrontierOutcome, FrontierScheduler, SchedulerError};
+
+use pipeline::{
+    manifest_candidates, syntax_candidates, PipelineError, StructuredCandidate, SyntaxPhase,
+};
 
 use std::{
     collections::HashMap,
@@ -209,6 +214,8 @@ pub struct ReductionOutcome {
     state_path: Option<PathBuf>,
     resumed: bool,
     snapshot: ProjectSnapshot,
+    structured_attempts: u64,
+    accepted_structured_edits: Vec<String>,
 }
 
 impl ReductionOutcome {
@@ -261,6 +268,16 @@ impl ReductionOutcome {
     pub const fn snapshot(&self) -> &ProjectSnapshot {
         &self.snapshot
     }
+
+    /// Returns structured manifest/syntax candidates that reached a terminal verdict.
+    pub const fn structured_attempts(&self) -> u64 {
+        self.structured_attempts
+    }
+
+    /// Returns accepted manifest/syntax edit keys in fixpoint order.
+    pub fn accepted_structured_edits(&self) -> &[String] {
+        &self.accepted_structured_edits
+    }
 }
 
 /// A reduction orchestration failure.
@@ -293,9 +310,21 @@ pub enum EngineError {
     /// A parallel frontier violated its total-order contract.
     #[error(transparent)]
     Scheduler(#[from] SchedulerError),
+    /// A manifest, syntax, or snapshot candidate could not be constructed safely.
+    #[error("structured reduction failed: {0}")]
+    Pipeline(String),
+    /// Cached structured evidence could not be materialized under the current environment.
+    #[error("a preserved structured candidate could not be prepared for publication")]
+    StructuredRealizationFailed,
     /// A generated candidate referenced an invalid inventory index.
     #[error("candidate referenced an invalid inventory unit")]
     InvalidCandidate,
+}
+
+impl From<PipelineError> for EngineError {
+    fn from(error: PipelineError) -> Self {
+        Self::Pipeline(error.to_string())
+    }
 }
 
 /// Stateless entry point for deterministic project reduction.
@@ -446,6 +475,25 @@ impl ReductionEngine {
         }
 
         let snapshot = ProjectSnapshot::from_inventory(&inventory, reduction.kept())?;
+        from_digest = snapshot.digest();
+        let structured = StructuredReductionContext {
+            request,
+            oracle: &oracle,
+            policy,
+            writer: writer.as_ref(),
+            memory_cache: &memory_cache,
+            attempts_by_digest: &attempts_by_digest,
+            first_error: &first_error,
+            inconclusive_attempts: &inconclusive_attempts,
+            cache_hits: &cache_hits,
+        };
+        let structured_outcome = structured.reduce(
+            snapshot,
+            &mut frontier_phase,
+            &mut transition_ordinal,
+            &mut from_digest,
+        )?;
+        let snapshot = structured_outcome.snapshot;
         let mut final_error = None;
         let final_evidence = policy.aggregate(std::iter::from_fn(|| {
             if final_error.is_some() {
@@ -479,6 +527,8 @@ impl ReductionEngine {
             state_path,
             resumed,
             snapshot,
+            structured_attempts: structured_outcome.attempts,
+            accepted_structured_edits: structured_outcome.accepted,
         })
     }
 }
@@ -626,6 +676,358 @@ fn run_preparation(
     Ok(true)
 }
 
+struct StructuredReductionOutcome {
+    snapshot: ProjectSnapshot,
+    attempts: u64,
+    accepted: Vec<String>,
+}
+
+struct StructuredFrontierOutcome {
+    accepted: Option<(String, ProjectSnapshot)>,
+    attempts: u64,
+}
+
+struct StructuredReductionContext<'a> {
+    request: &'a ReductionRequest,
+    oracle: &'a FailureOracle,
+    policy: EvaluationPolicy,
+    writer: Option<&'a WriterHandle>,
+    memory_cache: &'a Mutex<HashMap<ContentDigest, AttemptRecord>>,
+    attempts_by_digest: &'a Mutex<HashMap<ContentDigest, AttemptRecord>>,
+    first_error: &'a Mutex<Option<EngineError>>,
+    inconclusive_attempts: &'a AtomicU64,
+    cache_hits: &'a AtomicU64,
+}
+
+impl StructuredReductionContext<'_> {
+    fn reduce(
+        &self,
+        mut snapshot: ProjectSnapshot,
+        frontier_phase: &mut u16,
+        transition_ordinal: &mut u64,
+        from_digest: &mut ContentDigest,
+    ) -> Result<StructuredReductionOutcome, EngineError> {
+        let mut attempts = 0_u64;
+        let mut accepted = Vec::new();
+        'fixpoint: loop {
+            let manifests = manifest_candidates(
+                &snapshot,
+                self.request.ecosystem(),
+                self.request.preparation_mode(),
+            )?;
+            let manifest_outcome =
+                self.evaluate_frontier(manifests, frontier_phase, transition_ordinal, from_digest)?;
+            attempts = attempts.saturating_add(manifest_outcome.attempts);
+            if let Some((key, next)) = manifest_outcome.accepted {
+                accepted.push(key);
+                snapshot = next;
+                continue 'fixpoint;
+            }
+
+            for syntax_phase in [SyntaxPhase::Delete, SyntaxPhase::Hoist] {
+                let syntax = syntax_candidates(&snapshot, syntax_phase)?;
+                let syntax_outcome = self.evaluate_frontier(
+                    syntax,
+                    frontier_phase,
+                    transition_ordinal,
+                    from_digest,
+                )?;
+                attempts = attempts.saturating_add(syntax_outcome.attempts);
+                if let Some((key, next)) = syntax_outcome.accepted {
+                    accepted.push(key);
+                    snapshot = next;
+                    continue 'fixpoint;
+                }
+            }
+            break;
+        }
+        Ok(StructuredReductionOutcome {
+            snapshot,
+            attempts,
+            accepted,
+        })
+    }
+
+    fn evaluate_frontier(
+        &self,
+        candidates: Vec<StructuredCandidate>,
+        frontier_phase: &mut u16,
+        transition_ordinal: &mut u64,
+        from_digest: &mut ContentDigest,
+    ) -> Result<StructuredFrontierOutcome, EngineError> {
+        if candidates.is_empty() {
+            return Ok(StructuredFrontierOutcome {
+                accepted: None,
+                attempts: 0,
+            });
+        }
+        let phase = *frontier_phase;
+        *frontier_phase = frontier_phase.saturating_add(1);
+        let granularity = u32::try_from(candidates.len()).unwrap_or(u32::MAX);
+        let plans = candidates
+            .into_iter()
+            .enumerate()
+            .map(|(index, candidate)| {
+                let digest = structured_candidate_digest(&candidate);
+                CandidatePlan::new(
+                    CandidateRank::new(
+                        phase,
+                        granularity,
+                        FrontierClass::Structured,
+                        u32::try_from(index).unwrap_or(u32::MAX),
+                        digest,
+                    ),
+                    StructuredPayload { candidate, digest },
+                )
+            })
+            .collect::<Vec<_>>();
+        let realized = Mutex::new(HashMap::<ContentDigest, ProjectSnapshot>::new());
+        let evaluator = StructuredEvaluationContext {
+            shared: self,
+            realized: &realized,
+        };
+        let outcome = FrontierScheduler::evaluate(plans, self.request.jobs(), |payload| {
+            evaluator.evaluate(payload)
+        })?;
+        let observed = u64::try_from(
+            outcome
+                .verdicts()
+                .iter()
+                .filter(|verdict| verdict.is_some())
+                .count(),
+        )
+        .unwrap_or(u64::MAX);
+        if let Some(error) = take_error(self.first_error) {
+            return Err(error);
+        }
+        let Some(winner) = outcome.winner() else {
+            return Ok(StructuredFrontierOutcome {
+                accepted: None,
+                attempts: observed,
+            });
+        };
+        let payload = winner.payload();
+        let realized = lock(&realized).get(&payload.digest).cloned();
+        let realized = match realized {
+            Some(realized) => realized,
+            None => self
+                .realize(&payload.candidate)?
+                .map(|prepared| prepared.snapshot)
+                .ok_or(EngineError::StructuredRealizationFailed)?,
+        };
+        if let Some(writer) = self.writer {
+            let attempt = lock(self.attempts_by_digest)
+                .get(&payload.digest)
+                .cloned()
+                .ok_or(EngineError::InvalidCandidate)?;
+            writer.accept_transition(
+                attempt,
+                TransitionRecord::new(
+                    *transition_ordinal,
+                    *from_digest,
+                    realized.digest(),
+                    payload.digest,
+                    realized.total_bytes(),
+                ),
+            )?;
+        }
+        *from_digest = realized.digest();
+        *transition_ordinal = transition_ordinal.saturating_add(1);
+        Ok(StructuredFrontierOutcome {
+            accepted: Some((payload.candidate.key().to_owned(), realized)),
+            attempts: observed,
+        })
+    }
+
+    fn realize(
+        &self,
+        candidate: &StructuredCandidate,
+    ) -> Result<Option<PreparedStructuredCandidate>, EngineError> {
+        let workspace = CandidateWorkspace::materialize_snapshot(candidate.snapshot())?;
+        if !prepare_candidate(self.request, workspace.root())? {
+            return Ok(None);
+        }
+        if let Some(preparation) = candidate.preparation() {
+            if !run_preparation(self.request, workspace.root(), preparation)? {
+                return Ok(None);
+            }
+        }
+        let snapshot = candidate
+            .snapshot()
+            .capture_prepared(workspace.root(), candidate.capture_paths())?;
+        Ok(Some(PreparedStructuredCandidate {
+            workspace,
+            snapshot,
+        }))
+    }
+
+    fn run_candidate(
+        &self,
+        candidate: &StructuredCandidate,
+    ) -> Result<StructuredExecution, EngineError> {
+        let Some(prepared) = self.realize(candidate)? else {
+            return Ok(StructuredExecution::PreparationRejected);
+        };
+        let command = CommandSpec::new(
+            self.request.program.clone(),
+            self.request.arguments.clone(),
+            prepared.workspace.root().to_path_buf(),
+            self.request.timeout,
+            self.request.max_output_bytes,
+        );
+        Ok(StructuredExecution::Observed {
+            observation: ProcessRunner::run(&command)?,
+            realized: prepared.snapshot,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+struct StructuredPayload {
+    candidate: StructuredCandidate,
+    digest: ContentDigest,
+}
+
+struct PreparedStructuredCandidate {
+    workspace: CandidateWorkspace,
+    snapshot: ProjectSnapshot,
+}
+
+enum StructuredExecution {
+    Observed {
+        observation: ExecutionObservation,
+        realized: ProjectSnapshot,
+    },
+    PreparationRejected,
+}
+
+struct StructuredEvaluationContext<'context, 'request> {
+    shared: &'context StructuredReductionContext<'request>,
+    realized: &'context Mutex<HashMap<ContentDigest, ProjectSnapshot>>,
+}
+
+impl StructuredEvaluationContext<'_, '_> {
+    fn evaluate(&self, payload: &StructuredPayload) -> CandidateVerdict {
+        if has_error(self.shared.first_error) {
+            return CandidateVerdict::Inconclusive;
+        }
+        if let Some(record) = lock(self.shared.memory_cache).get(&payload.digest).cloned() {
+            self.shared.cache_hits.fetch_add(1, Ordering::Relaxed);
+            lock(self.shared.attempts_by_digest).insert(payload.digest, record.clone());
+            return record.verdict();
+        }
+        if let Some(writer) = self.shared.writer {
+            match writer.lookup_cache(payload.digest) {
+                Ok(Some(cached)) => {
+                    let record = AttemptRecord::new(
+                        payload.digest,
+                        cached.verdict(),
+                        cached.observed_runs(),
+                        cached.inconclusive_runs(),
+                        cached.evidence_json().to_owned(),
+                    );
+                    self.shared.cache_hits.fetch_add(1, Ordering::Relaxed);
+                    lock(self.shared.memory_cache).insert(payload.digest, record.clone());
+                    lock(self.shared.attempts_by_digest).insert(payload.digest, record.clone());
+                    return record.verdict();
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    set_error(self.shared.first_error, EngineError::State(error));
+                    return CandidateVerdict::Inconclusive;
+                }
+            }
+        }
+
+        let local_error = Mutex::new(None);
+        let mut realized = None::<ProjectSnapshot>;
+        let mut nondeterministic_preparation = false;
+        let evidence = self.shared.policy.aggregate(std::iter::from_fn(|| {
+            if has_error(&local_error) {
+                return None;
+            }
+            Some(match self.shared.run_candidate(&payload.candidate) {
+                Ok(StructuredExecution::PreparationRejected) => CandidateVerdict::Rejected,
+                Ok(StructuredExecution::Observed {
+                    observation,
+                    realized: current,
+                }) => {
+                    if realized
+                        .as_ref()
+                        .is_some_and(|previous| previous.digest() != current.digest())
+                    {
+                        nondeterministic_preparation = true;
+                        CandidateVerdict::Inconclusive
+                    } else {
+                        realized = Some(current);
+                        self.shared.oracle.classify(&observation)
+                    }
+                }
+                Err(error) => {
+                    set_error(&local_error, error);
+                    CandidateVerdict::Inconclusive
+                }
+            })
+        }));
+        if let Some(error) = take_error(&local_error) {
+            set_error(self.shared.first_error, error);
+            return CandidateVerdict::Inconclusive;
+        }
+        let verdict = if nondeterministic_preparation {
+            CandidateVerdict::Inconclusive
+        } else {
+            aggregate_verdict(evidence.decision())
+        };
+        if verdict == CandidateVerdict::Inconclusive {
+            self.shared
+                .inconclusive_attempts
+                .fetch_add(1, Ordering::Relaxed);
+        }
+        if verdict == CandidateVerdict::Preserved {
+            if let Some(realized) = realized {
+                lock(self.realized).insert(payload.digest, realized);
+            }
+        }
+        let record = AttemptRecord::new(
+            payload.digest,
+            verdict,
+            evidence.observed_runs(),
+            evidence.inconclusive_runs(),
+            if nondeterministic_preparation {
+                nondeterministic_preparation_json(&evidence)
+            } else {
+                evidence_json(&evidence)
+            },
+        );
+        if let Some(writer) = self.shared.writer {
+            if let Err(error) = writer.record_attempt(record.clone()) {
+                set_error(self.shared.first_error, EngineError::State(error));
+                return CandidateVerdict::Inconclusive;
+            }
+        }
+        if verdict != CandidateVerdict::Inconclusive {
+            lock(self.shared.memory_cache).insert(payload.digest, record.clone());
+        }
+        lock(self.shared.attempts_by_digest).insert(payload.digest, record);
+        verdict
+    }
+}
+
+fn structured_candidate_digest(candidate: &StructuredCandidate) -> ContentDigest {
+    let mut encoded = Vec::new();
+    encoded.extend_from_slice(b"REPROCUT-STRUCTURED\0");
+    encoded.extend_from_slice(candidate.snapshot().digest().as_bytes());
+    if let Some(preparation) = candidate.preparation() {
+        for command in preparation.commands() {
+            encode_field(&mut encoded, command.program().to_string_lossy().as_bytes());
+            for argument in command.arguments() {
+                encode_field(&mut encoded, argument.to_string_lossy().as_bytes());
+            }
+        }
+    }
+    ContentDigest::of(&encoded)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct CandidatePayload {
     unit_ids: Vec<u32>,
@@ -753,6 +1155,18 @@ fn evidence_json(evidence: &AggregateEvidence) -> String {
         "wilson_95": evidence.wilson_95().map(|interval| {
             serde_json::json!({"lower": interval.lower(), "upper": interval.upper()})
         }),
+    })
+    .to_string()
+}
+
+fn nondeterministic_preparation_json(evidence: &AggregateEvidence) -> String {
+    serde_json::json!({
+        "decision": "inconclusive",
+        "reason": "nondeterministic_preparation",
+        "observed_runs": evidence.observed_runs(),
+        "preserved_runs": evidence.preserved_runs(),
+        "rejected_runs": evidence.rejected_runs(),
+        "inconclusive_runs": evidence.inconclusive_runs(),
     })
     .to_string()
 }
