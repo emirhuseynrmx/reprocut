@@ -84,7 +84,8 @@ def test_download_refuses_an_oversized_content_length(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     class FakeResponse:
-        headers = {"Content-Length": str(CORPUS.MAX_MEMBER_BYTES + 1)}
+        def __init__(self) -> None:
+            self.headers = {"Content-Length": str(CORPUS.MAX_MEMBER_BYTES + 1)}
 
         def __enter__(self) -> FakeResponse:
             return self

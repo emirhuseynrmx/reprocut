@@ -179,3 +179,35 @@ jobs:
         run: cargo test -p reprocut-cli --test cli_contract
         env:
           TEST_PYTHON: python
+
+  release-benchmark:
+    name: 312-file release benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal
+          rustup default 1.85.0
+      - name: Build the measured release binary
+        run: cargo build --release -p reprocut-cli
+      - name: Install the pinned process-tree sampler
+        run: python -m pip install psutil==7.2.2
+      - name: Measure five fresh reductions
+        run: >-
+          python scripts/benchmark_release.py
+          --reprocut target/release/reprocut
+          --python "$(command -v python)"
+          --output output/release-benchmark
+          --runs 5
+          --warmup 1
+      - name: Upload raw benchmark evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: reprocut-release-benchmark
+          path: output/release-benchmark
+          if-no-files-found: error

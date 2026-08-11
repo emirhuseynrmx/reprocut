@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import tempfile
-import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path, PurePosixPath
@@ -107,7 +107,7 @@ def fetch_selected_files(manifest: dict[str, object], staging: Path) -> int:
         url = template.format(commit=commit, path=encoded_path)
         try:
             total += download_file(url, staging / identifier / name)
-        except (OSError, urllib.error.URLError) as error:
+        except OSError as error:
             raise CorpusError(f"download failed for pinned member {path}: {error}") from error
         if total > MAX_TOTAL_BYTES:
             raise CorpusError("selected corpus exceeds the 128 MiB safety limit")
@@ -176,4 +176,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except CorpusError as error:
+        print(f"error: {error}", file=sys.stderr)
+        raise SystemExit(2) from None
