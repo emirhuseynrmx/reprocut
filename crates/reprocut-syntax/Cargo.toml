@@ -1,0 +1,21 @@
+[package]
+name = "reprocut-syntax"
+description = "Grammar-validated source transformations for ReproCut"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+reprocut-core = { path = "../reprocut-core" }
+thiserror.workspace = true
+tree-sitter.workspace = true
+tree-sitter-javascript.workspace = true
+tree-sitter-python.workspace = true
+tree-sitter-rust.workspace = true
+tree-sitter-typescript.workspace = true
+
+[lints]
+workspace = true
