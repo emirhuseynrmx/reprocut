@@ -1,5 +1,7 @@
 //! Disposable filesystem workspaces for ReproCut candidates.
 
+mod hierarchy;
+
 use std::{
     fs, io,
     path::{Component, Path, PathBuf},
@@ -9,6 +11,8 @@ use reprocut_core::{Operation, ReductionUnit, Transformation};
 use tempfile::TempDir;
 use thiserror::Error;
 use walkdir::WalkDir;
+
+pub use hierarchy::{DirectoryHierarchy, HierarchyGroup, HierarchyGroupKind};
 
 /// A workspace inventory or materialization failure.
 #[derive(Debug, Error)]

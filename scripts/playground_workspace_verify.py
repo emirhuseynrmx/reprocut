@@ -36,11 +36,19 @@ def wrap(name: str, source: str) -> str:
     return f"mod {name} {{\n{without_inner_attributes(source)}\n}}\n"
 
 
+def workspace_source() -> str:
+    hierarchy = read("crates/reprocut-workspace/src/hierarchy.rs")
+    return read("crates/reprocut-workspace/src/lib.rs").replace(
+        "mod hierarchy;", f"mod hierarchy {{ {hierarchy} }}"
+    )
+
+
 def compose_cli() -> str:
     model = read("crates/reprocut-core/src/model.rs")
     oracle = read("crates/reprocut-core/src/oracle.rs").replace("use crate::{", "use super::{", 1)
     reducer = read("crates/reprocut-core/src/reducer.rs").replace(
-        "use crate::CandidateVerdict;", "use super::CandidateVerdict;"
+        "use crate::{CandidateVerdict, FrontierClass};",
+        "use super::{CandidateVerdict, FrontierClass};",
     )
     policy = read("crates/reprocut-core/src/policy.rs").replace(
         "use crate::CandidateVerdict;", "use super::CandidateVerdict;"
@@ -68,7 +76,7 @@ pub use winner::LowestWinner;
     runner = read("crates/reprocut-runner/src/lib.rs").replace(
         "use reprocut_core::", "use crate::reprocut_core::"
     )
-    workspace = read("crates/reprocut-workspace/src/lib.rs").replace(
+    workspace = workspace_source().replace(
         "use reprocut_core::", "use crate::reprocut_core::"
     )
     engine = (
@@ -108,7 +116,8 @@ def compose_core() -> str:
         "use crate::CandidateVerdict;", "use super::CandidateVerdict;"
     )
     reducer = read("crates/reprocut-core/src/reducer.rs").replace(
-        "use crate::CandidateVerdict;", "use super::CandidateVerdict;"
+        "use crate::{CandidateVerdict, FrontierClass};",
+        "use super::{CandidateVerdict, FrontierClass};",
     )
     winner = read("crates/reprocut-core/src/winner.rs")
     transformation_path = ROOT / "crates/reprocut-core/src/transformation.rs"
@@ -138,7 +147,7 @@ fn main() {{}}
 
 def compose_workspace() -> str:
     core = compose_core().replace("fn main() {}\n", "")
-    workspace = read("crates/reprocut-workspace/src/lib.rs").replace(
+    workspace = workspace_source().replace(
         "use reprocut_core::", "use crate::reprocut_core::"
     )
     return "\n".join([core, wrap("reprocut_workspace", workspace), "fn main() {}"])

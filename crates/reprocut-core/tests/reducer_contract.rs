@@ -57,6 +57,31 @@ fn result_is_independent_of_input_storage_addresses() {
     assert_eq!(first_result, second_result);
 }
 
+#[test]
+fn direct_subset_search_escapes_a_complement_only_local_minimum() {
+    let units = (0..6)
+        .map(|id| ReductionUnit::new(id, format!("unit-{id}")))
+        .collect::<Vec<_>>();
+
+    let result = reduce(&units, |kept| {
+        let ids = kept.iter().map(|unit| unit.id()).collect::<Vec<_>>();
+        if ids == [0, 1, 2, 3, 4, 5] || ids == [2, 3] {
+            CandidateVerdict::Preserved
+        } else {
+            CandidateVerdict::Rejected
+        }
+    });
+
+    assert_eq!(
+        result
+            .kept()
+            .iter()
+            .map(ReductionUnit::id)
+            .collect::<Vec<_>>(),
+        vec![2, 3]
+    );
+}
+
 fn required_pair_fixture() -> Vec<ReductionUnit> {
     ["noise-a", "left", "noise-b", "right", "noise-c"]
         .into_iter()

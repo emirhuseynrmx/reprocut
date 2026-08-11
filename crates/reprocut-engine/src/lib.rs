@@ -8,12 +8,14 @@ use std::{
 };
 
 use reprocut_core::{
-    reduce, AggregateDecision, CandidateVerdict, DiagnosticChannel, EvaluationPolicy,
+    reduce_hierarchical, AggregateDecision, CandidateVerdict, DiagnosticChannel, EvaluationPolicy,
     ExecutionObservation, FailureFingerprint, FailureOracle, OracleError, ReductionResult,
     ReductionUnit,
 };
 use reprocut_runner::{CommandSpec, ProcessRunner, RunnerError};
-use reprocut_workspace::{CandidateWorkspace, ProjectInventory, WorkspaceError};
+use reprocut_workspace::{
+    CandidateWorkspace, DirectoryHierarchy, ProjectInventory, WorkspaceError,
+};
 use thiserror::Error;
 
 /// A complete reduction request.
@@ -198,7 +200,9 @@ impl ReductionEngine {
         let mut inconclusive_attempts = 0_u64;
         let mut cache_hits = 0_u64;
 
-        let reduction = reduce(inventory.units(), |kept| {
+        let hierarchy = DirectoryHierarchy::from_units(inventory.units());
+        let directory_groups = hierarchy.directory_unit_ids();
+        let reduction = reduce_hierarchical(inventory.units(), &directory_groups, |kept| {
             if first_error.is_some() {
                 inconclusive_attempts = inconclusive_attempts.saturating_add(1);
                 return CandidateVerdict::Inconclusive;

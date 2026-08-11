@@ -16,7 +16,10 @@ pub use policy::{
     wilson_interval, AggregateDecision, AggregateEvidence, ConfidenceInterval, EvaluationPolicy,
     PolicyError,
 };
-pub use reducer::{reduce, ReductionResult, ReductionUnit};
+pub use reducer::{
+    ordered_frontier, reduce, reduce_hierarchical, FrontierPartition, ReductionResult,
+    ReductionUnit,
+};
 pub use transformation::{
     ByteRange, CandidateRank, ContentDigest, FrontierClass, Operation, ProjectPath, Transformation,
     TransformationError,

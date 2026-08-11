@@ -30,3 +30,29 @@ proptest! {
         prop_assert_eq!(actual, required);
     }
 }
+
+#[test]
+fn every_required_subset_through_eight_units_is_recovered() {
+    for universe_len in 1_u32..=8 {
+        let units = (0..universe_len)
+            .map(|id| ReductionUnit::new(id, format!("unit-{id}")))
+            .collect::<Vec<_>>();
+        for required_mask in 1_u32..(1_u32 << universe_len) {
+            let result = reduce(&units, |kept| {
+                let kept_mask = kept
+                    .iter()
+                    .fold(0_u32, |mask, unit| mask | (1_u32 << unit.id()));
+                if kept_mask & required_mask == required_mask {
+                    CandidateVerdict::Preserved
+                } else {
+                    CandidateVerdict::Rejected
+                }
+            });
+            let actual = result
+                .kept()
+                .iter()
+                .fold(0_u32, |mask, unit| mask | (1_u32 << unit.id()));
+            assert_eq!(actual, required_mask);
+        }
+    }
+}
