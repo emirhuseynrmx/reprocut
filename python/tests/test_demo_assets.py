@@ -40,19 +40,37 @@ def test_checked_in_demo_is_measured_and_reproducible() -> None:
     result = ROOT / "demo" / "result"
     metadata = json.loads((result / "reduction.json").read_text(encoding="utf-8"))
 
-    assert metadata["original_files"] == 18
-    assert metadata["retained_files"] == 3
-    assert metadata["final_verifications"] == 3
-    assert metadata["inconclusive_attempts"] == 0
-    assert metadata["kept_files"] == ["bug.py", "checkout.py", "fixtures/order.json"]
+    assert metadata["schema_version"] == 2
+    assert metadata["measurements"]["original"]["files"] == 18
+    assert metadata["measurements"]["retained"]["files"] == 3
+    assert metadata["search"]["final_verifications"] == 3
+    assert metadata["search"]["inconclusive_attempts"] == 0
+    kept_files = [entry["path"] for entry in metadata["kept_files"]]
+    assert kept_files == ["bug.py", "checkout.py", "fixtures/order.json"]
+    assert metadata["failure"]["same_failure"] is True
+    assert len(metadata["failure"]["fingerprint_sha256"]) == 64
     assert (
         sorted(
             path.relative_to(result / "project").as_posix()
             for path in (result / "project").rglob("*")
             if path.is_file()
         )
-        == metadata["kept_files"]
+        == kept_files
     )
+
+    attempts = [
+        json.loads(line)
+        for line in (result / "attempts.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert attempts
+    assert len(attempts) == len(metadata["attempts"])
+    assert [attempt["event_id"] for attempt in attempts] == sorted(
+        attempt["event_id"] for attempt in attempts
+    )
+    issue = (result / "issue.md").read_text(encoding="utf-8")
+    assert metadata["failure"]["fingerprint_sha256"] in issue
+    assert "attempts.jsonl" in issue
+    assert "{{" not in (result / "report.html").read_text(encoding="utf-8")
 
 
 def test_demo_gif_contract() -> None:

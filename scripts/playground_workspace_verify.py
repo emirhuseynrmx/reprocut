@@ -55,8 +55,8 @@ def report_source() -> str:
     )
 
 
-def compose_cli() -> str:
-    engine = compose_engine().removesuffix("fn main() {}")
+def compose_cli(*, runner_override: str | None = None) -> str:
+    engine = compose_engine(runner_override=runner_override).removesuffix("fn main() {}")
     report = report_source()
     oci = read("crates/reprocut-oci/src/lib.rs")
     cli = (
@@ -149,7 +149,7 @@ def compose_scheduler() -> str:
     return "\n".join([core, wrap("reprocut_engine", scheduler), "fn main() {}"])
 
 
-def compose_engine() -> str:
+def compose_engine(*, runner_override: str | None = None) -> str:
     core = compose_core().replace("fn main() {}\n", "")
     workspace = workspace_source().replace(
         "use reprocut_core::", "use crate::reprocut_core::"
@@ -200,7 +200,7 @@ pub(crate) fn syntax_candidates(
         .replace("mod manifests;", f"mod manifests {{ {manifests} }}")
         .replace("pub use reprocut_workspace::", "pub use crate::reprocut_workspace::")
     )
-    runner = r'''
+    runner = runner_override or r'''
 use std::{ffi::OsString, path::PathBuf, time::Duration};
 use crate::reprocut_core::ExecutionObservation;
 use thiserror::Error;

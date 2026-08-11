@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the measured demo artifact through the official Rust Playground."""
+"""Build and independently verify the checked-in ReproCut demo artifact."""
 
 from __future__ import annotations
 
@@ -24,6 +24,90 @@ META_BEGIN = "__REPROCUT_META_BEGIN__"
 META_END = "__REPROCUT_META_END__"
 HTML_BEGIN = "__REPROCUT_HTML_BEGIN__"
 HTML_END = "__REPROCUT_HTML_END__"
+ISSUE_BEGIN = "__REPROCUT_ISSUE_BEGIN__"
+ISSUE_END = "__REPROCUT_ISSUE_END__"
+ATTEMPTS_BEGIN = "__REPROCUT_ATTEMPTS_BEGIN__"
+ATTEMPTS_END = "__REPROCUT_ATTEMPTS_END__"
+
+# The official Playground image has no Python executable. This adapter lets the
+# real Rust search engine execute a content-equivalent shell property there.
+# The builder separately runs both Python trees three times before publication.
+DEMO_RUNNER = r'''
+use std::{
+    ffi::OsString,
+    io,
+    path::PathBuf,
+    process::{Command, Stdio},
+    time::Duration,
+};
+use crate::reprocut_core::{ContainmentMechanism, ExecutionObservation, TerminationReason};
+use thiserror::Error;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CommandSpec {
+    program: PathBuf,
+    arguments: Vec<OsString>,
+    working_directory: PathBuf,
+    timeout: Duration,
+    max_output_bytes: usize,
+}
+
+impl CommandSpec {
+    pub fn new(
+        program: PathBuf,
+        arguments: Vec<OsString>,
+        working_directory: PathBuf,
+        timeout: Duration,
+        max_output_bytes: usize,
+    ) -> Self {
+        Self { program, arguments, working_directory, timeout, max_output_bytes }
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum RunnerError {
+    #[error("demo runner failed: {0}")]
+    Io(#[from] io::Error),
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ProcessRunner;
+
+impl ProcessRunner {
+    pub fn run(spec: &CommandSpec) -> Result<ExecutionObservation, RunnerError> {
+        let output = Command::new(&spec.program)
+            .args(&spec.arguments)
+            .current_dir(&spec.working_directory)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()?;
+        let termination = output.status.code().map_or(
+            TerminationReason::RunnerFailure,
+            TerminationReason::ExitCode,
+        );
+        let (stdout, stdout_truncated) = bounded(output.stdout, spec.max_output_bytes);
+        let (stderr, stderr_truncated) = bounded(output.stderr, spec.max_output_bytes);
+        Ok(ExecutionObservation::new_contained(
+            termination,
+            stdout,
+            stderr,
+            stdout_truncated || stderr_truncated,
+            ContainmentMechanism::DirectChild,
+        ))
+    }
+}
+
+fn bounded(mut value: Vec<u8>, limit: usize) -> (Vec<u8>, bool) {
+    let truncated = value.len() > limit;
+    value.truncate(limit);
+    (value, truncated)
+}
+
+pub const fn containment_mechanism() -> ContainmentMechanism {
+    ContainmentMechanism::DirectChild
+}
+'''
 
 
 def source_files(root: Path) -> list[Path]:
@@ -53,26 +137,28 @@ def source_digest(root: Path) -> str:
     return digest.hexdigest()
 
 
-def stable_python_failure(root: Path) -> tuple[object, str]:
+def stable_python_failure(root: Path) -> object:
     sys.path.insert(0, str(ROOT / "python"))
     from reprocut import FailureOracle  # pylint: disable=import-outside-toplevel
 
-    runs = [
-        subprocess.run(
-            [sys.executable, "bug.py"],
-            cwd=root,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
-        )
-        for _ in range(3)
-    ]
+    runs = [execute_python_failure(root) for _ in range(3)]
     if any(run.returncode == 0 for run in runs):
         raise RuntimeError("demo command unexpectedly succeeded")
-    oracle = FailureOracle.from_baselines([(run.returncode, run.stderr) for run in runs])
-    return oracle, runs[0].stderr
+    return FailureOracle.from_baselines(
+        [(run.returncode, run.stdout, run.stderr) for run in runs]
+    )
+
+
+def execute_python_failure(root: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "bug.py"],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+    )
 
 
 def remote_program() -> str:
@@ -80,11 +166,14 @@ def remote_program() -> str:
     for path in source_files(SOURCE):
         relative = path.relative_to(SOURCE).as_posix()
         contents = path.read_text(encoding="utf-8")
-        writes.append(f"write_demo_file(&source, {raw_string(relative)}, {raw_string(contents)});")
+        writes.append(
+            f"write_demo_file(&source, {raw_string(relative)}, {raw_string(contents)});"
+        )
 
     shell_oracle = (
-        "if [ -f bug.py ] && [ -f checkout.py ] && "
-        "[ -f fixtures/order.json ]; then "
+        "if grep -q quote_total bug.py 2>/dev/null && "
+        "grep -q 'subtotal + currency' checkout.py 2>/dev/null && "
+        "grep -q '\"currency\": \"TRY\"' fixtures/order.json 2>/dev/null; then "
         'printf "%s\\n" "TypeError: unsupported operand type(s) for +: '
         "'decimal.Decimal' and 'str'\" >&2; exit 1; "
         'fi; printf "%s\\n" "required demo material missing" >&2; exit 2'
@@ -111,7 +200,8 @@ fn main() {{
         vec![OsString::from("-c"), OsString::from({raw_string(shell_oracle)})],
         Duration::from_secs(3),
         64 * 1024,
-    );
+    )
+    .with_runtime(1, SessionMode::Create(sandbox.path().join("state.sqlite3")));
     let outcome = ReductionEngine::run(&request).expect("remote reduction succeeds");
     let kept = outcome
         .reduction()
@@ -121,43 +211,37 @@ fn main() {{
         .collect::<Vec<_>>();
     assert_eq!(kept, vec!["bug.py", "checkout.py", "fixtures/order.json"]);
 
-    let mut stages = Vec::with_capacity(outcome.reduction().accepted_sizes().len() + 1);
-    stages.push(outcome.original_files());
-    stages.extend_from_slice(outcome.reduction().accepted_sizes());
-    let fingerprint = outcome.fingerprint();
-    let fingerprint_text = format!(
-        "exit {{}} · {{}}",
-        fingerprint.exit_code().expect("demo exits with a code"),
-        fingerprint.anchor()
+    let arguments = ReduceArgs {{
+        root: PathBuf::from("demo/source"),
+        output: PathBuf::from("demo/result"),
+        ecosystem: EcosystemArg::Python,
+        prepare: PrepareArg::None,
+        timeout_ms: 3_000,
+        max_output_bytes: 64 * 1_024,
+        oracle_stream: OracleStreamArg::Auto,
+        flaky: false,
+        flaky_runs: None,
+        flaky_required: None,
+        json: true,
+        jobs: 1,
+        state: None,
+        restart: false,
+        command: vec!["python".to_owned(), "bug.py".to_owned()],
+    }};
+    let mut evidence = build_evidence(&arguments, &outcome);
+    evidence.source_root = "demo/source".to_owned();
+    evidence.output = "demo/result".to_owned();
+    evidence.search.state = None;
+    evidence.limitations.push(
+        "The official Playground host has no Python executable, so search used a content-equivalent shell oracle; the source and final project are independently executed three times by this builder's local Python runtime."
+            .to_owned(),
     );
-    let report = render_report(&ReportModel {{
-        command: "python bug.py".to_owned(),
-        original_files: outcome.original_files(),
-        retained_files: kept.len(),
-        attempts: outcome.reduction().attempts(),
-        inconclusive_attempts: outcome.inconclusive_attempts(),
-        cache_hits: outcome.cache_hits(),
-        accepted_sizes: stages.clone(),
-        fingerprint: fingerprint_text,
-        kept_files: kept.clone(),
-    }});
-    let metadata = serde_json::json!({{
-        "schema_version": 1,
-        "original_files": outcome.original_files(),
-        "retained_files": kept.len(),
-        "attempts": outcome.reduction().attempts(),
-        "baseline_runs": outcome.baseline_runs(),
-        "final_verifications": outcome.final_verifications(),
-        "inconclusive_attempts": outcome.inconclusive_attempts(),
-        "cache_hits": outcome.cache_hits(),
-        "accepted_sizes": stages,
-        "kept_files": kept,
-        "fingerprint": {{
-            "exit_code": fingerprint.exit_code(),
-            "signal": fingerprint.signal(),
-            "anchor": fingerprint.anchor(),
-        }}
-    }});
+    let report = render_report(&ReportModel::from(&evidence));
+    let issue = render_issue(&evidence);
+    let metadata = serde_json::to_string(&evidence).expect("serialize evidence");
+    let mut attempts = Vec::new();
+    write_attempts_jsonl(&evidence.attempts, &mut attempts).expect("serialize attempts");
+    let attempts = String::from_utf8(attempts).expect("attempts are UTF-8");
 
     println!("{META_BEGIN}");
     println!("{{}}", metadata);
@@ -165,9 +249,17 @@ fn main() {{
     println!("{HTML_BEGIN}");
     print!("{{report}}");
     println!("{HTML_END}");
+    println!("{ISSUE_BEGIN}");
+    print!("{{issue}}");
+    println!("{ISSUE_END}");
+    println!("{ATTEMPTS_BEGIN}");
+    print!("{{attempts}}");
+    println!("{ATTEMPTS_END}");
 }}
 """
-    code = compose_cli().replace("fn main() -> ExitCode {", "fn cli_entry() -> ExitCode {", 1)
+    code = compose_cli(runner_override=DEMO_RUNNER).replace(
+        "fn main() -> ExitCode {", "fn cli_entry() -> ExitCode {", 1
+    )
     return code + "\n" + harness
 
 
@@ -220,7 +312,9 @@ def write_reproduction_scripts(artifact: Path) -> None:
     )
 
 
-def format_summary(*, output: str, original_files: int, retained_files: int, attempts: int) -> str:
+def format_summary(
+    *, output: str, original_files: int, retained_files: int, attempts: int
+) -> str:
     return f"built {output}: {original_files} -> {retained_files} files, {attempts} candidates"
 
 
@@ -246,6 +340,13 @@ def publish_demo(artifact: Path, *, refresh: bool) -> None:
     shutil.rmtree(backup)
 
 
+def fingerprint_matches(remote: dict[str, object], local: dict[str, object]) -> bool:
+    return all(
+        remote[key] == local[key]
+        for key in ("exit_code", "signal", "anchor", "anchors")
+    )
+
+
 def main(*, refresh: bool = False) -> int:
     if RESULT.is_symlink():
         raise RuntimeError(f"refusing to replace a symbolic link: {RESULT}")
@@ -254,14 +355,17 @@ def main(*, refresh: bool = False) -> int:
     if refresh and not RESULT.is_dir():
         raise RuntimeError(f"cannot refresh a non-directory demo artifact: {RESULT}")
     before = source_digest(SOURCE)
-    oracle, _diagnostic = stable_python_failure(SOURCE)
+    oracle = stable_python_failure(SOURCE)
     remote_output = execute_remote_rust(remote_program())
     metadata = json.loads(between(remote_output, META_BEGIN, META_END))
     report = between(remote_output, HTML_BEGIN, HTML_END)
+    issue = between(remote_output, ISSUE_BEGIN, ISSUE_END)
+    attempts = between(remote_output, ATTEMPTS_BEGIN, ATTEMPTS_END)
 
-    if metadata["original_files"] != 18 or metadata["kept_files"] != EXPECTED_KEPT:
+    kept = [entry["path"] for entry in metadata["kept_files"]]
+    if metadata["measurements"]["original"]["files"] != 18 or kept != EXPECTED_KEPT:
         raise RuntimeError(f"unexpected remote reduction: {metadata}")
-    if metadata["fingerprint"] != oracle.fingerprint:
+    if not fingerprint_matches(metadata["failure"], oracle.fingerprint):
         raise RuntimeError("remote and local Python failure fingerprints differ")
 
     demo_root = ROOT / "demo"
@@ -274,31 +378,32 @@ def main(*, refresh: bool = False) -> int:
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(SOURCE / relative, destination)
 
-        metadata.update(
-            {
-                "source_root": "demo/source",
-                "output": "demo/result",
-                "command": ["python", "bug.py"],
-            }
-        )
         (artifact / "reduction.json").write_text(
             json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
             newline="\n",
         )
-        (artifact / "report.html").write_text(report + "\n", encoding="utf-8", newline="\n")
+        (artifact / "report.html").write_text(
+            report + "\n", encoding="utf-8", newline="\n"
+        )
+        (artifact / "issue.md").write_text(
+            issue + "\n", encoding="utf-8", newline="\n"
+        )
+        (artifact / "attempts.jsonl").write_text(
+            attempts.rstrip("\r\n") + "\n", encoding="utf-8", newline="\n"
+        )
         write_reproduction_scripts(artifact)
 
-        reduced = subprocess.run(
-            [sys.executable, "bug.py"],
-            cwd=project,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
-        )
-        if oracle.classify(reduced.returncode, reduced.stderr) != "preserved":
+        reduced_runs = [execute_python_failure(project) for _ in range(3)]
+        if any(
+            oracle.classify(
+                reduced.returncode,
+                reduced.stderr,
+                stdout=reduced.stdout,
+            )
+            != "preserved"
+            for reduced in reduced_runs
+        ):
             raise RuntimeError("staged reduced project did not preserve the Python failure")
         publish_demo(artifact, refresh=refresh)
 
@@ -307,9 +412,9 @@ def main(*, refresh: bool = False) -> int:
     print(
         format_summary(
             output=str(RESULT),
-            original_files=metadata["original_files"],
-            retained_files=metadata["retained_files"],
-            attempts=metadata["attempts"],
+            original_files=metadata["measurements"]["original"]["files"],
+            retained_files=metadata["measurements"]["retained"]["files"],
+            attempts=metadata["search"]["attempts"],
         )
     )
     return 0

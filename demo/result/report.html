@@ -86,18 +86,44 @@ h1 em { color: var(--cut); font-style: normal; }
 .label { margin: 3rem 0 .7rem; color: var(--steel); text-transform: uppercase; font-family: var(--mono); font-size: .6rem; letter-spacing: .08em; }
 blockquote { margin: 0; padding: 1.5rem 0 1.5rem 1.5rem; border-left: 5px solid var(--cut); font-family: var(--mono); font-size: clamp(.85rem, 1.4vw, 1.05rem); font-weight: 650; line-height: 1.55; overflow-wrap: anywhere; }
 .annotation { max-width: 40rem; margin: 1.4rem 0 0; color: #5f6670; line-height: 1.6; }
+.fingerprint-meta { display: grid; gap: .6rem; margin: 1.5rem 0 0; }
+.fingerprint-meta div { display: grid; grid-template-columns: 10rem minmax(0, 1fr); gap: 1rem; }
+.fingerprint-meta dt { color: var(--steel); text-transform: uppercase; font-family: var(--mono); font-size: .58rem; letter-spacing: .08em; }
+.fingerprint-meta dd { min-width: 0; margin: 0; }
+.fingerprint-meta code { font-family: var(--mono); font-size: .68rem; overflow-wrap: anywhere; }
+.anchor-list { margin: 1.5rem 0 0; padding: 0; list-style: none; }
+.anchor-list li { display: grid; grid-template-columns: 5rem minmax(0, 1fr); gap: 1rem; padding: .65rem 0; border-top: 1px solid var(--hairline); }
+.anchor-list span { color: var(--blueprint); text-transform: uppercase; font-family: var(--mono); font-size: .6rem; }
+.anchor-list code { font-family: var(--mono); font-size: .72rem; overflow-wrap: anywhere; }
 .file-list { margin: 2.75rem 0 0; padding: 0; list-style: none; counter-reset: file; }
-.file-list li { display: grid; grid-template-columns: 2.5rem 1fr; gap: .5rem; padding: .78rem 0; border-top: 1px solid var(--hairline); counter-increment: file; }
+.file-list li { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); gap: .35rem .5rem; padding: .78rem 0; border-top: 1px solid var(--hairline); counter-increment: file; }
 .file-list li::before { content: counter(file, decimal-leading-zero); color: var(--blueprint); font-family: var(--mono); font-size: .62rem; }
 .file-list code { font-family: var(--mono); font-size: .76rem; overflow-wrap: anywhere; }
+.file-list span { grid-column: 2; color: var(--steel); font-size: .72rem; line-height: 1.45; }
+
+.diagnostic-grid { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--carbon); }
+.diagnostic-grid article { min-width: 0; padding: 5rem 0; }
+.diagnostic-grid article + article { margin-left: 4rem; padding-left: 4rem; border-left: 1px solid var(--hairline); }
+.diagnostic-grid .section-heading { display: block; }
+.diagnostic-grid .section-heading h2 { font-size: clamp(2rem, 3vw, 3.7rem); }
+.diagnostic-list { display: grid; gap: .6rem; margin: 2rem 0 0; padding: 0; list-style: none; }
+.diagnostic-list li { padding: .8rem 0; border-top: 1px solid var(--hairline); color: #5f6670; line-height: 1.5; }
+.diagnostic-list code { color: var(--carbon); font-family: var(--mono); font-size: .72rem; overflow-wrap: anywhere; }
+.measure-table { display: grid; grid-template-columns: repeat(3, 1fr); margin: 2rem 0 0; border-top: 1px solid var(--carbon); border-bottom: 1px solid var(--carbon); }
+.measure-table div { padding: 1rem 0; border-right: 1px solid var(--hairline); }
+.measure-table div + div { padding-left: 1rem; }
+.measure-table div:last-child { border-right: 0; }
+.measure-table dt { color: var(--steel); text-transform: uppercase; font-family: var(--mono); font-size: .56rem; letter-spacing: .07em; }
+.measure-table dd { margin: .45rem 0 0; font-family: var(--display); font-size: 1.5rem; font-weight: 900; }
 
 .command-rail { display: grid; grid-template-columns: minmax(180px, .6fr) minmax(0, 1.7fr) auto; gap: 2rem; align-items: center; margin-inline: calc(clamp(1.25rem, 4vw, 5rem) * -1); padding: 3rem clamp(1.25rem, 4vw, 5rem); color: var(--paper); background: var(--carbon); }
 .command-rail > div p { color: var(--mint); }
 .command-rail h2 { font-size: 2rem; }
 pre { min-width: 0; margin: 0; padding: 1.2rem 1.4rem; border: 1px solid #4d535c; overflow-x: auto; }
 pre code { color: var(--mint); font-family: var(--mono); font-size: .78rem; white-space: pre-wrap; overflow-wrap: anywhere; }
-.copy-command { min-height: 48px; padding: 0 1.2rem; border: 1px solid var(--paper); color: var(--paper); background: transparent; font: 700 .68rem/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; cursor: pointer; }
-.copy-command:hover { color: var(--carbon); background: var(--mint); border-color: var(--mint); }
+.report-actions { display: grid; gap: .5rem; }
+.copy-command, .download-issue { min-height: 48px; padding: 0 1.2rem; border: 1px solid var(--paper); color: var(--paper); background: transparent; font: 700 .68rem/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; cursor: pointer; }
+.copy-command:hover, .download-issue:hover { color: var(--carbon); background: var(--mint); border-color: var(--mint); }
 .copy-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 footer { display: flex; justify-content: space-between; gap: 2rem; padding: 1.2rem clamp(1.25rem, 4vw, 5rem); color: var(--steel); background: var(--carbon); border-top: 1px solid #333840; text-transform: uppercase; font-family: var(--mono); font-size: .58rem; letter-spacing: .08em; }
 
@@ -114,8 +140,10 @@ footer { display: flex; justify-content: space-between; gap: 2rem; padding: 1.2r
   .attempt-strip div:nth-child(3) { padding-left: 0; }
   .evidence-grid { grid-template-columns: 1fr; }
   .evidence-grid article + article { margin: 0; padding-left: 0; border-top: 1px solid var(--hairline); border-left: 0; }
+  .diagnostic-grid { grid-template-columns: 1fr; }
+  .diagnostic-grid article + article { margin: 0; padding-left: 0; border-top: 1px solid var(--hairline); border-left: 0; }
   .command-rail { grid-template-columns: 1fr; }
-  .copy-command { width: max-content; }
+  .report-actions { width: max-content; }
 }
 
 @media (max-width: 470px) {
@@ -136,7 +164,7 @@ footer { display: flex; justify-content: space-between; gap: 2rem; padding: 1.2r
 }
 
 @media print {
-  .skip-link, .copy-command, .copy-status { display: none; }
+  .skip-link, .report-actions, .copy-status { display: none; }
   body { background: white; }
   .hero { min-height: 0; padding-top: 2rem; }
   .command-rail { color: black; background: white; border-top: 2px solid black; }
@@ -150,7 +178,7 @@ footer { display: flex; justify-content: space-between; gap: 2rem; padding: 1.2r
 <header class="masthead">
   <a class="wordmark" href="#report-main" aria-label="ReproCut report home"><span aria-hidden="true">R/</span> ReproCut</a>
   <p class="edition">Reduction record <span>R-001</span></p>
-  <p class="status"><i aria-hidden="true"></i> Failure preserved</p>
+  <p class="status" title="SHA-256 e9fcf47255b5def95058ae8dc0dd1d0a7e176d2c7d8361b51f32e5c221a37d4e"><i aria-hidden="true"></i> Same failure verified</p>
 </header>
 
 <main id="report-main">
@@ -161,8 +189,8 @@ footer { display: flex; justify-content: space-between; gap: 2rem; padding: 1.2r
       <p class="lede">A smaller, verified reproduction cut from the original project without changing its failure identity.</p>
     </div>
     <dl class="hero-measure" aria-label="Reduction summary">
-      <div><dt>Before</dt><dd>18<small>files</small></dd></div>
-      <div><dt>After</dt><dd>3<small>files</small></dd></div>
+      <div><dt>Before</dt><dd>18<small>files / 1669 bytes</small></dd></div>
+      <div><dt>After</dt><dd>3<small>files / 675 bytes</small></dd></div>
       <div class="accent"><dt>Removed</dt><dd>83.3<small>percent</small></dd></div>
     </dl>
   </section>
@@ -179,11 +207,11 @@ footer { display: flex; justify-content: space-between; gap: 2rem; padding: 1.2r
         <span class="retained-mass"></span>
         <i class="blade" aria-hidden="true"></i>
       </div>
-      <ol class="stages"><li class="cut-stage" style="--stage-width: 100.0%" data-stage="1"><span class="stage-index">01</span><span class="stage-rule" aria-hidden="true"></span><strong>18</strong><span> files retained</span></li><li class="cut-stage" style="--stage-width: 50.0%" data-stage="2"><span class="stage-index">02</span><span class="stage-rule" aria-hidden="true"></span><strong>9</strong><span> files retained</span></li><li class="cut-stage" style="--stage-width: 33.3%" data-stage="3"><span class="stage-index">03</span><span class="stage-rule" aria-hidden="true"></span><strong>6</strong><span> files retained</span></li><li class="cut-stage" style="--stage-width: 22.2%" data-stage="4"><span class="stage-index">04</span><span class="stage-rule" aria-hidden="true"></span><strong>4</strong><span> files retained</span></li><li class="cut-stage" style="--stage-width: 16.6%" data-stage="5"><span class="stage-index">05</span><span class="stage-rule" aria-hidden="true"></span><strong>3</strong><span> files retained</span></li></ol>
+      <ol class="stages"><li class="cut-stage" style="--stage-width: 100.0%" data-stage="1"><span class="stage-index">01</span><span class="stage-rule" aria-hidden="true"></span><strong>18</strong><span> files retained</span></li><li class="cut-stage" style="--stage-width: 88.8%" data-stage="2"><span class="stage-index">02</span><span class="stage-rule" aria-hidden="true"></span><strong>16</strong><span> files retained</span></li><li class="cut-stage" style="--stage-width: 83.3%" data-stage="3"><span class="stage-index">03</span><span class="stage-rule" aria-hidden="true"></span><strong>15</strong><span> files retained</span></li><li class="cut-stage" style="--stage-width: 38.8%" data-stage="4"><span class="stage-index">04</span><span class="stage-rule" aria-hidden="true"></span><strong>7</strong><span> files retained</span></li><li class="cut-stage" style="--stage-width: 27.7%" data-stage="5"><span class="stage-index">05</span><span class="stage-rule" aria-hidden="true"></span><strong>5</strong><span> files retained</span></li><li class="cut-stage" style="--stage-width: 22.2%" data-stage="6"><span class="stage-index">06</span><span class="stage-rule" aria-hidden="true"></span><strong>4</strong><span> files retained</span></li><li class="cut-stage" style="--stage-width: 16.6%" data-stage="7"><span class="stage-index">07</span><span class="stage-rule" aria-hidden="true"></span><strong>3</strong><span> files retained</span></li></ol>
     </div>
     <dl class="attempt-strip">
-      <div><dt>Candidate runs</dt><dd>19</dd></div>
-      <div><dt>Cache reuses</dt><dd>5</dd></div>
+      <div><dt>Candidate runs</dt><dd>24</dd></div>
+      <div><dt>Cache reuses</dt><dd>7</dd></div>
       <div><dt>Inconclusive</dt><dd>0</dd></div>
       <div><dt>Final verification</dt><dd>3 / 3</dd></div>
     </dl>
@@ -196,8 +224,13 @@ footer { display: flex; justify-content: space-between; gap: 2rem; padding: 1.2r
         <h2>Oracle anchor</h2>
       </div>
       <p class="label">Normalized diagnostic</p>
-      <blockquote>exit 1 · TypeError: unsupported operand type(s) for +: &#39;decimal.Decimal&#39; and &#39;str&#39;</blockquote>
-      <p class="annotation">Exit state and normalized anchor matched the stable baseline across final verification.</p>
+      <blockquote>exit 1 | TypeError: unsupported operand type(s) for +: &#39;decimal.Decimal&#39; and &#39;str&#39;</blockquote>
+      <dl class="fingerprint-meta">
+        <div><dt>Fingerprint SHA-256</dt><dd><code>e9fcf47255b5def95058ae8dc0dd1d0a7e176d2c7d8361b51f32e5c221a37d4e</code></dd></div>
+        <div><dt>Oracle stream</dt><dd><code>auto</code></dd></div>
+      </dl>
+      <ol class="anchor-list"><li><span>stderr</span><code>TypeError: unsupported operand type(s) for +: &#39;decimal.Decimal&#39; and &#39;str&#39;</code></li></ol>
+      <p class="annotation">Exit state and every stream-qualified normalized anchor matched the stable baseline across final verification.</p>
     </article>
 
     <article class="kept-record">
@@ -205,17 +238,42 @@ footer { display: flex; justify-content: space-between; gap: 2rem; padding: 1.2r
         <p>03 / Retained material</p>
         <h2>3 files remain</h2>
       </div>
-      <ol class="file-list"><li><code>bug.py</code></li><li><code>checkout.py</code></li><li><code>fixtures/order.json</code></li></ol>
+      <ol class="file-list"><li><code>bug.py</code><span>Present in the final repeatedly verified snapshot; no semantic-causality claim is inferred.</span></li><li><code>checkout.py</code><span>Present in the final repeatedly verified snapshot; no semantic-causality claim is inferred.</span></li><li><code>fixtures/order.json</code><span>Present in the final repeatedly verified snapshot; no semantic-causality claim is inferred.</span></li></ol>
+    </article>
+  </section>
+
+  <section class="diagnostic-grid" aria-label="Reduction diagnostics">
+    <article>
+      <div class="section-heading">
+        <p>04 / Structured reductions</p>
+        <h2>Accepted edits</h2>
+      </div>
+      <ol class="diagnostic-list"><li>No structured edit was accepted.</li></ol>
+    </article>
+    <article>
+      <div class="section-heading">
+        <p>05 / Measurement</p>
+        <h2>Limits, stated</h2>
+      </div>
+      <dl class="measure-table">
+        <div><dt>Source lines</dt><dd>55</dd></div>
+        <div><dt>Retained lines</dt><dd>28</dd></div>
+        <div><dt>Wall time</dt><dd>569 ms</dd></div>
+      </dl>
+      <ul class="diagnostic-list"><li><code>Elapsed time is one wall-clock observation, not a benchmark.</code></li><li><code>Retained paths are observations from the verified final snapshot, not claims of semantic necessity.</code></li><li><code>Syntax-node counts are omitted until a grammar-valid cross-language counter is available.</code></li><li><code>The official Playground host has no Python executable, so search used a content-equivalent shell oracle; the source and final project are independently executed three times by this builder&#39;s local Python runtime.</code></li></ul>
     </article>
   </section>
 
   <section class="command-rail" aria-labelledby="command-title">
     <div>
-      <p>04 / Reproduce</p>
+      <p>06 / Reproduce</p>
       <h2 id="command-title">Run the cut</h2>
     </div>
     <pre><code id="repro-command">python bug.py</code></pre>
-    <button class="copy-command" type="button" aria-describedby="copy-status">Copy command</button>
+    <div class="report-actions">
+      <button class="copy-command" type="button" aria-describedby="copy-status">Copy command</button>
+      <button class="download-issue" type="button" data-issue="IyBNaW5pbWFsIHJlcHJvZHVjdGlvbjogVHlwZUVycm9yOiB1bnN1cHBvcnRlZCBvcGVyYW5kIHR5cGUocykgZm9yICs6ICdkZWNpbWFsLkRlY2ltYWwnIGFuZCAnc3RyJwoKPiAqKlNhbWUgZmFpbHVyZSB2ZXJpZmllZC4qKiBGaW5nZXJwcmludCBgZTlmY2Y0NzI1NWI1ZGVmOTUwNThhZThkYzBkZDFkMGE3ZTE3NmQyYzdkODM2MWI1MWYzMmU1YzIyMWEzN2Q0ZWAgbWF0Y2hlZCBhY3Jvc3MgMyBmaW5hbCBleGVjdXRpb24ocykuCgojIyBSZWR1Y3Rpb24KCnwgTWVhc3VyZSB8IEJlZm9yZSB8IEFmdGVyIHwgUmVtb3ZlZCB8CnwtLS18LS0tOnwtLS06fC0tLTp8CnwgRmlsZXMgfCAxOCB8IDMgfCAxNSB8CnwgQnl0ZXMgfCAxNjY5IHwgNjc1IHwgOTk0IHwKfCBMaW5lcyB8IDU1IHwgMjggfCAyNyB8CgojIyBGYWlsdXJlIGlkZW50aXR5CgotIFRlcm1pbmF0aW9uOiBgZXhpdCAxYAotIE9yYWNsZSBzdHJlYW06IGBhdXRvYAotIE5vcm1hbGl6YXRpb24gc2NoZW1hOiBgMWAKCmBgYHRleHQKVHlwZUVycm9yOiB1bnN1cHBvcnRlZCBvcGVyYW5kIHR5cGUocykgZm9yICs6ICdkZWNpbWFsLkRlY2ltYWwnIGFuZCAnc3RyJwpgYGAKCiMjIFJlcHJvZHVjZQoKYGBgc2gKcHl0aG9uIGJ1Zy5weQpgYGAKCiMjIFJldGFpbmVkIHByb2plY3QKCi0gYGJ1Zy5weWAKLSBgY2hlY2tvdXQucHlgCi0gYGZpeHR1cmVzL29yZGVyLmpzb25gCgojIyBTZWFyY2ggZXZpZGVuY2UKCi0gQ2FuZGlkYXRlIGF0dGVtcHRzOiAyNAotIENhY2hlIHJldXNlczogNwotIEluY29uY2x1c2l2ZSBjYW5kaWRhdGVzOiAwCi0gV2FsbCB0aW1lOiA1NjkgbXMKCiMjIEluY2x1ZGVkIGV2aWRlbmNlCgotIGBwcm9qZWN0L2Ag4oCUIGV4YWN0IGZpbmFsIHZlcmlmaWVkIHNuYXBzaG90Ci0gYHJlZHVjdGlvbi5qc29uYCDigJQgdmVyc2lvbmVkIHNoYXJlZCBldmlkZW5jZQotIGBhdHRlbXB0cy5qc29ubGAg4oCUIGFwcGVuZC1vbmx5IGNhbmRpZGF0ZSBldmVudHMKLSBgcmVwb3J0Lmh0bWxgIOKAlCBzZWxmLWNvbnRhaW5lZCB2aXN1YWwgcmVjb3JkCi0gYHJlcHJvZHVjZS5zaGAgLyBgcmVwcm9kdWNlLnBzMWAg4oCUIHF1b3RlZCBhcmd2IGxhdW5jaGVycwoKIyMgTGltaXRzCgotIEVsYXBzZWQgdGltZSBpcyBvbmUgd2FsbC1jbG9jayBvYnNlcnZhdGlvbiwgbm90IGEgYmVuY2htYXJrLgotIFJldGFpbmVkIHBhdGhzIGFyZSBvYnNlcnZhdGlvbnMgZnJvbSB0aGUgdmVyaWZpZWQgZmluYWwgc25hcHNob3QsIG5vdCBjbGFpbXMgb2Ygc2VtYW50aWMgbmVjZXNzaXR5LgotIFN5bnRheC1ub2RlIGNvdW50cyBhcmUgb21pdHRlZCB1bnRpbCBhIGdyYW1tYXItdmFsaWQgY3Jvc3MtbGFuZ3VhZ2UgY291bnRlciBpcyBhdmFpbGFibGUuCi0gVGhlIG9mZmljaWFsIFBsYXlncm91bmQgaG9zdCBoYXMgbm8gUHl0aG9uIGV4ZWN1dGFibGUsIHNvIHNlYXJjaCB1c2VkIGEgY29udGVudC1lcXVpdmFsZW50IHNoZWxsIG9yYWNsZTsgdGhlIHNvdXJjZSBhbmQgZmluYWwgcHJvamVjdCBhcmUgaW5kZXBlbmRlbnRseSBleGVjdXRlZCB0aHJlZSB0aW1lcyBieSB0aGlzIGJ1aWxkZXIncyBsb2NhbCBQeXRob24gcnVudGltZS4K">Download issue.md</button>
+    </div>
     <p id="copy-status" class="copy-status" aria-live="polite"></p>
   </section>
 </main>
@@ -232,6 +290,7 @@ footer { display: flex; justify-content: space-between; gap: 2rem; padding: 1.2r
   const copyButton = document.querySelector(".copy-command");
   const command = document.querySelector("#repro-command");
   const status = document.querySelector("#copy-status");
+  const issueButton = document.querySelector(".download-issue");
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const reveal = () => {
@@ -244,14 +303,47 @@ footer { display: flex; justify-content: space-between; gap: 2rem; padding: 1.2r
 
   window.addEventListener("reprocut:frame", reveal);
 
+  const fallbackCopy = (value) => {
+    const input = document.createElement("textarea");
+    input.value = value;
+    input.setAttribute("readonly", "");
+    input.style.position = "fixed";
+    input.style.opacity = "0";
+    document.body.append(input);
+    input.select();
+    const copied = document.execCommand("copy");
+    input.remove();
+    return copied;
+  };
+
   copyButton?.addEventListener("click", async () => {
+    const value = command?.textContent ?? "";
     try {
-      await navigator.clipboard.writeText(command?.textContent ?? "");
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
+      await navigator.clipboard.writeText(value);
       copyButton.textContent = "Copied";
       status.textContent = "Reproduction command copied to clipboard.";
     } catch {
-      status.textContent = "Clipboard unavailable. Select the command manually.";
+      if (fallbackCopy(value)) {
+        copyButton.textContent = "Copied";
+        status.textContent = "Reproduction command copied with the compatibility fallback.";
+      } else {
+        status.textContent = "Clipboard unavailable. Select the command manually.";
+      }
     }
+  });
+
+  issueButton?.addEventListener("click", () => {
+    const encoded = issueButton.dataset.issue ?? "";
+    const binary = atob(encoded);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], { type: "text/markdown;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "issue.md";
+    link.click();
+    URL.revokeObjectURL(url);
+    status.textContent = "GitHub issue Markdown downloaded.";
   });
 })();
 
