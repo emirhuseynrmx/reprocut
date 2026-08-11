@@ -1,9 +1,9 @@
 /target/
 /.reprocut/
 /reprocut-output/
+/output/
 /.venv/
 /.pytest_cache/
 *.pyd
 *.so
 __pycache__/
-

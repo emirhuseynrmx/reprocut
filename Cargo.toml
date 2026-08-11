@@ -2,6 +2,7 @@
 members = [
     "crates/reprocut-core",
     "crates/reprocut-engine",
+    "crates/reprocut-report",
     "crates/reprocut-runner",
     "crates/reprocut-workspace",
 ]

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en" data-report="reprocut">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>ReproCut · Reduction record</title>
+<style>
+{{CSS}}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#report-main">Skip to reduction record</a>
+<header class="masthead">
+  <a class="wordmark" href="#report-main" aria-label="ReproCut report home"><span aria-hidden="true">R/</span> ReproCut</a>
+  <p class="edition">Reduction record <span>R-001</span></p>
+  <p class="status"><i aria-hidden="true"></i> Failure preserved</p>
+</header>
+
+<main id="report-main">
+  <section class="hero" aria-labelledby="report-title">
+    <div class="hero-copy">
+      <p class="eyebrow">Deterministic failure minimization</p>
+      <h1 id="report-title">The failure stayed.<br><em>{{REDUCTION_PERCENT}}%</em> of the project did not.</h1>
+      <p class="lede">A smaller, verified reproduction cut from the original project without changing its failure identity.</p>
+    </div>
+    <dl class="hero-measure" aria-label="Reduction summary">
+      <div><dt>Before</dt><dd>{{ORIGINAL_FILES}}<small>files</small></dd></div>
+      <div><dt>After</dt><dd>{{RETAINED_FILES}}<small>files</small></dd></div>
+      <div class="accent"><dt>Removed</dt><dd>{{REDUCTION_PERCENT}}<small>percent</small></dd></div>
+    </dl>
+  </section>
+
+  <section class="cut-table" aria-labelledby="cut-title">
+    <div class="section-heading">
+      <p>01 / Material reduction</p>
+      <h2 id="cut-title">Every accepted cut</h2>
+    </div>
+    <div class="cut-field">
+      <div class="cut-axis" aria-hidden="true"><span>original mass</span><span>minimal case</span></div>
+      <div class="cut-line" role="img" aria-label="Reduction progress" style="--retained: {{RETAINED_PERCENT}}%">
+        <span class="removed-mass"></span>
+        <span class="retained-mass"></span>
+        <i class="blade" aria-hidden="true"></i>
+      </div>
+      <ol class="stages">{{STAGES}}</ol>
+    </div>
+    <dl class="attempt-strip">
+      <div><dt>Candidate runs</dt><dd>{{ATTEMPTS}}</dd></div>
+      <div><dt>Cache reuses</dt><dd>{{CACHE_HITS}}</dd></div>
+      <div><dt>Inconclusive</dt><dd>{{INCONCLUSIVE_ATTEMPTS}}</dd></div>
+      <div><dt>Final verification</dt><dd>3 / 3</dd></div>
+    </dl>
+  </section>
+
+  <section class="evidence-grid" aria-label="Reproduction evidence">
+    <article class="oracle-record">
+      <div class="section-heading">
+        <p>02 / Failure identity</p>
+        <h2>Oracle anchor</h2>
+      </div>
+      <p class="label">Normalized diagnostic</p>
+      <blockquote>{{FINGERPRINT}}</blockquote>
+      <p class="annotation">Exit state and normalized anchor matched the stable baseline across final verification.</p>
+    </article>
+
+    <article class="kept-record">
+      <div class="section-heading">
+        <p>03 / Retained material</p>
+        <h2>{{RETAINED_FILES}} files remain</h2>
+      </div>
+      <ol class="file-list">{{KEPT_FILES}}</ol>
+    </article>
+  </section>
+
+  <section class="command-rail" aria-labelledby="command-title">
+    <div>
+      <p>04 / Reproduce</p>
+      <h2 id="command-title">Run the cut</h2>
+    </div>
+    <pre><code id="repro-command">{{COMMAND}}</code></pre>
+    <button class="copy-command" type="button" aria-describedby="copy-status">Copy command</button>
+    <p id="copy-status" class="copy-status" aria-live="polite"></p>
+  </section>
+</main>
+
+<footer>
+  <p>ReproCut / measured, isolated, repeatable.</p>
+  <p>Self-contained report · no external resources</p>
+</footer>
+<script>
+{{JS}}
+</script>
+</body>
+</html>
