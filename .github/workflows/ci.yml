@@ -64,7 +64,7 @@ jobs:
         run: |
           rustup toolchain install 1.85.0 --profile minimal
           rustup default 1.85.0
-      - name: Explore winner interleavings
+      - name: Explore ordered frontier interleavings
         run: cargo test -p reprocut-core --features loom --test loom_winner
         env:
           RUSTFLAGS: --cfg loom

@@ -164,11 +164,21 @@ def compose_state() -> str:
     return "\n".join([core, wrap("reprocut_state", state), "fn main() {}"])
 
 
+def compose_scheduler() -> str:
+    core = compose_core().replace("fn main() {}\n", "")
+    scheduler = read("crates/reprocut-engine/src/scheduler.rs").replace(
+        "use reprocut_core::", "use crate::reprocut_core::"
+    )
+    return "\n".join([core, wrap("reprocut_engine", scheduler), "fn main() {}"])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--append", type=Path, required=True)
     parser.add_argument(
-        "--scope", choices=("full", "core", "workspace", "state"), default="full"
+        "--scope",
+        choices=("full", "core", "workspace", "state", "scheduler"),
+        default="full",
     )
     args = parser.parse_args()
 
@@ -177,6 +187,7 @@ def main() -> int:
         "core": compose_core,
         "workspace": compose_workspace,
         "state": compose_state,
+        "scheduler": compose_scheduler,
     }[args.scope]()
     code = workspace + "\n" + args.append.resolve().read_text(encoding="utf-8")
     payload = json.dumps(

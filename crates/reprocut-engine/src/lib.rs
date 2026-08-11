@@ -1,5 +1,9 @@
 //! End-to-end reduction orchestration for ReproCut.
 
+mod scheduler;
+
+pub use scheduler::{CandidatePlan, FrontierOutcome, FrontierScheduler, SchedulerError};
+
 use std::{
     collections::HashMap,
     ffi::OsString,
