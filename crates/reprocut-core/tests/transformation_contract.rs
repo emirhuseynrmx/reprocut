@@ -1,4 +1,7 @@
-use reprocut_core::{ByteRange, Operation, ProjectPath, Transformation, TransformationError};
+use reprocut_core::{
+    ByteRange, ContentDigest, ContentHasher, Operation, ProjectPath, Transformation,
+    TransformationError,
+};
 
 #[test]
 fn operation_order_does_not_change_candidate_digest_or_encoding() {
@@ -31,6 +34,18 @@ fn unsafe_project_paths_and_empty_ranges_are_refused() {
     assert!(ProjectPath::new("../secret").is_err());
     assert!(ProjectPath::new("C:/secret").is_err());
     assert!(ByteRange::new(3, 3).is_err());
+}
+
+#[test]
+fn streaming_digest_matches_one_shot_digest_across_empty_chunks() {
+    let payload = b"REPROCUT-SOURCE\0\x05\0\0\0\0\0\0\0hello";
+    let mut hasher = ContentHasher::new();
+    hasher.update(&payload[..7]);
+    hasher.update(&[]);
+    hasher.update(&payload[7..19]);
+    hasher.update(&payload[19..]);
+
+    assert_eq!(hasher.finalize(), ContentDigest::of(payload));
 }
 
 fn delete(path: &str) -> Operation {

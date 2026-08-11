@@ -129,6 +129,34 @@ impl Operation {
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct ContentDigest([u8; 32]);
 
+/// Incremental SHA-256 builder for canonical encodings too large to buffer.
+///
+/// The builder owns the hashing state and allocates no buffer proportional to
+/// the input size. Callers remain responsible for feeding an unambiguous,
+/// schema-versioned encoding.
+#[derive(Clone, Default)]
+pub struct ContentHasher(Sha256);
+
+impl ContentHasher {
+    /// Creates an empty incremental digest.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Feeds one chunk without retaining it.
+    pub fn update(&mut self, bytes: &[u8]) {
+        self.0.update(bytes);
+    }
+
+    /// Consumes the builder and returns its canonical identity.
+    pub fn finalize(self) -> ContentDigest {
+        let digest = self.0.finalize();
+        let mut value = [0_u8; 32];
+        value.copy_from_slice(&digest);
+        ContentDigest(value)
+    }
+}
+
 impl ContentDigest {
     /// Restores an identity already validated as exactly 32 bytes.
     pub const fn from_bytes(bytes: [u8; 32]) -> Self {
@@ -137,10 +165,9 @@ impl ContentDigest {
 
     /// Hashes a stable byte encoding.
     pub fn of(bytes: &[u8]) -> Self {
-        let digest = Sha256::digest(bytes);
-        let mut value = [0_u8; 32];
-        value.copy_from_slice(&digest);
-        Self(value)
+        let mut hasher = ContentHasher::new();
+        hasher.update(bytes);
+        hasher.finalize()
     }
 
     /// Returns the raw 32-byte identity.

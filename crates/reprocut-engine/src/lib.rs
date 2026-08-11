@@ -13,19 +13,21 @@ use std::{
     collections::HashMap,
     ffi::OsString,
     fs,
+    io::{self, Read as _},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
         Mutex,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use reprocut_adapters::{Ecosystem, NpmManifest, PreparationPlan};
 use reprocut_core::{
     reduce_hierarchical_frontiers, AggregateDecision, AggregateEvidence, CandidateRank,
-    CandidateVerdict, ContentDigest, DiagnosticChannel, EvaluationPolicy, ExecutionObservation,
-    FailureFingerprint, FailureOracle, FrontierClass, OracleError, ReductionResult, ReductionUnit,
+    CandidateVerdict, ContentDigest, ContentHasher, DiagnosticChannel, EvaluationPolicy,
+    ExecutionObservation, FailureFingerprint, FailureOracle, FrontierClass, OracleError,
+    ReductionResult, ReductionUnit,
 };
 use reprocut_runner::{CommandSpec, ProcessRunner, RunnerError};
 use reprocut_state::{
@@ -205,6 +207,8 @@ impl ReductionRequest {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReductionOutcome {
     original_files: usize,
+    original_bytes: u64,
+    original_lines: u64,
     reduction: ReductionResult,
     fingerprint: FailureFingerprint,
     baseline_runs: u16,
@@ -216,12 +220,23 @@ pub struct ReductionOutcome {
     snapshot: ProjectSnapshot,
     structured_attempts: u64,
     accepted_structured_edits: Vec<String>,
+    elapsed: Duration,
 }
 
 impl ReductionOutcome {
     /// Returns the original regular-file count.
     pub const fn original_files(&self) -> usize {
         self.original_files
+    }
+
+    /// Returns source bytes hashed during the immutable session contract scan.
+    pub const fn original_bytes(&self) -> u64 {
+        self.original_bytes
+    }
+
+    /// Returns newline-delimited source records measured during that scan.
+    pub const fn original_lines(&self) -> u64 {
+        self.original_lines
     }
 
     /// Returns the deterministic reduction result.
@@ -277,6 +292,11 @@ impl ReductionOutcome {
     /// Returns accepted manifest/syntax edit keys in fixpoint order.
     pub fn accepted_structured_edits(&self) -> &[String] {
         &self.accepted_structured_edits
+    }
+
+    /// Returns end-to-end wall time including baseline and final verification.
+    pub const fn elapsed(&self) -> Duration {
+        self.elapsed
     }
 }
 
@@ -335,12 +355,13 @@ impl ReductionEngine {
     /// Stabilizes, minimizes, and re-verifies one failing command.
     #[allow(clippy::too_many_lines)]
     pub fn run(request: &ReductionRequest) -> Result<ReductionOutcome, EngineError> {
+        let started = Instant::now();
         let inventory =
             ProjectInventory::scan_with_policy(request.source_root(), request.inventory_policy())?;
         if inventory.units().is_empty() {
             return Err(EngineError::EmptyProject);
         }
-        let source_digest = inventory_digest(&inventory)?;
+        let (source_digest, original_measurements) = inventory_digest(&inventory)?;
         let contract = session_contract(request, source_digest);
         let (state, resumed) = open_state(request.session_mode(), contract)?;
         let state_path = state.as_ref().map(|store| store.path().to_path_buf());
@@ -517,6 +538,8 @@ impl ReductionEngine {
 
         Ok(ReductionOutcome {
             original_files: inventory.units().len(),
+            original_bytes: original_measurements.bytes,
+            original_lines: original_measurements.lines,
             reduction,
             fingerprint: oracle.fingerprint().clone(),
             baseline_runs: u16::try_from(baselines.len())
@@ -529,6 +552,7 @@ impl ReductionEngine {
             snapshot,
             structured_attempts: structured_outcome.attempts,
             accepted_structured_edits: structured_outcome.accepted,
+            elapsed: started.elapsed(),
         })
     }
 }
@@ -1232,20 +1256,82 @@ fn session_contract(request: &ReductionRequest, source: ContentDigest) -> Sessio
     )
 }
 
-fn inventory_digest(inventory: &ProjectInventory) -> Result<ContentDigest, EngineError> {
-    let mut encoded = Vec::new();
-    encoded.extend_from_slice(b"REPROCUT-SOURCE\0");
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct MaterialMeasurements {
+    bytes: u64,
+    lines: u64,
+}
+
+fn inventory_digest(
+    inventory: &ProjectInventory,
+) -> Result<(ContentDigest, MaterialMeasurements), EngineError> {
+    const BUFFER_BYTES: usize = 64 * 1_024;
+
+    let mut hasher = ContentHasher::new();
+    let mut measurements = MaterialMeasurements::default();
+    let mut buffer = [0_u8; BUFFER_BYTES];
+    hasher.update(b"REPROCUT-SOURCE\0");
     for unit in inventory.units() {
-        encode_field(&mut encoded, unit.path().as_bytes());
+        hash_field_header(&mut hasher, unit.path().len());
+        hasher.update(unit.path().as_bytes());
         let path = inventory.root().join(unit.path());
-        let bytes = fs::read(&path).map_err(|source| WorkspaceError::Io {
-            operation: "hash source file",
-            path,
+        let mut file = fs::File::open(&path).map_err(|source| WorkspaceError::Io {
+            operation: "open source file for hashing",
+            path: path.clone(),
             source,
         })?;
-        encode_field(&mut encoded, &bytes);
+        let expected = file
+            .metadata()
+            .map_err(|source| WorkspaceError::Io {
+                operation: "read source file metadata",
+                path: path.clone(),
+                source,
+            })?
+            .len();
+        hasher.update(&expected.to_le_bytes());
+        let mut observed = 0_u64;
+        let mut last = None;
+        loop {
+            let read = file
+                .read(&mut buffer)
+                .map_err(|source| WorkspaceError::Io {
+                    operation: "stream source file into hash",
+                    path: path.clone(),
+                    source,
+                })?;
+            if read == 0 {
+                break;
+            }
+            let chunk = &buffer[..read];
+            hasher.update(chunk);
+            observed = observed.saturating_add(u64::try_from(read).unwrap_or(u64::MAX));
+            measurements.lines = measurements.lines.saturating_add(
+                u64::try_from(chunk.iter().filter(|&&byte| byte == b'\n').count())
+                    .unwrap_or(u64::MAX),
+            );
+            last = chunk.last().copied();
+        }
+        if observed != expected {
+            return Err(WorkspaceError::Io {
+                operation: "verify stable source length while hashing",
+                path,
+                source: io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "source file changed while its session identity was measured",
+                ),
+            }
+            .into());
+        }
+        measurements.bytes = measurements.bytes.saturating_add(observed);
+        if observed != 0 && last != Some(b'\n') {
+            measurements.lines = measurements.lines.saturating_add(1);
+        }
     }
-    Ok(ContentDigest::of(&encoded))
+    Ok((hasher.finalize(), measurements))
+}
+
+fn hash_field_header(hasher: &mut ContentHasher, length: usize) {
+    hasher.update(&u64::try_from(length).unwrap_or(u64::MAX).to_le_bytes());
 }
 
 fn candidate_digest(ids: &[u32]) -> ContentDigest {
@@ -1292,4 +1378,35 @@ fn set_error(slot: &Mutex<Option<EngineError>>, error: EngineError) {
 
 fn take_error(slot: &Mutex<Option<EngineError>>) -> Option<EngineError> {
     lock(slot).take()
+}
+
+#[cfg(test)]
+mod measurement_tests {
+    use super::{encode_field, inventory_digest};
+    use reprocut_core::ContentDigest;
+    use reprocut_workspace::ProjectInventory;
+    use std::fs;
+
+    #[test]
+    fn source_identity_streams_the_legacy_encoding_and_measures_once() {
+        let root = tempfile::tempdir().expect("temporary project");
+        fs::write(root.path().join("a.txt"), b"one\ntwo").expect("text fixture");
+        fs::write(root.path().join("b.bin"), b"\0\n").expect("binary fixture");
+        let inventory = ProjectInventory::scan(root.path()).expect("inventory");
+
+        let (actual, measurements) = inventory_digest(&inventory).expect("streamed digest");
+        let mut legacy = Vec::new();
+        legacy.extend_from_slice(b"REPROCUT-SOURCE\0");
+        for unit in inventory.units() {
+            encode_field(&mut legacy, unit.path().as_bytes());
+            encode_field(
+                &mut legacy,
+                &fs::read(inventory.root().join(unit.path())).expect("fixture bytes"),
+            );
+        }
+
+        assert_eq!(actual, ContentDigest::of(&legacy));
+        assert_eq!(measurements.bytes, 9);
+        assert_eq!(measurements.lines, 3);
+    }
 }
