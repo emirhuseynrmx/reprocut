@@ -51,6 +51,12 @@ const viewports = [
         const style = getComputedStyle(element);
         return { style: style.outlineStyle, width: style.outlineWidth };
       });
+      await page.locator(".copy-command").click();
+      const copyStatus = await page.locator("#copy-status").textContent();
+      const downloadPromise = page.waitForEvent("download");
+      await page.locator(".download-issue").click();
+      const download = await downloadPromise;
+      const suggestedFilename = download.suggestedFilename();
 
       if (errors.length > 0) throw new Error(`${viewport.name} browser errors: ${errors.join("; ")}`);
       if (requests.some((url) => !url.startsWith("file:"))) {
@@ -61,7 +67,18 @@ const viewports = [
       if (outline.style === "none" || outline.width === "0px") {
         throw new Error(`${viewport.name} keyboard focus is not visible`);
       }
-      evidence.push({ viewport: viewport.name, requests: requests.length, ...contract, outline });
+      if (!copyStatus) throw new Error(`${viewport.name} copy action gave no accessible status`);
+      if (suggestedFilename !== "issue.md") {
+        throw new Error(`${viewport.name} issue download filename changed: ${suggestedFilename}`);
+      }
+      evidence.push({
+        viewport: viewport.name,
+        requests: requests.length,
+        ...contract,
+        outline,
+        copyStatus,
+        suggestedFilename,
+      });
       await context.close();
     }
   } finally {

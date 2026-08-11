@@ -86,6 +86,14 @@ mod state_contract {
         let snapshot = writer.snapshot().expect("snapshot");
         assert_eq!(snapshot.attempts(), 1);
         assert_eq!(snapshot.attempt_events(), 3);
+        let events = writer.attempt_events().expect("ordered event ledger");
+        assert_eq!(events.len(), 3);
+        assert!(events.windows(2).all(|pair| pair[0].id() < pair[1].id()));
+        assert_eq!(events[0].candidate(), candidate);
+        assert_eq!(events[0].verdict(), CandidateVerdict::Inconclusive);
+        assert_eq!(events[1].evidence_json(), "second");
+        assert_eq!(events[2].verdict(), CandidateVerdict::Rejected);
+        assert_eq!(events[2].observed_runs(), 3);
         assert_eq!(
             writer
                 .lookup_cache(candidate)

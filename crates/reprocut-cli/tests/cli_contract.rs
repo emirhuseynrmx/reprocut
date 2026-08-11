@@ -108,23 +108,32 @@ fn reduces_a_real_failure_and_publishes_a_complete_artifact() {
         .clone();
 
     let summary: Value = serde_json::from_slice(&result.stdout).expect("stdout is one JSON value");
-    assert_eq!(summary["schema_version"], 1);
-    assert_eq!(summary["original_files"], 3);
-    assert_eq!(summary["retained_files"], 1);
-    assert_eq!(summary["final_verifications"], 3);
-    assert_eq!(summary["jobs"], 4);
-    assert_eq!(summary["resumed"], false);
-    assert_eq!(summary["kept_files"], serde_json::json!(["bug.py"]));
+    assert_eq!(summary["schema_version"], 2);
+    assert_eq!(summary["measurements"]["original"]["files"], 3);
+    assert_eq!(summary["measurements"]["retained"]["files"], 1);
+    assert_eq!(summary["search"]["final_verifications"], 3);
+    assert_eq!(summary["search"]["jobs"], 4);
+    assert_eq!(summary["search"]["resumed"], false);
+    assert_eq!(summary["kept_files"][0]["path"], "bug.py");
+    assert_eq!(summary["failure"]["same_failure"], true);
 
     assert!(output.join("project/bug.py").is_file());
     assert!(!output.join("project/noise.txt").exists());
     assert!(output.join("report.html").is_file());
     assert!(output.join("reduction.json").is_file());
+    assert!(output.join("attempts.jsonl").is_file());
+    assert!(output.join("issue.md").is_file());
     assert!(output.join("reproduce.sh").is_file());
     assert!(output.join("reproduce.ps1").is_file());
     assert!(fs::read_to_string(output.join("report.html"))
         .expect("report is UTF-8")
         .contains(&command_display));
+    let attempt_lines =
+        fs::read_to_string(output.join("attempts.jsonl")).expect("attempt ledger is UTF-8");
+    assert!(!attempt_lines.is_empty());
+    assert!(attempt_lines
+        .lines()
+        .all(|line| serde_json::from_str::<Value>(line).is_ok()));
 }
 
 #[test]
@@ -161,9 +170,14 @@ fn resume_reuses_terminal_evidence_and_replays_the_same_chain() {
         .clone();
 
     let summary: Value = serde_json::from_slice(&resumed.stdout).expect("resume JSON");
-    assert_eq!(summary["resumed"], true);
-    assert!(summary["cache_hits"].as_u64().expect("cache hits") > 0);
-    assert_eq!(summary["kept_files"], serde_json::json!(["bug.py"]));
+    assert_eq!(summary["search"]["resumed"], true);
+    assert!(
+        summary["search"]["cache_hits"]
+            .as_u64()
+            .expect("cache hits")
+            > 0
+    );
+    assert_eq!(summary["kept_files"][0]["path"], "bug.py");
     assert_eq!(
         fs::read(first_output.join("project/bug.py")).expect("first project"),
         fs::read(second_output.join("project/bug.py")).expect("second project")

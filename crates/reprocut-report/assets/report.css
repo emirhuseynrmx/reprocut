@@ -78,18 +78,44 @@ h1 em { color: var(--cut); font-style: normal; }
 .label { margin: 3rem 0 .7rem; color: var(--steel); text-transform: uppercase; font-family: var(--mono); font-size: .6rem; letter-spacing: .08em; }
 blockquote { margin: 0; padding: 1.5rem 0 1.5rem 1.5rem; border-left: 5px solid var(--cut); font-family: var(--mono); font-size: clamp(.85rem, 1.4vw, 1.05rem); font-weight: 650; line-height: 1.55; overflow-wrap: anywhere; }
 .annotation { max-width: 40rem; margin: 1.4rem 0 0; color: #5f6670; line-height: 1.6; }
+.fingerprint-meta { display: grid; gap: .6rem; margin: 1.5rem 0 0; }
+.fingerprint-meta div { display: grid; grid-template-columns: 10rem minmax(0, 1fr); gap: 1rem; }
+.fingerprint-meta dt { color: var(--steel); text-transform: uppercase; font-family: var(--mono); font-size: .58rem; letter-spacing: .08em; }
+.fingerprint-meta dd { min-width: 0; margin: 0; }
+.fingerprint-meta code { font-family: var(--mono); font-size: .68rem; overflow-wrap: anywhere; }
+.anchor-list { margin: 1.5rem 0 0; padding: 0; list-style: none; }
+.anchor-list li { display: grid; grid-template-columns: 5rem minmax(0, 1fr); gap: 1rem; padding: .65rem 0; border-top: 1px solid var(--hairline); }
+.anchor-list span { color: var(--blueprint); text-transform: uppercase; font-family: var(--mono); font-size: .6rem; }
+.anchor-list code { font-family: var(--mono); font-size: .72rem; overflow-wrap: anywhere; }
 .file-list { margin: 2.75rem 0 0; padding: 0; list-style: none; counter-reset: file; }
-.file-list li { display: grid; grid-template-columns: 2.5rem 1fr; gap: .5rem; padding: .78rem 0; border-top: 1px solid var(--hairline); counter-increment: file; }
+.file-list li { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); gap: .35rem .5rem; padding: .78rem 0; border-top: 1px solid var(--hairline); counter-increment: file; }
 .file-list li::before { content: counter(file, decimal-leading-zero); color: var(--blueprint); font-family: var(--mono); font-size: .62rem; }
 .file-list code { font-family: var(--mono); font-size: .76rem; overflow-wrap: anywhere; }
+.file-list span { grid-column: 2; color: var(--steel); font-size: .72rem; line-height: 1.45; }
+
+.diagnostic-grid { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--carbon); }
+.diagnostic-grid article { min-width: 0; padding: 5rem 0; }
+.diagnostic-grid article + article { margin-left: 4rem; padding-left: 4rem; border-left: 1px solid var(--hairline); }
+.diagnostic-grid .section-heading { display: block; }
+.diagnostic-grid .section-heading h2 { font-size: clamp(2rem, 3vw, 3.7rem); }
+.diagnostic-list { display: grid; gap: .6rem; margin: 2rem 0 0; padding: 0; list-style: none; }
+.diagnostic-list li { padding: .8rem 0; border-top: 1px solid var(--hairline); color: #5f6670; line-height: 1.5; }
+.diagnostic-list code { color: var(--carbon); font-family: var(--mono); font-size: .72rem; overflow-wrap: anywhere; }
+.measure-table { display: grid; grid-template-columns: repeat(3, 1fr); margin: 2rem 0 0; border-top: 1px solid var(--carbon); border-bottom: 1px solid var(--carbon); }
+.measure-table div { padding: 1rem 0; border-right: 1px solid var(--hairline); }
+.measure-table div + div { padding-left: 1rem; }
+.measure-table div:last-child { border-right: 0; }
+.measure-table dt { color: var(--steel); text-transform: uppercase; font-family: var(--mono); font-size: .56rem; letter-spacing: .07em; }
+.measure-table dd { margin: .45rem 0 0; font-family: var(--display); font-size: 1.5rem; font-weight: 900; }
 
 .command-rail { display: grid; grid-template-columns: minmax(180px, .6fr) minmax(0, 1.7fr) auto; gap: 2rem; align-items: center; margin-inline: calc(clamp(1.25rem, 4vw, 5rem) * -1); padding: 3rem clamp(1.25rem, 4vw, 5rem); color: var(--paper); background: var(--carbon); }
 .command-rail > div p { color: var(--mint); }
 .command-rail h2 { font-size: 2rem; }
 pre { min-width: 0; margin: 0; padding: 1.2rem 1.4rem; border: 1px solid #4d535c; overflow-x: auto; }
 pre code { color: var(--mint); font-family: var(--mono); font-size: .78rem; white-space: pre-wrap; overflow-wrap: anywhere; }
-.copy-command { min-height: 48px; padding: 0 1.2rem; border: 1px solid var(--paper); color: var(--paper); background: transparent; font: 700 .68rem/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; cursor: pointer; }
-.copy-command:hover { color: var(--carbon); background: var(--mint); border-color: var(--mint); }
+.report-actions { display: grid; gap: .5rem; }
+.copy-command, .download-issue { min-height: 48px; padding: 0 1.2rem; border: 1px solid var(--paper); color: var(--paper); background: transparent; font: 700 .68rem/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; cursor: pointer; }
+.copy-command:hover, .download-issue:hover { color: var(--carbon); background: var(--mint); border-color: var(--mint); }
 .copy-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 footer { display: flex; justify-content: space-between; gap: 2rem; padding: 1.2rem clamp(1.25rem, 4vw, 5rem); color: var(--steel); background: var(--carbon); border-top: 1px solid #333840; text-transform: uppercase; font-family: var(--mono); font-size: .58rem; letter-spacing: .08em; }
 
@@ -106,8 +132,10 @@ footer { display: flex; justify-content: space-between; gap: 2rem; padding: 1.2r
   .attempt-strip div:nth-child(3) { padding-left: 0; }
   .evidence-grid { grid-template-columns: 1fr; }
   .evidence-grid article + article { margin: 0; padding-left: 0; border-top: 1px solid var(--hairline); border-left: 0; }
+  .diagnostic-grid { grid-template-columns: 1fr; }
+  .diagnostic-grid article + article { margin: 0; padding-left: 0; border-top: 1px solid var(--hairline); border-left: 0; }
   .command-rail { grid-template-columns: 1fr; }
-  .copy-command { width: max-content; }
+  .report-actions { width: max-content; }
 }
 
 @media (max-width: 470px) {
@@ -128,7 +156,7 @@ footer { display: flex; justify-content: space-between; gap: 2rem; padding: 1.2r
 }
 
 @media print {
-  .skip-link, .copy-command, .copy-status { display: none; }
+  .skip-link, .report-actions, .copy-status { display: none; }
   body { background: white; }
   .hero { min-height: 0; padding-top: 2rem; }
   .command-rail { color: black; background: white; border-top: 2px solid black; }

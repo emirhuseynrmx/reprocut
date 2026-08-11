@@ -31,7 +31,8 @@ use reprocut_core::{
 };
 use reprocut_runner::{CommandSpec, ProcessRunner, RunnerError};
 use reprocut_state::{
-    AttemptRecord, SessionContract, StateError, StateStore, TransitionRecord, WriterHandle,
+    AttemptEventRecord, AttemptRecord, SessionContract, StateError, StateStore, TransitionRecord,
+    WriterHandle,
 };
 use reprocut_workspace::{
     CandidateWorkspace, DirectoryHierarchy, InventoryPolicy, ProjectInventory, ProjectSnapshot,
@@ -221,6 +222,7 @@ pub struct ReductionOutcome {
     structured_attempts: u64,
     accepted_structured_edits: Vec<String>,
     elapsed: Duration,
+    attempt_events: Vec<AttemptEventRecord>,
 }
 
 impl ReductionOutcome {
@@ -297,6 +299,14 @@ impl ReductionOutcome {
     /// Returns end-to-end wall time including baseline and final verification.
     pub const fn elapsed(&self) -> Duration {
         self.elapsed
+    }
+
+    /// Returns durable append-only attempt evidence, including resumed history.
+    ///
+    /// Ephemeral library requests have no persistent event ledger and return an
+    /// empty slice; command-line runs always use durable state.
+    pub fn attempt_events(&self) -> &[AttemptEventRecord] {
+        &self.attempt_events
     }
 }
 
@@ -535,6 +545,11 @@ impl ReductionEngine {
         if final_evidence.decision() != AggregateDecision::Preserved {
             return Err(EngineError::FinalVerificationFailed);
         }
+        let attempt_events = writer
+            .as_ref()
+            .map(WriterHandle::attempt_events)
+            .transpose()?
+            .unwrap_or_default();
 
         Ok(ReductionOutcome {
             original_files: inventory.units().len(),
@@ -553,6 +568,7 @@ impl ReductionEngine {
             structured_attempts: structured_outcome.attempts,
             accepted_structured_edits: structured_outcome.accepted,
             elapsed: started.elapsed(),
+            attempt_events,
         })
     }
 }

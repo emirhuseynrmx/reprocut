@@ -1,6 +1,16 @@
 #![forbid(unsafe_code)]
 
+mod evidence;
+mod issue;
+
 use std::fmt::Write as _;
+
+pub use evidence::{
+    display_command, write_attempts_jsonl, AttemptSummary, ChannelAnchor, EvaluationPolicyEvidence,
+    FailureEvidence, MaterialMeasurement, MeasurementSet, ReductionEvidence, RetentionEvidence,
+    SearchEvidence, EVIDENCE_SCHEMA_VERSION,
+};
+pub use issue::render_issue;
 
 const REPORT_SHELL: &str = include_str!("../assets/report.html");
 const REPORT_CSS: &str = include_str!("../assets/report.css");
@@ -16,12 +26,57 @@ pub struct ReportModel {
     pub command: String,
     pub original_files: usize,
     pub retained_files: usize,
+    pub original_bytes: u64,
+    pub retained_bytes: u64,
+    pub original_lines: u64,
+    pub retained_lines: u64,
+    pub elapsed_ms: u64,
     pub attempts: u64,
     pub inconclusive_attempts: u64,
     pub cache_hits: u64,
+    pub final_verifications: u16,
     pub accepted_sizes: Vec<usize>,
     pub fingerprint: String,
-    pub kept_files: Vec<String>,
+    pub fingerprint_sha256: String,
+    pub oracle_stream: String,
+    pub anchors: Vec<ChannelAnchor>,
+    pub kept_files: Vec<RetentionEvidence>,
+    pub structured_edits: Vec<String>,
+    pub limitations: Vec<String>,
+    pub issue_markdown: String,
+}
+
+impl From<&ReductionEvidence> for ReportModel {
+    fn from(evidence: &ReductionEvidence) -> Self {
+        Self {
+            command: evidence.display_command(),
+            original_files: usize::try_from(evidence.measurements.original.files)
+                .unwrap_or(usize::MAX),
+            retained_files: usize::try_from(evidence.measurements.retained.files)
+                .unwrap_or(usize::MAX),
+            original_bytes: evidence.measurements.original.bytes,
+            retained_bytes: evidence.measurements.retained.bytes,
+            original_lines: evidence.measurements.original.lines,
+            retained_lines: evidence.measurements.retained.lines,
+            elapsed_ms: evidence.measurements.elapsed_ms,
+            attempts: evidence.search.attempts,
+            inconclusive_attempts: evidence.search.inconclusive_attempts,
+            cache_hits: evidence.search.cache_hits,
+            final_verifications: evidence.search.final_verifications,
+            accepted_sizes: evidence.search.accepted_file_sizes.clone(),
+            fingerprint: format!(
+                "{} | {}",
+                evidence.failure.termination, evidence.failure.anchor
+            ),
+            fingerprint_sha256: evidence.failure.fingerprint_sha256.clone(),
+            oracle_stream: evidence.failure.oracle_stream.clone(),
+            anchors: evidence.failure.anchors.clone(),
+            kept_files: evidence.kept_files.clone(),
+            structured_edits: evidence.accepted_structured_edits.clone(),
+            limitations: evidence.limitations.clone(),
+            issue_markdown: render_issue(evidence),
+        }
+    }
 }
 
 /// Render a portable report with no network or filesystem dependencies.
@@ -39,17 +94,41 @@ pub fn render_report(model: &ReportModel) -> String {
         .replace("{{COMMAND}}", &escape_html(&model.command))
         .replace("{{ORIGINAL_FILES}}", &model.original_files.to_string())
         .replace("{{RETAINED_FILES}}", &model.retained_files.to_string())
+        .replace("{{ORIGINAL_BYTES}}", &model.original_bytes.to_string())
+        .replace("{{RETAINED_BYTES}}", &model.retained_bytes.to_string())
+        .replace("{{ORIGINAL_LINES}}", &model.original_lines.to_string())
+        .replace("{{RETAINED_LINES}}", &model.retained_lines.to_string())
+        .replace("{{ELAPSED_MS}}", &model.elapsed_ms.to_string())
         .replace("{{ATTEMPTS}}", &model.attempts.to_string())
         .replace(
             "{{INCONCLUSIVE_ATTEMPTS}}",
             &model.inconclusive_attempts.to_string(),
         )
         .replace("{{CACHE_HITS}}", &model.cache_hits.to_string())
+        .replace(
+            "{{FINAL_VERIFICATIONS}}",
+            &model.final_verifications.to_string(),
+        )
         .replace("{{REDUCTION_PERCENT}}", &format_tenths(reduction_tenths))
         .replace("{{RETAINED_PERCENT}}", &format_tenths(retained_tenths))
         .replace("{{FINGERPRINT}}", &escape_html(&model.fingerprint))
+        .replace(
+            "{{FINGERPRINT_SHA256}}",
+            &escape_html(&model.fingerprint_sha256),
+        )
+        .replace("{{ORACLE_STREAM}}", &escape_html(&model.oracle_stream))
+        .replace("{{ISSUE_BASE64}}", &base64(&model.issue_markdown))
+        .replace("{{ANCHORS}}", &render_anchors(&model.anchors))
         .replace("{{STAGES}}", &render_stages(model))
         .replace("{{KEPT_FILES}}", &render_kept_files(&model.kept_files))
+        .replace(
+            "{{STRUCTURED_EDITS}}",
+            &render_string_list(&model.structured_edits, "No structured edit was accepted."),
+        )
+        .replace(
+            "{{LIMITATIONS}}",
+            &render_string_list(&model.limitations, "No limitations were recorded."),
+        )
 }
 
 fn render_stages(model: &ReportModel) -> String {
@@ -72,20 +151,76 @@ fn render_stages(model: &ReportModel) -> String {
     rows
 }
 
-fn render_kept_files(files: &[String]) -> String {
+fn render_kept_files(files: &[RetentionEvidence]) -> String {
     let estimated_size = files
         .iter()
-        .map(String::len)
+        .map(|file| file.path.len().saturating_add(file.observation.len()))
         .sum::<usize>()
         .saturating_add(files.len().saturating_mul(32));
     let mut items = String::with_capacity(estimated_size);
 
     for file in files {
-        write!(items, "<li><code>{}</code></li>", escape_html(file))
-            .expect("writing to a String cannot fail");
+        write!(
+            items,
+            "<li><code>{}</code><span>{}</span></li>",
+            escape_html(&file.path),
+            escape_html(&file.observation),
+        )
+        .expect("writing to a String cannot fail");
     }
 
     items
+}
+
+fn render_anchors(anchors: &[ChannelAnchor]) -> String {
+    let mut items = String::new();
+    for anchor in anchors {
+        write!(
+            items,
+            "<li><span>{}</span><code>{}</code></li>",
+            escape_html(&anchor.channel),
+            escape_html(&anchor.text),
+        )
+        .expect("writing to a String cannot fail");
+    }
+    items
+}
+
+fn render_string_list(values: &[String], empty: &str) -> String {
+    if values.is_empty() {
+        return format!("<li>{}</li>", escape_html(empty));
+    }
+    let mut items = String::new();
+    for value in values {
+        write!(items, "<li><code>{}</code></li>", escape_html(value))
+            .expect("writing to a String cannot fail");
+    }
+    items
+}
+
+fn base64(value: &str) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let bytes = value.as_bytes();
+    let mut encoded = String::with_capacity(bytes.len().saturating_add(2) / 3 * 4);
+    for chunk in bytes.chunks(3) {
+        let first = chunk[0];
+        let second = chunk.get(1).copied().unwrap_or(0);
+        let third = chunk.get(2).copied().unwrap_or(0);
+        let value = (u32::from(first) << 16) | (u32::from(second) << 8) | u32::from(third);
+        encoded.push(char::from(ALPHABET[((value >> 18) & 0x3f) as usize]));
+        encoded.push(char::from(ALPHABET[((value >> 12) & 0x3f) as usize]));
+        if chunk.len() > 1 {
+            encoded.push(char::from(ALPHABET[((value >> 6) & 0x3f) as usize]));
+        } else {
+            encoded.push('=');
+        }
+        if chunk.len() > 2 {
+            encoded.push(char::from(ALPHABET[(value & 0x3f) as usize]));
+        } else {
+            encoded.push('=');
+        }
+    }
+    encoded
 }
 
 fn percentage_tenths(part: usize, whole: usize) -> usize {

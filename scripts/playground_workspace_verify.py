@@ -43,9 +43,21 @@ def workspace_source() -> str:
     )
 
 
+def report_source() -> str:
+    evidence = read("crates/reprocut-report/src/evidence.rs")
+    issue = read("crates/reprocut-report/src/issue.rs").replace(
+        "use crate::ReductionEvidence;", "use super::ReductionEvidence;"
+    )
+    return (
+        read("crates/reprocut-report/src/lib.rs")
+        .replace("mod evidence;", f"mod evidence {{ {evidence} }}")
+        .replace("mod issue;", f"mod issue {{ {issue} }}")
+    )
+
+
 def compose_cli() -> str:
     engine = compose_engine().removesuffix("fn main() {}")
-    report = read("crates/reprocut-report/src/lib.rs")
+    report = report_source()
     cli = (
         without_inner_attributes(read("crates/reprocut-cli/src/main.rs"))
         .replace("use reprocut_adapters::", "use crate::reprocut_adapters::")
@@ -55,6 +67,10 @@ def compose_cli() -> str:
         .replace("use reprocut_workspace::", "use crate::reprocut_workspace::")
     )
     return "\n".join([engine, wrap("reprocut_report", report), cli])
+
+
+def compose_report() -> str:
+    return "\n".join([wrap("reprocut_report", report_source()), "fn main() {}"])
 
 
 def compose_core() -> str:
@@ -305,6 +321,7 @@ def main() -> int:
             "engine",
             "adapters",
             "pipeline",
+            "report",
         ),
         default="full",
     )
@@ -319,8 +336,16 @@ def main() -> int:
         "engine": compose_engine,
         "adapters": compose_adapters,
         "pipeline": compose_pipeline,
+        "report": compose_report,
     }[args.scope]()
-    code = workspace + "\n" + args.append.resolve().read_text(encoding="utf-8")
+    append_path = args.append.resolve()
+    try:
+        append_relative = append_path.relative_to(ROOT).as_posix()
+    except ValueError:
+        append_source = append_path.read_text(encoding="utf-8")
+    else:
+        append_source = read(append_relative)
+    code = workspace + "\n" + append_source
     payload = json.dumps(
         {
             "channel": "stable",

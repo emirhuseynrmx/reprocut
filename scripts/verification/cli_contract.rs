@@ -8,7 +8,9 @@ mod cli_remote_contract {
 
     use clap::CommandFactory as _;
 
-    use super::{execute, Action, Cli, CliError, ReduceArgs};
+    use super::{
+        execute, Action, Cli, CliError, EcosystemArg, OracleStreamArg, PrepareArg, ReduceArgs,
+    };
 
     fn sandbox(label: &str) -> std::path::PathBuf {
         let nonce = SystemTime::now()
@@ -24,9 +26,18 @@ mod cli_remote_contract {
         ReduceArgs {
             root: root.to_path_buf(),
             output: output.to_path_buf(),
+            ecosystem: EcosystemArg::None,
+            prepare: PrepareArg::None,
             timeout_ms: 3_000,
             max_output_bytes: 64 * 1024,
+            oracle_stream: OracleStreamArg::Auto,
+            flaky: false,
+            flaky_runs: None,
+            flaky_required: None,
             json: false,
+            jobs: 1,
+            state: None,
+            restart: false,
             command: vec!["/bin/sh".to_owned(), "bug.sh".to_owned()],
         }
     }
@@ -65,11 +76,13 @@ mod cli_remote_contract {
         assert!(!output.join("project/noise.txt").exists());
         assert!(output.join("report.html").is_file());
         assert!(output.join("reduction.json").is_file());
+        assert!(output.join("attempts.jsonl").is_file());
+        assert!(output.join("issue.md").is_file());
         assert!(output.join("reproduce.sh").is_file());
         assert!(output.join("reproduce.ps1").is_file());
         let state = fs::read_to_string(output.join("reduction.json")).expect("state readable");
-        assert!(state.contains("\"schema_version\": 1"));
-        assert!(state.contains("\"retained_files\": 1"));
+        assert!(state.contains("\"schema_version\": 2"));
+        assert!(state.contains("\"same_failure\": true"));
 
         fs::remove_dir_all(sandbox).expect("sandbox removed");
     }

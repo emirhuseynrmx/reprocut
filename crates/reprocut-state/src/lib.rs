@@ -98,6 +98,55 @@ pub struct AttemptRecord {
     evidence_json: String,
 }
 
+/// One immutable append-only attempt event, including inconclusive retries.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AttemptEventRecord {
+    id: u64,
+    candidate: ContentDigest,
+    verdict: CandidateVerdict,
+    observed_runs: u16,
+    inconclusive_runs: u16,
+    evidence_json: String,
+    completed_at: i64,
+}
+
+impl AttemptEventRecord {
+    /// Returns the monotonically increasing database event identity.
+    pub const fn id(&self) -> u64 {
+        self.id
+    }
+
+    /// Returns the content-addressed candidate.
+    pub const fn candidate(&self) -> ContentDigest {
+        self.candidate
+    }
+
+    /// Returns the aggregate event verdict.
+    pub const fn verdict(&self) -> CandidateVerdict {
+        self.verdict
+    }
+
+    /// Returns executions contributing to this event.
+    pub const fn observed_runs(&self) -> u16 {
+        self.observed_runs
+    }
+
+    /// Returns incomplete executions contributing to this event.
+    pub const fn inconclusive_runs(&self) -> u16 {
+        self.inconclusive_runs
+    }
+
+    /// Returns detached aggregate evidence JSON exactly as persisted.
+    pub fn evidence_json(&self) -> &str {
+        &self.evidence_json
+    }
+
+    /// Returns the SQLite `unixepoch()` completion timestamp.
+    pub const fn completed_at(&self) -> i64 {
+        self.completed_at
+    }
+}
+
 impl AttemptRecord {
     /// Creates immutable attempt evidence.
     pub fn new(
@@ -321,6 +370,13 @@ impl WriterHandle {
         receive(receiver)
     }
 
+    /// Returns append-only attempt evidence in commit order.
+    pub fn attempt_events(&self) -> Result<Vec<AttemptEventRecord>, StateError> {
+        let (reply, receiver) = mpsc::sync_channel(1);
+        self.send(WriterCommand::AttemptEvents { reply })?;
+        receive(receiver)
+    }
+
     fn send(&self, command: WriterCommand) -> Result<(), StateError> {
         self.sender
             .send(command)
@@ -512,6 +568,9 @@ enum WriterCommand {
     Transitions {
         reply: SyncSender<Result<Vec<TransitionRecord>, StateError>>,
     },
+    AttemptEvents {
+        reply: SyncSender<Result<Vec<AttemptEventRecord>, StateError>>,
+    },
     Shutdown {
         reply: SyncSender<()>,
     },
@@ -555,6 +614,9 @@ fn writer_main(
             }
             WriterCommand::Transitions { reply } => {
                 let _ = reply.send(read_transitions(&connection, session_id));
+            }
+            WriterCommand::AttemptEvents { reply } => {
+                let _ = reply.send(read_attempt_events(&connection, session_id));
             }
             WriterCommand::Shutdown { reply } => {
                 let _ = reply.send(());
@@ -840,6 +902,50 @@ fn read_transitions(
         })
     })
     .collect()
+}
+
+fn read_attempt_events(
+    connection: &Connection,
+    session_id: i64,
+) -> Result<Vec<AttemptEventRecord>, StateError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT id, candidate_digest, verdict, observed_runs,
+                    inconclusive_runs, evidence_json, completed_at
+             FROM attempt_events WHERE session_id = ?1 ORDER BY id",
+        )
+        .map_err(database_error)?;
+    let rows = statement
+        .query_map(params![session_id], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, Vec<u8>>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, i64>(6)?,
+            ))
+        })
+        .map_err(database_error)?;
+    let mut events = Vec::new();
+    for row in rows {
+        let (id, candidate, verdict, observed_runs, inconclusive_runs, evidence_json, completed_at) =
+            row.map_err(database_error)?;
+        events.push(AttemptEventRecord {
+            id: u64::try_from(id)
+                .map_err(|_| StateError::Database("invalid attempt event id".to_owned()))?,
+            candidate: parse_digest(candidate)?,
+            verdict: parse_verdict(&verdict)?,
+            observed_runs: u16::try_from(observed_runs)
+                .map_err(|_| StateError::Database("invalid observed run count".to_owned()))?,
+            inconclusive_runs: u16::try_from(inconclusive_runs)
+                .map_err(|_| StateError::Database("invalid inconclusive run count".to_owned()))?,
+            evidence_json,
+            completed_at,
+        });
+    }
+    Ok(events)
 }
 
 fn prepare_path(path: &Path) -> Result<PathBuf, StateError> {

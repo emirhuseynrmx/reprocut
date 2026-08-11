@@ -14,7 +14,7 @@
 <header class="masthead">
   <a class="wordmark" href="#report-main" aria-label="ReproCut report home"><span aria-hidden="true">R/</span> ReproCut</a>
   <p class="edition">Reduction record <span>R-001</span></p>
-  <p class="status"><i aria-hidden="true"></i> Failure preserved</p>
+  <p class="status" title="SHA-256 {{FINGERPRINT_SHA256}}"><i aria-hidden="true"></i> Same failure verified</p>
 </header>
 
 <main id="report-main">
@@ -25,8 +25,8 @@
       <p class="lede">A smaller, verified reproduction cut from the original project without changing its failure identity.</p>
     </div>
     <dl class="hero-measure" aria-label="Reduction summary">
-      <div><dt>Before</dt><dd>{{ORIGINAL_FILES}}<small>files</small></dd></div>
-      <div><dt>After</dt><dd>{{RETAINED_FILES}}<small>files</small></dd></div>
+      <div><dt>Before</dt><dd>{{ORIGINAL_FILES}}<small>files / {{ORIGINAL_BYTES}} bytes</small></dd></div>
+      <div><dt>After</dt><dd>{{RETAINED_FILES}}<small>files / {{RETAINED_BYTES}} bytes</small></dd></div>
       <div class="accent"><dt>Removed</dt><dd>{{REDUCTION_PERCENT}}<small>percent</small></dd></div>
     </dl>
   </section>
@@ -49,7 +49,7 @@
       <div><dt>Candidate runs</dt><dd>{{ATTEMPTS}}</dd></div>
       <div><dt>Cache reuses</dt><dd>{{CACHE_HITS}}</dd></div>
       <div><dt>Inconclusive</dt><dd>{{INCONCLUSIVE_ATTEMPTS}}</dd></div>
-      <div><dt>Final verification</dt><dd>3 / 3</dd></div>
+      <div><dt>Final verification</dt><dd>{{FINAL_VERIFICATIONS}} / {{FINAL_VERIFICATIONS}}</dd></div>
     </dl>
   </section>
 
@@ -61,7 +61,12 @@
       </div>
       <p class="label">Normalized diagnostic</p>
       <blockquote>{{FINGERPRINT}}</blockquote>
-      <p class="annotation">Exit state and normalized anchor matched the stable baseline across final verification.</p>
+      <dl class="fingerprint-meta">
+        <div><dt>Fingerprint SHA-256</dt><dd><code>{{FINGERPRINT_SHA256}}</code></dd></div>
+        <div><dt>Oracle stream</dt><dd><code>{{ORACLE_STREAM}}</code></dd></div>
+      </dl>
+      <ol class="anchor-list">{{ANCHORS}}</ol>
+      <p class="annotation">Exit state and every stream-qualified normalized anchor matched the stable baseline across final verification.</p>
     </article>
 
     <article class="kept-record">
@@ -73,13 +78,38 @@
     </article>
   </section>
 
+  <section class="diagnostic-grid" aria-label="Reduction diagnostics">
+    <article>
+      <div class="section-heading">
+        <p>04 / Structured reductions</p>
+        <h2>Accepted edits</h2>
+      </div>
+      <ol class="diagnostic-list">{{STRUCTURED_EDITS}}</ol>
+    </article>
+    <article>
+      <div class="section-heading">
+        <p>05 / Measurement</p>
+        <h2>Limits, stated</h2>
+      </div>
+      <dl class="measure-table">
+        <div><dt>Source lines</dt><dd>{{ORIGINAL_LINES}}</dd></div>
+        <div><dt>Retained lines</dt><dd>{{RETAINED_LINES}}</dd></div>
+        <div><dt>Wall time</dt><dd>{{ELAPSED_MS}} ms</dd></div>
+      </dl>
+      <ul class="diagnostic-list">{{LIMITATIONS}}</ul>
+    </article>
+  </section>
+
   <section class="command-rail" aria-labelledby="command-title">
     <div>
-      <p>04 / Reproduce</p>
+      <p>06 / Reproduce</p>
       <h2 id="command-title">Run the cut</h2>
     </div>
     <pre><code id="repro-command">{{COMMAND}}</code></pre>
-    <button class="copy-command" type="button" aria-describedby="copy-status">Copy command</button>
+    <div class="report-actions">
+      <button class="copy-command" type="button" aria-describedby="copy-status">Copy command</button>
+      <button class="download-issue" type="button" data-issue="{{ISSUE_BASE64}}">Download issue.md</button>
+    </div>
     <p id="copy-status" class="copy-status" aria-live="polite"></p>
   </section>
 </main>

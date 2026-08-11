@@ -3,6 +3,7 @@
 use std::{
     ffi::OsString,
     fs, io,
+    io::Write as _,
     path::{Path, PathBuf},
     process::ExitCode,
     time::Duration,
@@ -11,12 +12,17 @@ use std::{
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use reprocut_adapters::{Adapter, AdapterError, Ecosystem, EcosystemSelection};
 use reprocut_core::{
-    DiagnosticAnchor, DiagnosticChannel, EvaluationPolicy, PolicyError, TerminationReason,
+    CandidateVerdict, ContentHasher, DiagnosticChannel, EvaluationPolicy, PolicyError,
+    TerminationReason,
 };
 use reprocut_engine::{
     EngineError, PreparationMode, ReductionEngine, ReductionOutcome, ReductionRequest, SessionMode,
 };
-use reprocut_report::{render_report, ReportModel};
+use reprocut_report::{
+    render_issue, render_report, write_attempts_jsonl, AttemptSummary, ChannelAnchor,
+    EvaluationPolicyEvidence, FailureEvidence, MaterialMeasurement, MeasurementSet,
+    ReductionEvidence, ReportModel, RetentionEvidence, SearchEvidence, EVIDENCE_SCHEMA_VERSION,
+};
 use reprocut_workspace::WorkspaceError;
 use serde::Serialize;
 use tempfile::TempDir;
@@ -221,50 +227,6 @@ enum CliError {
     InvalidArguments(&'static str),
 }
 
-#[derive(Clone, Debug, Serialize)]
-struct ReductionSummary {
-    schema_version: u8,
-    source_root: String,
-    output: String,
-    command: Vec<String>,
-    ecosystem: &'static str,
-    prepare: PrepareArg,
-    original_files: usize,
-    retained_files: usize,
-    attempts: u64,
-    file_attempts: u64,
-    structured_attempts: u64,
-    baseline_runs: u16,
-    final_verifications: u16,
-    inconclusive_attempts: u64,
-    cache_hits: u64,
-    jobs: usize,
-    state: Option<String>,
-    resumed: bool,
-    oracle_stream: DiagnosticChannel,
-    evaluation_policy: PolicySummary,
-    kept_files: Vec<String>,
-    accepted_structured_edits: Vec<String>,
-    fingerprint: FingerprintSummary,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct FingerprintSummary {
-    exit_code: Option<i32>,
-    signal: Option<i32>,
-    termination: TerminationReason,
-    anchor: String,
-    anchors: Vec<DiagnosticAnchor>,
-    normalization_schema: u16,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct PolicySummary {
-    mode: &'static str,
-    runs: u16,
-    required: u16,
-}
-
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match execute(cli) {
@@ -329,9 +291,9 @@ fn reduce_project(mut arguments: ReduceArgs, resume: bool) -> Result<(), CliErro
         outcome.snapshot().files().len()
     );
 
-    let summary = build_summary(&arguments, &outcome);
-    let json = serde_json::to_vec_pretty(&summary)?;
-    publish_artifact(&arguments, &outcome, &summary, &json)?;
+    let evidence = build_evidence(&arguments, &outcome);
+    let json = serde_json::to_vec_pretty(&evidence)?;
+    publish_artifact(&arguments, &outcome, &evidence, &json)?;
 
     if arguments.json {
         println!("{}", String::from_utf8_lossy(&json));
@@ -353,48 +315,130 @@ fn split_command(command: &[String]) -> (&str, &[String]) {
     (program, arguments)
 }
 
-fn build_summary(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> ReductionSummary {
+fn build_evidence(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> ReductionEvidence {
     let fingerprint = outcome.fingerprint();
-    ReductionSummary {
-        schema_version: 1,
+    let attempts = outcome
+        .attempt_events()
+        .iter()
+        .map(|event| AttemptSummary {
+            event_id: event.id(),
+            candidate_sha256: event.candidate().to_hex(),
+            verdict: verdict_name(event.verdict()).to_owned(),
+            observed_runs: event.observed_runs(),
+            inconclusive_runs: event.inconclusive_runs(),
+            completed_at_unix: event.completed_at(),
+            evidence: serde_json::from_str(event.evidence_json())
+                .unwrap_or_else(|_| serde_json::Value::String(event.evidence_json().to_owned())),
+        })
+        .collect();
+    let mut accepted_file_sizes =
+        Vec::with_capacity(outcome.reduction().accepted_sizes().len().saturating_add(1));
+    accepted_file_sizes.push(outcome.original_files());
+    accepted_file_sizes.extend_from_slice(outcome.reduction().accepted_sizes());
+
+    ReductionEvidence {
+        schema_version: EVIDENCE_SCHEMA_VERSION,
         source_root: arguments.root.display().to_string(),
         output: arguments.output.display().to_string(),
         command: arguments.command.clone(),
-        ecosystem: arguments.ecosystem.name(),
-        prepare: arguments.prepare,
-        original_files: outcome.original_files(),
-        retained_files: outcome.snapshot().files().len(),
-        attempts: outcome
-            .reduction()
-            .attempts()
-            .saturating_add(outcome.structured_attempts()),
-        file_attempts: outcome.reduction().attempts(),
-        structured_attempts: outcome.structured_attempts(),
-        baseline_runs: outcome.baseline_runs(),
-        final_verifications: outcome.final_verifications(),
-        inconclusive_attempts: outcome.inconclusive_attempts(),
-        cache_hits: outcome.cache_hits(),
-        jobs: arguments.jobs,
-        state: outcome.state_path().map(|path| path.display().to_string()),
-        resumed: outcome.resumed(),
-        oracle_stream: arguments.oracle_stream.into(),
-        evaluation_policy: policy_summary(arguments),
+        ecosystem: arguments.ecosystem.name().to_owned(),
+        preparation: prepare_name(arguments.prepare).to_owned(),
+        measurements: MeasurementSet {
+            original: MaterialMeasurement {
+                files: u64::try_from(outcome.original_files()).unwrap_or(u64::MAX),
+                bytes: outcome.original_bytes(),
+                lines: outcome.original_lines(),
+                syntax_nodes: None,
+            },
+            retained: material_measurement(outcome.snapshot()),
+            elapsed_ms: u64::try_from(outcome.elapsed().as_millis()).unwrap_or(u64::MAX),
+        },
+        search: SearchEvidence {
+            attempts: outcome
+                .reduction()
+                .attempts()
+                .saturating_add(outcome.structured_attempts()),
+            file_attempts: outcome.reduction().attempts(),
+            structured_attempts: outcome.structured_attempts(),
+            inconclusive_attempts: outcome.inconclusive_attempts(),
+            cache_hits: outcome.cache_hits(),
+            baseline_runs: outcome.baseline_runs(),
+            final_verifications: outcome.final_verifications(),
+            jobs: arguments.jobs,
+            state: outcome.state_path().map(|path| path.display().to_string()),
+            resumed: outcome.resumed(),
+            accepted_file_sizes,
+            evaluation_policy: policy_evidence(arguments),
+        },
+        failure: FailureEvidence {
+            same_failure: true,
+            fingerprint_sha256: fingerprint_digest(fingerprint),
+            exit_code: fingerprint.exit_code(),
+            signal: fingerprint.signal(),
+            termination: termination_name(fingerprint.termination()),
+            oracle_stream: diagnostic_channel_name(arguments.oracle_stream.into()).to_owned(),
+            anchor: fingerprint.anchor().to_owned(),
+            anchors: fingerprint
+                .anchors()
+                .iter()
+                .map(|anchor| ChannelAnchor {
+                    channel: diagnostic_channel_name(anchor.channel()).to_owned(),
+                    text: anchor.text().to_owned(),
+                })
+                .collect(),
+            normalization_schema: fingerprint.normalization_schema(),
+        },
         kept_files: outcome
             .snapshot()
             .files()
             .iter()
-            .map(|file| file.path().to_owned())
+            .map(|file| RetentionEvidence {
+                path: file.path().to_owned(),
+                observation: "Present in the final repeatedly verified snapshot; no semantic-causality claim is inferred."
+                    .to_owned(),
+            })
             .collect(),
         accepted_structured_edits: outcome.accepted_structured_edits().to_vec(),
-        fingerprint: FingerprintSummary {
-            exit_code: fingerprint.exit_code(),
-            signal: fingerprint.signal(),
-            termination: fingerprint.termination(),
-            anchor: fingerprint.anchor().to_owned(),
-            anchors: fingerprint.anchors().to_vec(),
-            normalization_schema: fingerprint.normalization_schema(),
-        },
+        attempts,
+        limitations: vec![
+            "Elapsed time is one wall-clock observation, not a benchmark.".to_owned(),
+            "Retained paths are observations from the verified final snapshot, not claims of semantic necessity."
+                .to_owned(),
+            "Syntax-node counts are omitted until a grammar-valid cross-language counter is available."
+                .to_owned(),
+        ],
     }
+}
+
+fn material_measurement(snapshot: &reprocut_workspace::ProjectSnapshot) -> MaterialMeasurement {
+    let lines = snapshot.files().iter().fold(0_u64, |total, file| {
+        let contents = file.contents();
+        let newlines = u64::try_from(contents.iter().filter(|&&byte| byte == b'\n').count())
+            .unwrap_or(u64::MAX);
+        total.saturating_add(newlines).saturating_add(u64::from(
+            !contents.is_empty() && contents.last() != Some(&b'\n'),
+        ))
+    });
+    MaterialMeasurement {
+        files: u64::try_from(snapshot.files().len()).unwrap_or(u64::MAX),
+        bytes: snapshot.total_bytes(),
+        lines,
+        syntax_nodes: None,
+    }
+}
+
+fn fingerprint_digest(fingerprint: &reprocut_core::FailureFingerprint) -> String {
+    let mut hasher = ContentHasher::new();
+    hasher.update(b"REPROCUT-FINGERPRINT\0");
+    hasher.update(&fingerprint.normalization_schema().to_le_bytes());
+    hasher.update(termination_name(fingerprint.termination()).as_bytes());
+    for anchor in fingerprint.anchors() {
+        hasher.update(diagnostic_channel_name(anchor.channel()).as_bytes());
+        hasher.update(&[0]);
+        hasher.update(anchor.text().as_bytes());
+        hasher.update(&[0]);
+    }
+    hasher.finalize().to_hex()
 }
 
 fn session_mode(arguments: &ReduceArgs, resume: bool) -> SessionMode {
@@ -422,26 +466,61 @@ fn evaluation_policy(arguments: &ReduceArgs) -> Result<EvaluationPolicy, PolicyE
     }
 }
 
-fn policy_summary(arguments: &ReduceArgs) -> PolicySummary {
+fn policy_evidence(arguments: &ReduceArgs) -> EvaluationPolicyEvidence {
     if arguments.flaky {
-        PolicySummary {
-            mode: "flaky",
+        EvaluationPolicyEvidence {
+            mode: "flaky".to_owned(),
             runs: arguments.flaky_runs.unwrap_or(DEFAULT_FLAKY_RUNS),
             required: arguments.flaky_required.unwrap_or(DEFAULT_FLAKY_REQUIRED),
         }
     } else {
-        PolicySummary {
-            mode: "strict",
+        EvaluationPolicyEvidence {
+            mode: "strict".to_owned(),
             runs: 3,
             required: 3,
         }
     }
 }
 
+const fn prepare_name(prepare: PrepareArg) -> &'static str {
+    match prepare {
+        PrepareArg::None => "none",
+        PrepareArg::Offline => "offline",
+        PrepareArg::LifecycleScripts => "lifecycle_scripts",
+        PrepareArg::IsolatedPython => "isolated_python",
+    }
+}
+
+const fn verdict_name(verdict: CandidateVerdict) -> &'static str {
+    match verdict {
+        CandidateVerdict::Preserved => "preserved",
+        CandidateVerdict::Rejected => "rejected",
+        CandidateVerdict::Inconclusive => "inconclusive",
+    }
+}
+
+fn termination_name(termination: TerminationReason) -> String {
+    match termination {
+        TerminationReason::ExitCode(exit) => format!("exit {exit}"),
+        TerminationReason::UnixSignal(signal) => format!("signal {signal}"),
+        TerminationReason::TimedOut => "timed out".to_owned(),
+        TerminationReason::RunnerFailure => "runner failure".to_owned(),
+    }
+}
+
+const fn diagnostic_channel_name(channel: DiagnosticChannel) -> &'static str {
+    match channel {
+        DiagnosticChannel::Auto => "auto",
+        DiagnosticChannel::Stderr => "stderr",
+        DiagnosticChannel::Stdout => "stdout",
+        DiagnosticChannel::Combined => "combined",
+    }
+}
+
 fn publish_artifact(
     arguments: &ReduceArgs,
     outcome: &ReductionOutcome,
-    summary: &ReductionSummary,
+    evidence: &ReductionEvidence,
     json: &[u8],
 ) -> Result<(), CliError> {
     let parent = usable_parent(&arguments.output)?;
@@ -456,49 +535,27 @@ fn publish_artifact(
 
     outcome.snapshot().copy_to(&project)?;
 
-    let report = render_report(&report_model(arguments, outcome, summary));
+    let report = render_report(&report_model(evidence));
     write_file(&artifact.join("report.html"), report.as_bytes())?;
+    let issue = render_issue(evidence);
+    write_file(&artifact.join("issue.md"), issue.as_bytes())?;
     write_file(&artifact.join("reduction.json"), json)?;
+    let attempts_path = artifact.join("attempts.jsonl");
+    let attempts_file = fs::File::create(&attempts_path)
+        .map_err(|source| io_error("create attempt ledger", &attempts_path, source))?;
+    let mut attempts_writer = io::BufWriter::new(attempts_file);
+    write_attempts_jsonl(&evidence.attempts, &mut attempts_writer)?;
+    attempts_writer
+        .flush()
+        .map_err(|source| io_error("flush attempt ledger", &attempts_path, source))?;
     write_reproduction_scripts(&artifact, &arguments.command)?;
 
     ensure_output_absent(&arguments.output)?;
     publish_staging(staging, &artifact, &arguments.output)
 }
 
-fn report_model(
-    arguments: &ReduceArgs,
-    outcome: &ReductionOutcome,
-    summary: &ReductionSummary,
-) -> ReportModel {
-    let mut accepted_sizes =
-        Vec::with_capacity(outcome.reduction().accepted_sizes().len().saturating_add(1));
-    accepted_sizes.push(outcome.original_files());
-    accepted_sizes.extend_from_slice(outcome.reduction().accepted_sizes());
-
-    ReportModel {
-        command: display_command(&arguments.command),
-        original_files: outcome.original_files(),
-        retained_files: outcome.snapshot().files().len(),
-        attempts: outcome
-            .reduction()
-            .attempts()
-            .saturating_add(outcome.structured_attempts()),
-        inconclusive_attempts: outcome.inconclusive_attempts(),
-        cache_hits: outcome.cache_hits(),
-        accepted_sizes,
-        fingerprint: format_fingerprint(summary),
-        kept_files: summary.kept_files.clone(),
-    }
-}
-
-fn format_fingerprint(summary: &ReductionSummary) -> String {
-    let termination = match summary.fingerprint.termination {
-        TerminationReason::ExitCode(exit) => format!("exit {exit}"),
-        TerminationReason::UnixSignal(signal) => format!("signal {signal}"),
-        TerminationReason::TimedOut => "timed out".to_owned(),
-        TerminationReason::RunnerFailure => "runner failure".to_owned(),
-    };
-    format!("{termination} · {}", summary.fingerprint.anchor)
+fn report_model(evidence: &ReductionEvidence) -> ReportModel {
+    ReportModel::from(evidence)
 }
 
 fn write_reproduction_scripts(artifact: &Path, command: &[String]) -> Result<(), CliError> {
@@ -531,23 +588,6 @@ fn quote_shell(argument: &str) -> String {
 
 fn quote_powershell(argument: &str) -> String {
     format!("'{}'", argument.replace('\'', "''"))
-}
-
-fn display_command(command: &[String]) -> String {
-    command
-        .iter()
-        .map(|argument| {
-            if argument
-                .chars()
-                .all(|character| character.is_ascii_alphanumeric() || "-._/:\\".contains(character))
-            {
-                argument.clone()
-            } else {
-                format!("\"{}\"", argument.replace('"', "\\\""))
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 fn ensure_output_absent(output: &Path) -> Result<(), CliError> {
