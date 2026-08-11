@@ -53,11 +53,17 @@ def format_source(path: Path) -> tuple[Path, str]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--write", action="store_true")
+    parser.add_argument("paths", nargs="*", type=Path)
     arguments = parser.parse_args()
     changed: list[tuple[Path, str]] = []
+    sources = (
+        [path.resolve() for path in arguments.paths]
+        if arguments.paths
+        else rust_sources()
+    )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        for path, formatted in executor.map(format_source, rust_sources()):
+        for path, formatted in executor.map(format_source, sources):
             current = path.read_text(encoding="utf-8").replace("\r\n", "\n")
             if current != formatted:
                 changed.append((path, formatted))
@@ -71,7 +77,7 @@ def main() -> int:
         for path, _formatted in changed:
             print(path.relative_to(ROOT).as_posix())
         return 1
-    print(f"rustfmt-compatible: {len(rust_sources())} files")
+    print(f"rustfmt-compatible: {len(sources)} files")
     return 0
 
 

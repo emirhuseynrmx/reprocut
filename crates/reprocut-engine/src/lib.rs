@@ -8,14 +8,13 @@ use std::{
 };
 
 use reprocut_core::{
-    reduce, CandidateVerdict, FailureFingerprint, FailureOracle, OracleError, ReductionResult,
+    reduce, AggregateDecision, CandidateVerdict, DiagnosticChannel, EvaluationPolicy,
+    ExecutionObservation, FailureFingerprint, FailureOracle, OracleError, ReductionResult,
     ReductionUnit,
 };
 use reprocut_runner::{CommandSpec, ProcessRunner, RunnerError};
 use reprocut_workspace::{CandidateWorkspace, ProjectInventory, WorkspaceError};
 use thiserror::Error;
-
-const STABILITY_RUNS: u8 = 3;
 
 /// A complete reduction request.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -25,6 +24,8 @@ pub struct ReductionRequest {
     arguments: Vec<OsString>,
     timeout: Duration,
     max_output_bytes: usize,
+    diagnostic_channel: DiagnosticChannel,
+    evaluation_policy: EvaluationPolicy,
 }
 
 impl ReductionRequest {
@@ -42,7 +43,20 @@ impl ReductionRequest {
             arguments,
             timeout,
             max_output_bytes,
+            diagnostic_channel: DiagnosticChannel::Auto,
+            evaluation_policy: EvaluationPolicy::strict(),
         }
+    }
+
+    /// Returns a request using an explicit failure channel and aggregate policy.
+    pub fn with_evaluation(
+        mut self,
+        diagnostic_channel: DiagnosticChannel,
+        evaluation_policy: EvaluationPolicy,
+    ) -> Self {
+        self.diagnostic_channel = diagnostic_channel;
+        self.evaluation_policy = evaluation_policy;
+        self
     }
 
     /// Returns the original project root.
@@ -69,6 +83,16 @@ impl ReductionRequest {
     pub const fn max_output_bytes(&self) -> usize {
         self.max_output_bytes
     }
+
+    /// Returns the process-stream selection policy.
+    pub const fn diagnostic_channel(&self) -> DiagnosticChannel {
+        self.diagnostic_channel
+    }
+
+    /// Returns the repeated-execution policy.
+    pub const fn evaluation_policy(&self) -> EvaluationPolicy {
+        self.evaluation_policy
+    }
 }
 
 /// A completed, repeatedly verified reduction.
@@ -77,8 +101,8 @@ pub struct ReductionOutcome {
     original_files: usize,
     reduction: ReductionResult,
     fingerprint: FailureFingerprint,
-    baseline_runs: u8,
-    final_verifications: u8,
+    baseline_runs: u16,
+    final_verifications: u16,
     inconclusive_attempts: u64,
     cache_hits: u64,
 }
@@ -100,12 +124,12 @@ impl ReductionOutcome {
     }
 
     /// Returns the number of baseline observations.
-    pub const fn baseline_runs(&self) -> u8 {
+    pub const fn baseline_runs(&self) -> u16 {
         self.baseline_runs
     }
 
     /// Returns the number of final verification executions.
-    pub const fn final_verifications(&self) -> u8 {
+    pub const fn final_verifications(&self) -> u16 {
         self.final_verifications
     }
 
@@ -155,16 +179,20 @@ impl ReductionEngine {
             return Err(EngineError::EmptyProject);
         }
         let all_units = inventory.units().iter().collect::<Vec<_>>();
-        let mut baselines = Vec::with_capacity(usize::from(STABILITY_RUNS));
+        let policy = request.evaluation_policy();
+        let mut baselines = Vec::with_capacity(usize::from(policy.runs()));
 
-        for _ in 0..STABILITY_RUNS {
+        for _ in 0..policy.runs() {
             let observation = run_candidate(request, &inventory, &all_units)?;
-            if observation.exit_code() == Some(0) && observation.signal().is_none() {
+            if policy == EvaluationPolicy::strict()
+                && observation.exit_code() == Some(0)
+                && observation.signal().is_none()
+            {
                 return Err(EngineError::BaselineSucceeded);
             }
             baselines.push(observation);
         }
-        let oracle = FailureOracle::from_baselines(&baselines)?;
+        let oracle = stabilize_oracle(request.diagnostic_channel(), policy, &baselines)?;
         let mut cache = HashMap::<Vec<u32>, CandidateVerdict>::new();
         let mut first_error = None;
         let mut inconclusive_attempts = 0_u64;
@@ -181,13 +209,19 @@ impl ReductionEngine {
                 return verdict;
             }
 
-            let verdict = match run_candidate(request, &inventory, kept) {
-                Ok(observation) => oracle.classify(&observation),
-                Err(error) => {
-                    first_error = Some(error);
-                    CandidateVerdict::Inconclusive
+            let evidence = policy.aggregate(std::iter::from_fn(|| {
+                if first_error.is_some() {
+                    return None;
                 }
-            };
+                Some(match run_candidate(request, &inventory, kept) {
+                    Ok(observation) => oracle.classify(&observation),
+                    Err(error) => {
+                        first_error = Some(error);
+                        CandidateVerdict::Inconclusive
+                    }
+                })
+            }));
+            let verdict = aggregate_verdict(evidence.decision());
             if verdict == CandidateVerdict::Inconclusive {
                 inconclusive_attempts = inconclusive_attempts.saturating_add(1);
             }
@@ -199,22 +233,96 @@ impl ReductionEngine {
         }
 
         let kept = reduction.kept().iter().collect::<Vec<_>>();
-        for _ in 0..STABILITY_RUNS {
-            let observation = run_candidate(request, &inventory, &kept)?;
-            if oracle.classify(&observation) != CandidateVerdict::Preserved {
-                return Err(EngineError::FinalVerificationFailed);
+        let mut final_error = None;
+        let final_evidence = policy.aggregate(std::iter::from_fn(|| {
+            if final_error.is_some() {
+                return None;
             }
+            Some(match run_candidate(request, &inventory, &kept) {
+                Ok(observation) => oracle.classify(&observation),
+                Err(error) => {
+                    final_error = Some(error);
+                    CandidateVerdict::Inconclusive
+                }
+            })
+        }));
+        if let Some(error) = final_error {
+            return Err(error);
+        }
+        if final_evidence.decision() != AggregateDecision::Preserved {
+            return Err(EngineError::FinalVerificationFailed);
         }
 
         Ok(ReductionOutcome {
             original_files: inventory.units().len(),
             reduction,
             fingerprint: oracle.fingerprint().clone(),
-            baseline_runs: STABILITY_RUNS,
-            final_verifications: STABILITY_RUNS,
+            baseline_runs: baselines.len() as u16,
+            final_verifications: final_evidence.observed_runs(),
             inconclusive_attempts,
             cache_hits,
         })
+    }
+}
+
+fn stabilize_oracle(
+    channel: DiagnosticChannel,
+    policy: EvaluationPolicy,
+    baselines: &[ExecutionObservation],
+) -> Result<FailureOracle, OracleError> {
+    if policy == EvaluationPolicy::strict() {
+        return FailureOracle::from_baselines_with_channel(channel, baselines);
+    }
+
+    let mut best = None::<(u16, usize, FailureOracle)>;
+    for left in 0..baselines.len() {
+        for right in (left + 1)..baselines.len() {
+            if is_success(&baselines[left]) || is_success(&baselines[right]) {
+                continue;
+            }
+            let pair = [&baselines[left], &baselines[right]];
+            let pair = [pair[0].clone(), pair[1].clone()];
+            let Ok(candidate) = FailureOracle::from_baselines_with_channel(channel, &pair) else {
+                continue;
+            };
+            let evidence = policy.aggregate(
+                baselines
+                    .iter()
+                    .map(|observation| candidate.classify(observation)),
+            );
+            if evidence.decision() != AggregateDecision::Preserved {
+                continue;
+            }
+            let score = baselines
+                .iter()
+                .filter(|observation| {
+                    candidate.classify(observation) == CandidateVerdict::Preserved
+                })
+                .count() as u16;
+            let replace = best
+                .as_ref()
+                .map(|(best_score, best_index, _)| {
+                    score > *best_score || (score == *best_score && left < *best_index)
+                })
+                .unwrap_or(true);
+            if replace {
+                best = Some((score, left, candidate));
+            }
+        }
+    }
+    best.map(|(_, _, oracle)| oracle)
+        .ok_or(OracleError::UnstableDiagnostic)
+}
+
+fn is_success(observation: &ExecutionObservation) -> bool {
+    observation.exit_code() == Some(0) && observation.signal().is_none()
+}
+
+const fn aggregate_verdict(decision: AggregateDecision) -> CandidateVerdict {
+    match decision {
+        AggregateDecision::Preserved => CandidateVerdict::Preserved,
+        AggregateDecision::Rejected => CandidateVerdict::Rejected,
+        AggregateDecision::Inconclusive => CandidateVerdict::Inconclusive,
     }
 }
 

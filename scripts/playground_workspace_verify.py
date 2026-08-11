@@ -42,10 +42,14 @@ def compose_cli() -> str:
     reducer = read("crates/reprocut-core/src/reducer.rs").replace(
         "use crate::CandidateVerdict;", "use super::CandidateVerdict;"
     )
+    policy = read("crates/reprocut-core/src/policy.rs").replace(
+        "use crate::CandidateVerdict;", "use super::CandidateVerdict;"
+    )
     winner = read("crates/reprocut-core/src/winner.rs")
     core = f"""mod reprocut_core {{
 mod model {{ {model} }}
 mod oracle {{ {oracle} }}
+mod policy {{ {policy} }}
 mod reducer {{ {reducer} }}
 mod winner {{ {winner} }}
 pub use model::{{
@@ -53,6 +57,10 @@ pub use model::{{
     FailureFingerprint,
 }};
 pub use oracle::{{FailureOracle, OracleError}};
+pub use policy::{{
+    wilson_interval, AggregateDecision, AggregateEvidence, ConfidenceInterval, EvaluationPolicy,
+    PolicyError,
+}};
 pub use reducer::{{reduce, ReductionResult, ReductionUnit}};
 pub use winner::LowestWinner;
 }}
