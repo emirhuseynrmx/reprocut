@@ -101,12 +101,61 @@ pub use winner::LowestWinner;
     )
 
 
+def compose_core() -> str:
+    model = read("crates/reprocut-core/src/model.rs")
+    oracle = read("crates/reprocut-core/src/oracle.rs").replace("use crate::{", "use super::{", 1)
+    policy = read("crates/reprocut-core/src/policy.rs").replace(
+        "use crate::CandidateVerdict;", "use super::CandidateVerdict;"
+    )
+    reducer = read("crates/reprocut-core/src/reducer.rs").replace(
+        "use crate::CandidateVerdict;", "use super::CandidateVerdict;"
+    )
+    winner = read("crates/reprocut-core/src/winner.rs")
+    transformation_path = ROOT / "crates/reprocut-core/src/transformation.rs"
+    transformation = (
+        f"mod transformation {{ {read('crates/reprocut-core/src/transformation.rs')} }}\n"
+        "pub use transformation::*;"
+        if transformation_path.exists()
+        else ""
+    )
+    return f"""#![forbid(unsafe_code)]
+mod reprocut_core {{
+mod model {{ {model} }}
+mod oracle {{ {oracle} }}
+mod policy {{ {policy} }}
+mod reducer {{ {reducer} }}
+mod winner {{ {winner} }}
+{transformation}
+pub use model::*;
+pub use oracle::*;
+pub use policy::*;
+pub use reducer::*;
+pub use winner::*;
+}}
+fn main() {{}}
+"""
+
+
+def compose_workspace() -> str:
+    core = compose_core().replace("fn main() {}\n", "")
+    workspace = read("crates/reprocut-workspace/src/lib.rs").replace(
+        "use reprocut_core::", "use crate::reprocut_core::"
+    )
+    return "\n".join([core, wrap("reprocut_workspace", workspace), "fn main() {}"])
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--append", type=Path, required=True)
+    parser.add_argument("--scope", choices=("full", "core", "workspace"), default="full")
     args = parser.parse_args()
 
-    code = compose_cli() + "\n" + args.append.resolve().read_text(encoding="utf-8")
+    workspace = {
+        "full": compose_cli,
+        "core": compose_core,
+        "workspace": compose_workspace,
+    }[args.scope]()
+    code = workspace + "\n" + args.append.resolve().read_text(encoding="utf-8")
     payload = json.dumps(
         {
             "channel": "stable",

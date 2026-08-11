@@ -5,7 +5,7 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-use reprocut_core::ReductionUnit;
+use reprocut_core::{Operation, ReductionUnit, Transformation};
 use tempfile::TempDir;
 use thiserror::Error;
 use walkdir::WalkDir;
@@ -42,6 +42,18 @@ pub enum WorkspaceError {
     /// The inventory cannot be represented by stable 32-bit identifiers.
     #[error("project contains more than {0} files")]
     TooManyFiles(usize),
+    /// A transformation referenced a file that is not present in the snapshot.
+    #[error("transformation target is not a regular file: {path}")]
+    MissingTransformationTarget {
+        /// Missing project-relative target.
+        path: String,
+    },
+    /// A byte operation exceeded its immutable source file.
+    #[error("transformation range is outside source bytes: {path}")]
+    RangeOutOfBounds {
+        /// Project-relative target with invalid offsets.
+        path: String,
+    },
 }
 
 /// A sorted, immutable view of removable project files.
@@ -164,6 +176,17 @@ impl CandidateWorkspace {
         })
     }
 
+    /// Copies the full snapshot and applies one canonical transformation.
+    pub fn materialize_transformation(
+        inventory: &ProjectInventory,
+        transformation: &Transformation,
+    ) -> Result<Self, WorkspaceError> {
+        let all = inventory.units().iter().collect::<Vec<_>>();
+        let candidate = Self::materialize(inventory, &all)?;
+        candidate.apply(transformation)?;
+        Ok(candidate)
+    }
+
     /// Returns the disposable project root.
     pub fn root(&self) -> &Path {
         &self.root
@@ -184,6 +207,105 @@ impl CandidateWorkspace {
         }
         Ok(())
     }
+
+    fn apply(&self, transformation: &Transformation) -> Result<(), WorkspaceError> {
+        let operations = transformation.operations();
+        let mut start = 0_usize;
+        while start < operations.len() {
+            let path = operations[start].path();
+            let mut end = start + 1;
+            while end < operations.len() && operations[end].path() == path {
+                end += 1;
+            }
+            let relative = safe_relative(path.as_str())?;
+            let target = self.root.join(relative);
+            if !target.is_file() {
+                return Err(WorkspaceError::MissingTransformationTarget {
+                    path: path.as_str().to_owned(),
+                });
+            }
+            match &operations[start] {
+                Operation::DeleteFile { .. } => {
+                    fs::remove_file(&target).map_err(|source| WorkspaceError::Io {
+                        operation: "delete transformed file",
+                        path: target,
+                        source,
+                    })?;
+                }
+                Operation::ReplaceRange { .. } => {
+                    apply_replacements(&target, &operations[start..end], path.as_str())?;
+                }
+            }
+            start = end;
+        }
+        Ok(())
+    }
+}
+
+fn apply_replacements(
+    target: &Path,
+    operations: &[Operation],
+    display_path: &str,
+) -> Result<(), WorkspaceError> {
+    let source = fs::read(target).map_err(|source| WorkspaceError::Io {
+        operation: "read transformation target",
+        path: target.to_path_buf(),
+        source,
+    })?;
+    let mut final_length = source.len();
+    for operation in operations {
+        let Operation::ReplaceRange {
+            range, replacement, ..
+        } = operation
+        else {
+            unreachable!("canonical validation prevents mixed delete and replace operations");
+        };
+        let start =
+            usize::try_from(range.start()).map_err(|_| WorkspaceError::RangeOutOfBounds {
+                path: display_path.to_owned(),
+            })?;
+        let end = usize::try_from(range.end()).map_err(|_| WorkspaceError::RangeOutOfBounds {
+            path: display_path.to_owned(),
+        })?;
+        if end > source.len() {
+            return Err(WorkspaceError::RangeOutOfBounds {
+                path: display_path.to_owned(),
+            });
+        }
+        final_length = final_length
+            .checked_sub(end - start)
+            .and_then(|length| length.checked_add(replacement.len()))
+            .ok_or_else(|| WorkspaceError::RangeOutOfBounds {
+                path: display_path.to_owned(),
+            })?;
+    }
+    let mut transformed = Vec::with_capacity(final_length);
+    let mut cursor = 0_usize;
+    for operation in operations {
+        let Operation::ReplaceRange {
+            range, replacement, ..
+        } = operation
+        else {
+            unreachable!("canonical validation prevents mixed delete and replace operations");
+        };
+        let start =
+            usize::try_from(range.start()).map_err(|_| WorkspaceError::RangeOutOfBounds {
+                path: display_path.to_owned(),
+            })?;
+        let end = usize::try_from(range.end()).map_err(|_| WorkspaceError::RangeOutOfBounds {
+            path: display_path.to_owned(),
+        })?;
+        transformed.extend_from_slice(&source[cursor..start]);
+        transformed.extend_from_slice(replacement);
+        cursor = end;
+    }
+    transformed.extend_from_slice(&source[cursor..]);
+    debug_assert_eq!(transformed.len(), final_length);
+    fs::write(target, transformed).map_err(|source| WorkspaceError::Io {
+        operation: "write transformation target",
+        path: target.to_path_buf(),
+        source,
+    })
 }
 
 fn copy_regular_file(source_path: &Path, destination: &Path) -> Result<(), WorkspaceError> {

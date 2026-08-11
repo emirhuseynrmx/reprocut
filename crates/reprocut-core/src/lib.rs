@@ -4,6 +4,7 @@ mod model;
 mod oracle;
 mod policy;
 mod reducer;
+mod transformation;
 mod winner;
 
 pub use model::{
@@ -16,4 +17,8 @@ pub use policy::{
     PolicyError,
 };
 pub use reducer::{reduce, ReductionResult, ReductionUnit};
+pub use transformation::{
+    ByteRange, CandidateRank, ContentDigest, FrontierClass, Operation, ProjectPath, Transformation,
+    TransformationError,
+};
 pub use winner::LowestWinner;
