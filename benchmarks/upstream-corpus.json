@@ -1,0 +1,187 @@
+{
+  "schema_version": 1,
+  "name": "ReproCut upstream compiler-bug corpus",
+  "case_count": 24,
+  "repository": "https://github.com/uw-pluverse/perses",
+  "raw_url_template": "https://raw.githubusercontent.com/uw-pluverse/perses/{commit}/{path}",
+  "commit": "29f9553367654ca682a8aca40b92ce5139114a7e",
+  "upstream_license": "GPL-3.0-only",
+  "redistribution": "download-only",
+  "notes": "ReproCut stores metadata only. The fetcher requires explicit GPL acknowledgement and never executes upstream oracle scripts.",
+  "layouts": {
+    "ppr": ["info.properties", "r.sh", "seed.c", "variant.c"],
+    "fine_tune_t1": ["info.properties", "r.sh", "small.c", "t1.c"],
+    "fine_tune_orig": ["info.properties", "orig.c", "r.sh", "small.c"],
+    "fine_tune_small": ["info.properties", "r.sh", "small.c"]
+  },
+  "cases": [
+    {
+      "id": "clang-18556",
+      "compiler": "clang",
+      "issue_url": "https://github.com/llvm/llvm-project/issues/18556",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/clang-18556",
+      "layout": "ppr"
+    },
+    {
+      "id": "clang-18596",
+      "compiler": "clang",
+      "issue_url": "https://github.com/llvm/llvm-project/issues/18596",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/clang-18596",
+      "layout": "ppr"
+    },
+    {
+      "id": "clang-19595",
+      "compiler": "clang",
+      "issue_url": "https://github.com/llvm/llvm-project/issues/19595",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/clang-19595",
+      "layout": "ppr"
+    },
+    {
+      "id": "clang-21467",
+      "compiler": "clang",
+      "issue_url": "https://github.com/llvm/llvm-project/issues/21467",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/clang-21467",
+      "layout": "ppr"
+    },
+    {
+      "id": "clang-21582",
+      "compiler": "clang",
+      "issue_url": "https://github.com/llvm/llvm-project/issues/21582",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/clang-21582",
+      "layout": "ppr"
+    },
+    {
+      "id": "clang-22337",
+      "compiler": "clang",
+      "issue_url": "https://github.com/llvm/llvm-project/issues/22337",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/clang-22337",
+      "layout": "ppr"
+    },
+    {
+      "id": "clang-22382",
+      "compiler": "clang",
+      "issue_url": "https://github.com/llvm/llvm-project/issues/22382",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/clang-22382",
+      "layout": "ppr"
+    },
+    {
+      "id": "clang-23309",
+      "compiler": "clang",
+      "issue_url": "https://github.com/llvm/llvm-project/issues/23309",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/clang-23309",
+      "layout": "ppr"
+    },
+    {
+      "id": "clang-25900",
+      "compiler": "clang",
+      "issue_url": "https://github.com/llvm/llvm-project/issues/25900",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/clang-25900",
+      "layout": "ppr"
+    },
+    {
+      "id": "clang-26350",
+      "compiler": "clang",
+      "issue_url": "https://github.com/llvm/llvm-project/issues/26350",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/clang-26350",
+      "layout": "ppr"
+    },
+    {
+      "id": "clang-26760",
+      "compiler": "clang",
+      "issue_url": "https://github.com/llvm/llvm-project/issues/26760",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/clang-26760",
+      "layout": "ppr"
+    },
+    {
+      "id": "gcc-58731",
+      "compiler": "gcc",
+      "issue_url": "https://gcc.gnu.org/bugzilla/show_bug.cgi?id=58731",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/gcc-58731",
+      "layout": "ppr"
+    },
+    {
+      "id": "gcc-60452",
+      "compiler": "gcc",
+      "issue_url": "https://gcc.gnu.org/bugzilla/show_bug.cgi?id=60452",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/gcc-60452",
+      "layout": "ppr"
+    },
+    {
+      "id": "gcc-61047",
+      "compiler": "gcc",
+      "issue_url": "https://gcc.gnu.org/bugzilla/show_bug.cgi?id=61047",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/gcc-61047",
+      "layout": "ppr"
+    },
+    {
+      "id": "gcc-61383",
+      "compiler": "gcc",
+      "issue_url": "https://gcc.gnu.org/bugzilla/show_bug.cgi?id=61383",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/gcc-61383",
+      "layout": "ppr"
+    },
+    {
+      "id": "gcc-65383",
+      "compiler": "gcc",
+      "issue_url": "https://gcc.gnu.org/bugzilla/show_bug.cgi?id=65383",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/gcc-65383",
+      "layout": "ppr"
+    },
+    {
+      "id": "gcc-66186",
+      "compiler": "gcc",
+      "issue_url": "https://gcc.gnu.org/bugzilla/show_bug.cgi?id=66186",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/gcc-66186",
+      "layout": "ppr"
+    },
+    {
+      "id": "gcc-66375",
+      "compiler": "gcc",
+      "issue_url": "https://gcc.gnu.org/bugzilla/show_bug.cgi?id=66375",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/gcc-66375",
+      "layout": "ppr"
+    },
+    {
+      "id": "gcc-66412",
+      "compiler": "gcc",
+      "issue_url": "https://gcc.gnu.org/bugzilla/show_bug.cgi?id=66412",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/gcc-66412",
+      "layout": "ppr"
+    },
+    {
+      "id": "gcc-66691",
+      "compiler": "gcc",
+      "issue_url": "https://gcc.gnu.org/bugzilla/show_bug.cgi?id=66691",
+      "upstream_path": "benchmark/benchmark_ppr/benchmark_ppr/gcc-66691",
+      "layout": "ppr"
+    },
+    {
+      "id": "clang-22704",
+      "compiler": "clang",
+      "issue_url": "https://github.com/llvm/llvm-project/issues/22704",
+      "upstream_path": "benchmark/fine_tune_benchmark/clang-22704",
+      "layout": "fine_tune_t1"
+    },
+    {
+      "id": "clang-23353",
+      "compiler": "clang",
+      "issue_url": "https://github.com/llvm/llvm-project/issues/23353",
+      "upstream_path": "benchmark/fine_tune_benchmark/clang-23353",
+      "layout": "fine_tune_t1"
+    },
+    {
+      "id": "gcc-59903",
+      "compiler": "gcc",
+      "issue_url": "https://gcc.gnu.org/bugzilla/show_bug.cgi?id=59903",
+      "upstream_path": "benchmark/fine_tune_benchmark/gcc-59903",
+      "layout": "fine_tune_orig"
+    },
+    {
+      "id": "gcc-60116",
+      "compiler": "gcc",
+      "issue_url": "https://gcc.gnu.org/bugzilla/show_bug.cgi?id=60116",
+      "upstream_path": "benchmark/fine_tune_benchmark/gcc-60116",
+      "layout": "fine_tune_small"
+    }
+  ]
+}
