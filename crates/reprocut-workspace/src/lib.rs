@@ -15,7 +15,7 @@ use walkdir::WalkDir;
 
 pub use hierarchy::{DirectoryHierarchy, HierarchyGroup, HierarchyGroupKind};
 
-/// Directory-name exclusions applied before traversal descends into generated trees.
+/// Exact directory-basename exclusions applied at every depth before traversal descends.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InventoryPolicy {
     excluded_directory_names: BTreeSet<String>,
@@ -32,7 +32,7 @@ impl InventoryPolicy {
         }
     }
 
-    /// Adds an exact directory basename exclusion.
+    /// Adds an exact directory basename exclusion matched at any nested depth.
     pub fn exclude(mut self, name: impl Into<String>) -> Self {
         self.excluded_directory_names.insert(name.into());
         self

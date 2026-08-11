@@ -16,9 +16,10 @@ mod adapter_contract {
                 if found == [Ecosystem::Cargo, Ecosystem::Python]
         ));
 
-        fs::create_dir(root.path().join("__pycache__")).expect("cache");
-        fs::write(root.path().join("__pycache__/noise.pyc"), [0_u8; 4]).expect("noise");
-        fs::write(root.path().join("source.py"), "pass").expect("source");
+        fs::create_dir_all(root.path().join("app/__pycache__")).expect("nested cache");
+        fs::write(root.path().join("app/__pycache__/noise.pyc"), [0_u8; 4]).expect("noise");
+        fs::create_dir_all(root.path().join("app/src")).expect("normal directory");
+        fs::write(root.path().join("app/src/source.py"), "pass").expect("source");
         let adapter = Adapter::detect(root.path(), EcosystemSelection::Explicit(Ecosystem::Python))
             .expect("python adapter");
         assert_eq!(
@@ -31,6 +32,12 @@ mod adapter_contract {
             .units()
             .iter()
             .all(|unit| !unit.path().contains("__pycache__")));
+        assert!(inventory
+            .units()
+            .iter()
+            .any(|unit| unit.path() == "app/src/source.py"));
+        assert!(adapter.inventory_policy().excludes("__pycache__"));
+        assert!(!adapter.inventory_policy().excludes("src"));
     }
 
     #[test]
