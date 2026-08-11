@@ -1,0 +1,30 @@
+[package]
+name = "reprocut-cli"
+description = "Deterministic failing-project minimizer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "reprocut"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+reprocut-engine = { path = "../reprocut-engine" }
+reprocut-report = { path = "../reprocut-report" }
+reprocut-workspace = { path = "../reprocut-workspace" }
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+predicates.workspace = true
+
+[lints]
+workspace = true

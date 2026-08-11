@@ -105,6 +105,27 @@ impl ProjectInventory {
     pub fn units(&self) -> &[ReductionUnit] {
         &self.units
     }
+
+    /// Copies exactly the selected units below a destination directory.
+    pub fn copy_units_to(
+        &self,
+        units: &[&ReductionUnit],
+        destination_root: &Path,
+    ) -> Result<(), WorkspaceError> {
+        fs::create_dir_all(destination_root).map_err(|source| WorkspaceError::Io {
+            operation: "create publication root",
+            path: destination_root.to_path_buf(),
+            source,
+        })?;
+
+        for unit in units {
+            let relative = safe_relative(unit.path())?;
+            let source_path = self.root.join(&relative);
+            let destination = destination_root.join(&relative);
+            copy_regular_file(&source_path, &destination)?;
+        }
+        Ok(())
+    }
 }
 
 /// An automatically cleaned candidate project directory.
@@ -135,23 +156,7 @@ impl CandidateWorkspace {
             source,
         })?;
 
-        for unit in kept {
-            let relative = safe_relative(unit.path())?;
-            let source_path = inventory.root.join(&relative);
-            let destination = root.join(&relative);
-            if let Some(parent) = destination.parent() {
-                fs::create_dir_all(parent).map_err(|source| WorkspaceError::Io {
-                    operation: "create candidate parent",
-                    path: parent.to_path_buf(),
-                    source,
-                })?;
-            }
-            fs::copy(&source_path, &destination).map_err(|source| WorkspaceError::Io {
-                operation: "copy candidate file",
-                path: source_path,
-                source,
-            })?;
-        }
+        inventory.copy_units_to(kept, &root)?;
 
         Ok(Self {
             _temp_dir: temp_dir,
@@ -179,6 +184,22 @@ impl CandidateWorkspace {
         }
         Ok(())
     }
+}
+
+fn copy_regular_file(source_path: &Path, destination: &Path) -> Result<(), WorkspaceError> {
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).map_err(|source| WorkspaceError::Io {
+            operation: "create destination parent",
+            path: parent.to_path_buf(),
+            source,
+        })?;
+    }
+    fs::copy(source_path, destination).map_err(|source| WorkspaceError::Io {
+        operation: "copy regular file",
+        path: source_path.to_path_buf(),
+        source,
+    })?;
+    Ok(())
 }
 
 fn is_internal_directory(path: &Path, depth: usize) -> bool {

@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/reprocut-cli",
     "crates/reprocut-core",
     "crates/reprocut-engine",
     "crates/reprocut-report",
@@ -17,6 +18,9 @@ authors = ["Emir Hüseyin İnci"]
 repository = "https://github.com/emirhuseynrmx/reprocut"
 
 [workspace.dependencies]
+assert_cmd = "2.0"
+clap = { version = "4.5", features = ["derive"] }
+predicates = "3.1"
 proptest = "1.6"
 regex = "1.11"
 serde = { version = "1.0", features = ["derive"] }

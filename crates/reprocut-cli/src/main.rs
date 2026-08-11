@@ -1,0 +1,365 @@
+#![forbid(unsafe_code)]
+
+use std::{
+    ffi::OsString,
+    fs, io,
+    path::{Path, PathBuf},
+    process::ExitCode,
+    time::Duration,
+};
+
+use clap::{Args, Parser, Subcommand};
+use reprocut_engine::{EngineError, ReductionEngine, ReductionOutcome, ReductionRequest};
+use reprocut_report::{ReportModel, render_report};
+use reprocut_workspace::{ProjectInventory, WorkspaceError};
+use serde::Serialize;
+use tempfile::TempDir;
+use thiserror::Error;
+
+const DEFAULT_TIMEOUT_MS: u64 = 5_000;
+const DEFAULT_CAPTURE_BYTES: usize = 1_048_576;
+
+#[derive(Debug, Parser)]
+#[command(
+    name = "reprocut",
+    version,
+    about = "Shrink a failing project without changing its failure",
+    after_help = "Start with: reprocut reduce -- python bug.py"
+)]
+struct Cli {
+    #[command(subcommand)]
+    action: Action,
+}
+
+#[derive(Debug, Subcommand)]
+enum Action {
+    /// Prove, minimize, and re-verify one failing command.
+    Reduce(ReduceArgs),
+}
+
+#[derive(Debug, Args)]
+struct ReduceArgs {
+    /// Project directory to minimize.
+    #[arg(long, default_value = ".")]
+    root: PathBuf,
+
+    /// New directory that receives the reduced reproduction.
+    #[arg(short, long, default_value = "reprocut-output")]
+    output: PathBuf,
+
+    /// Deadline for each candidate execution.
+    #[arg(long, default_value_t = DEFAULT_TIMEOUT_MS)]
+    timeout_ms: u64,
+
+    /// Maximum captured bytes for each child output stream.
+    #[arg(long, default_value_t = DEFAULT_CAPTURE_BYTES)]
+    max_output_bytes: usize,
+
+    /// Emit one machine-readable JSON value on standard output.
+    #[arg(long)]
+    json: bool,
+
+    /// Failing command and arguments, placed after `--`.
+    #[arg(last = true, required = true, num_args = 1.., value_name = "COMMAND")]
+    command: Vec<String>,
+}
+
+#[derive(Debug, Error)]
+enum CliError {
+    #[error(transparent)]
+    Engine(#[from] EngineError),
+    #[error(transparent)]
+    Workspace(#[from] WorkspaceError),
+    #[error("output path already exists: {0}")]
+    OutputExists(PathBuf),
+    #[error("output path has no usable parent: {0}")]
+    InvalidOutput(PathBuf),
+    #[error("{operation} failed for {path}: {source}")]
+    Io {
+        operation: &'static str,
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+    #[error("serialize reduction state: {0}")]
+    Serialize(#[from] serde_json::Error),
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct ReductionSummary {
+    schema_version: u8,
+    source_root: String,
+    output: String,
+    command: Vec<String>,
+    original_files: usize,
+    retained_files: usize,
+    attempts: u64,
+    baseline_runs: u8,
+    final_verifications: u8,
+    inconclusive_attempts: u64,
+    cache_hits: u64,
+    kept_files: Vec<String>,
+    fingerprint: FingerprintSummary,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct FingerprintSummary {
+    exit_code: Option<i32>,
+    signal: Option<i32>,
+    anchor: String,
+}
+
+fn main() -> ExitCode {
+    let cli = Cli::parse();
+    match execute(cli) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("error: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn execute(cli: Cli) -> Result<(), CliError> {
+    match cli.action {
+        Action::Reduce(arguments) => reduce_project(arguments),
+    }
+}
+
+fn reduce_project(arguments: ReduceArgs) -> Result<(), CliError> {
+    ensure_output_absent(&arguments.output)?;
+    let (program, child_arguments) = split_command(&arguments.command);
+    let request = ReductionRequest::new(
+        arguments.root.clone(),
+        PathBuf::from(program),
+        child_arguments.iter().map(OsString::from).collect(),
+        Duration::from_millis(arguments.timeout_ms),
+        arguments.max_output_bytes,
+    );
+
+    eprintln!("reprocut: proving a stable baseline and searching safe cuts...");
+    let outcome = ReductionEngine::run(&request)?;
+    eprintln!(
+        "reprocut: stable baseline preserved; {} → {} files",
+        outcome.original_files(),
+        outcome.reduction().kept().len()
+    );
+
+    let summary = build_summary(&arguments, &outcome);
+    let json = serde_json::to_vec_pretty(&summary)?;
+    publish_artifact(&arguments, &outcome, &summary, &json)?;
+
+    if arguments.json {
+        println!("{}", String::from_utf8_lossy(&json));
+    } else {
+        println!(
+            "Reduced {} files to {}. Open {}/report.html",
+            outcome.original_files(),
+            outcome.reduction().kept().len(),
+            arguments.output.display()
+        );
+    }
+    Ok(())
+}
+
+fn split_command(command: &[String]) -> (&str, &[String]) {
+    let (program, arguments) = command
+        .split_first()
+        .expect("clap requires at least one command element");
+    (program, arguments)
+}
+
+fn build_summary(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> ReductionSummary {
+    let fingerprint = outcome.fingerprint();
+    ReductionSummary {
+        schema_version: 1,
+        source_root: arguments.root.display().to_string(),
+        output: arguments.output.display().to_string(),
+        command: arguments.command.clone(),
+        original_files: outcome.original_files(),
+        retained_files: outcome.reduction().kept().len(),
+        attempts: outcome.reduction().attempts(),
+        baseline_runs: outcome.baseline_runs(),
+        final_verifications: outcome.final_verifications(),
+        inconclusive_attempts: outcome.inconclusive_attempts(),
+        cache_hits: outcome.cache_hits(),
+        kept_files: outcome
+            .reduction()
+            .kept()
+            .iter()
+            .map(|unit| unit.path().to_owned())
+            .collect(),
+        fingerprint: FingerprintSummary {
+            exit_code: fingerprint.exit_code(),
+            signal: fingerprint.signal(),
+            anchor: fingerprint.anchor().to_owned(),
+        },
+    }
+}
+
+fn publish_artifact(
+    arguments: &ReduceArgs,
+    outcome: &ReductionOutcome,
+    summary: &ReductionSummary,
+    json: &[u8],
+) -> Result<(), CliError> {
+    let parent = usable_parent(&arguments.output)?;
+    fs::create_dir_all(parent).map_err(|source| io_error("create output parent", parent, source))?;
+    let staging = tempfile::Builder::new()
+        .prefix(".reprocut-publish-")
+        .tempdir_in(parent)
+        .map_err(|source| io_error("create staging directory", parent, source))?;
+    let artifact = staging.path().join("artifact");
+    let project = artifact.join("project");
+
+    let inventory = ProjectInventory::scan(&arguments.root)?;
+    let kept = outcome.reduction().kept().iter().collect::<Vec<_>>();
+    inventory.copy_units_to(&kept, &project)?;
+
+    let report = render_report(&report_model(arguments, outcome, summary));
+    write_file(&artifact.join("report.html"), report.as_bytes())?;
+    write_file(&artifact.join("reduction.json"), json)?;
+    write_reproduction_scripts(&artifact, &arguments.command)?;
+
+    ensure_output_absent(&arguments.output)?;
+    publish_staging(staging, &artifact, &arguments.output)
+}
+
+fn report_model(
+    arguments: &ReduceArgs,
+    outcome: &ReductionOutcome,
+    summary: &ReductionSummary,
+) -> ReportModel {
+    let mut accepted_sizes = Vec::with_capacity(
+        outcome
+            .reduction()
+            .accepted_sizes()
+            .len()
+            .saturating_add(1),
+    );
+    accepted_sizes.push(outcome.original_files());
+    accepted_sizes.extend_from_slice(outcome.reduction().accepted_sizes());
+
+    ReportModel {
+        command: display_command(&arguments.command),
+        original_files: outcome.original_files(),
+        retained_files: outcome.reduction().kept().len(),
+        attempts: outcome.reduction().attempts(),
+        inconclusive_attempts: outcome.inconclusive_attempts(),
+        cache_hits: outcome.cache_hits(),
+        accepted_sizes,
+        fingerprint: format_fingerprint(summary),
+        kept_files: summary.kept_files.clone(),
+    }
+}
+
+fn format_fingerprint(summary: &ReductionSummary) -> String {
+    let termination = match (summary.fingerprint.exit_code, summary.fingerprint.signal) {
+        (Some(exit), _) => format!("exit {exit}"),
+        (_, Some(signal)) => format!("signal {signal}"),
+        (None, None) => "unknown termination".to_owned(),
+    };
+    format!("{termination} · {}", summary.fingerprint.anchor)
+}
+
+fn write_reproduction_scripts(artifact: &Path, command: &[String]) -> Result<(), CliError> {
+    let shell = format!(
+        "#!/usr/bin/env sh\nset -eu\ncd -- \"$(dirname -- \"$0\")/project\"\nexec {}\n",
+        command
+            .iter()
+            .map(|argument| quote_shell(argument))
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+    let shell_path = artifact.join("reproduce.sh");
+    write_file(&shell_path, shell.as_bytes())?;
+    make_executable(&shell_path)?;
+
+    let powershell = format!(
+        "$ErrorActionPreference = 'Stop'\nSet-Location (Join-Path $PSScriptRoot 'project')\n& {}\nexit $LASTEXITCODE\n",
+        command
+            .iter()
+            .map(|argument| quote_powershell(argument))
+            .collect::<Vec<_>>()
+            .join(" ")
+    );
+    write_file(&artifact.join("reproduce.ps1"), powershell.as_bytes())
+}
+
+fn quote_shell(argument: &str) -> String {
+    format!("'{}'", argument.replace('\'', "'\"'\"'"))
+}
+
+fn quote_powershell(argument: &str) -> String {
+    format!("'{}'", argument.replace('\'', "''"))
+}
+
+fn display_command(command: &[String]) -> String {
+    command
+        .iter()
+        .map(|argument| {
+            if argument
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || "-._/:\\".contains(character))
+            {
+                argument.clone()
+            } else {
+                format!("\"{}\"", argument.replace('"', "\\\""))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn ensure_output_absent(output: &Path) -> Result<(), CliError> {
+    match fs::symlink_metadata(output) {
+        Ok(_) => Err(CliError::OutputExists(output.to_path_buf())),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(source) => Err(io_error("inspect output path", output, source)),
+    }
+}
+
+fn usable_parent(output: &Path) -> Result<&Path, CliError> {
+    if output.file_name().is_none() {
+        return Err(CliError::InvalidOutput(output.to_path_buf()));
+    }
+    Ok(output
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new(".")))
+}
+
+fn publish_staging(staging: TempDir, artifact: &Path, output: &Path) -> Result<(), CliError> {
+    fs::rename(artifact, output).map_err(|source| io_error("publish output atomically", output, source))?;
+    drop(staging);
+    Ok(())
+}
+
+fn write_file(path: &Path, contents: &[u8]) -> Result<(), CliError> {
+    fs::write(path, contents).map_err(|source| io_error("write artifact", path, source))
+}
+
+fn io_error(operation: &'static str, path: &Path, source: io::Error) -> CliError {
+    CliError::Io {
+        operation,
+        path: path.to_path_buf(),
+        source,
+    }
+}
+
+#[cfg(unix)]
+fn make_executable(path: &Path) -> Result<(), CliError> {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let mut permissions = fs::metadata(path)
+        .map_err(|source| io_error("read script permissions", path, source))?
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions)
+        .map_err(|source| io_error("make reproduction script executable", path, source))
+}
+
+#[cfg(not(unix))]
+fn make_executable(_path: &Path) -> Result<(), CliError> {
+    Ok(())
+}
