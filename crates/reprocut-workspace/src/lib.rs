@@ -6,9 +6,10 @@ use std::{
     collections::BTreeSet,
     fs, io,
     path::{Component, Path, PathBuf},
+    sync::Arc,
 };
 
-use reprocut_core::{Operation, ReductionUnit, Transformation};
+use reprocut_core::{ContentDigest, Operation, ReductionUnit, Transformation};
 use tempfile::TempDir;
 use thiserror::Error;
 use walkdir::WalkDir;
@@ -101,6 +102,156 @@ pub enum WorkspaceError {
 pub struct ProjectInventory {
     root: PathBuf,
     units: Vec<ReductionUnit>,
+}
+
+/// One immutable file in a content-addressed reduced-project snapshot.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SnapshotFile {
+    path: String,
+    contents: Arc<[u8]>,
+    digest: ContentDigest,
+}
+
+impl SnapshotFile {
+    /// Returns the normalized project-relative path.
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// Returns immutable file bytes.
+    pub fn contents(&self) -> &[u8] {
+        &self.contents
+    }
+
+    /// Returns the file-content digest cached when the snapshot was built.
+    pub const fn digest(&self) -> ContentDigest {
+        self.digest
+    }
+}
+
+/// Sorted immutable project contents with copy-on-write file sharing.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProjectSnapshot {
+    files: Vec<SnapshotFile>,
+    digest: ContentDigest,
+}
+
+impl ProjectSnapshot {
+    /// Reads selected immutable inventory units into one sorted snapshot.
+    pub fn from_inventory<'unit>(
+        inventory: &ProjectInventory,
+        units: impl IntoIterator<Item = &'unit ReductionUnit>,
+    ) -> Result<Self, WorkspaceError> {
+        let mut files = units
+            .into_iter()
+            .map(|unit| {
+                let relative = safe_relative(unit.path())?;
+                let path = inventory.root.join(relative);
+                let contents = fs::read(&path).map_err(|source| WorkspaceError::Io {
+                    operation: "read snapshot file",
+                    path,
+                    source,
+                })?;
+                Ok(snapshot_file(unit.path().to_owned(), contents))
+            })
+            .collect::<Result<Vec<_>, WorkspaceError>>()?;
+        files.sort_unstable_by(|left, right| left.path.cmp(&right.path));
+        files.dedup_by(|left, right| left.path == right.path);
+        Ok(Self::from_files(files))
+    }
+
+    /// Returns sorted immutable files.
+    pub fn files(&self) -> &[SnapshotFile] {
+        &self.files
+    }
+
+    /// Returns one file by normalized relative path.
+    pub fn file(&self, path: &str) -> Option<&[u8]> {
+        self.file_index(path)
+            .ok()
+            .map(|index| self.files[index].contents())
+    }
+
+    /// Returns a digest over paths and cached content digests.
+    pub const fn digest(&self) -> ContentDigest {
+        self.digest
+    }
+
+    /// Returns a new snapshot with one canonical transformation applied.
+    pub fn with_transformation(
+        &self,
+        transformation: &Transformation,
+    ) -> Result<Self, WorkspaceError> {
+        let mut files = self.files.clone();
+        let operations = transformation.operations();
+        let mut start = 0_usize;
+        while start < operations.len() {
+            let target = operations[start].path().as_str();
+            let index = files
+                .binary_search_by(|file| file.path.as_str().cmp(target))
+                .map_err(|_| WorkspaceError::MissingTransformationTarget {
+                    path: target.to_owned(),
+                })?;
+            let mut end = start + 1;
+            while end < operations.len() && operations[end].path() == operations[start].path() {
+                end += 1;
+            }
+            match &operations[start] {
+                Operation::DeleteFile { .. } => {
+                    files.remove(index);
+                }
+                Operation::ReplaceRange { .. } => {
+                    let contents = apply_replacements_to_bytes(
+                        files[index].contents(),
+                        &operations[start..end],
+                        target,
+                    )?;
+                    files[index] = snapshot_file(target.to_owned(), contents);
+                }
+            }
+            start = end;
+        }
+        Ok(Self::from_files(files))
+    }
+
+    /// Returns a new snapshot replacing all bytes of one existing file.
+    pub fn with_file_contents(
+        &self,
+        path: &str,
+        contents: Vec<u8>,
+    ) -> Result<Self, WorkspaceError> {
+        let index = self.file_index(path)?;
+        let mut files = self.files.clone();
+        files[index] = snapshot_file(path.to_owned(), contents);
+        Ok(Self::from_files(files))
+    }
+
+    /// Writes exactly this snapshot below an existing or new destination.
+    pub fn copy_to(&self, destination_root: &Path) -> Result<(), WorkspaceError> {
+        fs::create_dir_all(destination_root).map_err(|source| WorkspaceError::Io {
+            operation: "create snapshot destination",
+            path: destination_root.to_path_buf(),
+            source,
+        })?;
+        for file in &self.files {
+            let relative = safe_relative(&file.path)?;
+            write_regular_file(&destination_root.join(relative), file.contents())?;
+        }
+        Ok(())
+    }
+
+    fn file_index(&self, path: &str) -> Result<usize, WorkspaceError> {
+        self.files
+            .binary_search_by(|file| file.path.as_str().cmp(path))
+            .map_err(|_| WorkspaceError::MissingTransformationTarget {
+                path: path.to_owned(),
+            })
+    }
+
+    fn from_files(files: Vec<SnapshotFile>) -> Self {
+        let digest = snapshot_digest(&files);
+        Self { files, digest }
+    }
 }
 
 impl ProjectInventory {
@@ -221,6 +372,24 @@ impl CandidateWorkspace {
         })
     }
 
+    /// Materializes an immutable reduced-project snapshot.
+    pub fn materialize_snapshot(snapshot: &ProjectSnapshot) -> Result<Self, WorkspaceError> {
+        let temp_dir = tempfile::Builder::new()
+            .prefix("reprocut-candidate-")
+            .tempdir()
+            .map_err(|source| WorkspaceError::Io {
+                operation: "create candidate directory",
+                path: std::env::temp_dir(),
+                source,
+            })?;
+        let root = temp_dir.path().join("project");
+        snapshot.copy_to(&root)?;
+        Ok(Self {
+            _temp_dir: temp_dir,
+            root,
+        })
+    }
+
     /// Copies the full snapshot and applies one canonical transformation.
     pub fn materialize_transformation(
         inventory: &ProjectInventory,
@@ -297,6 +466,19 @@ fn apply_replacements(
         path: target.to_path_buf(),
         source,
     })?;
+    let transformed = apply_replacements_to_bytes(&source, operations, display_path)?;
+    fs::write(target, transformed).map_err(|source| WorkspaceError::Io {
+        operation: "write transformation target",
+        path: target.to_path_buf(),
+        source,
+    })
+}
+
+fn apply_replacements_to_bytes(
+    source: &[u8],
+    operations: &[Operation],
+    display_path: &str,
+) -> Result<Vec<u8>, WorkspaceError> {
     let mut final_length = source.len();
     for operation in operations {
         let Operation::ReplaceRange {
@@ -346,11 +528,33 @@ fn apply_replacements(
     }
     transformed.extend_from_slice(&source[cursor..]);
     debug_assert_eq!(transformed.len(), final_length);
-    fs::write(target, transformed).map_err(|source| WorkspaceError::Io {
-        operation: "write transformation target",
-        path: target.to_path_buf(),
-        source,
-    })
+    Ok(transformed)
+}
+
+fn snapshot_file(path: String, contents: Vec<u8>) -> SnapshotFile {
+    let digest = ContentDigest::of(&contents);
+    SnapshotFile {
+        path,
+        contents: Arc::from(contents),
+        digest,
+    }
+}
+
+fn snapshot_digest(files: &[SnapshotFile]) -> ContentDigest {
+    let mut encoded = Vec::with_capacity(files.len().saturating_mul(48).saturating_add(24));
+    encoded.extend_from_slice(b"REPROCUT-SNAPSHOT\0");
+    encoded.extend_from_slice(&1_u16.to_le_bytes());
+    encoded.extend_from_slice(&u64::try_from(files.len()).unwrap_or(u64::MAX).to_le_bytes());
+    for file in files {
+        encoded.extend_from_slice(
+            &u64::try_from(file.path.len())
+                .unwrap_or(u64::MAX)
+                .to_le_bytes(),
+        );
+        encoded.extend_from_slice(file.path.as_bytes());
+        encoded.extend_from_slice(file.digest.as_bytes());
+    }
+    ContentDigest::of(&encoded)
 }
 
 fn copy_regular_file(source_path: &Path, destination: &Path) -> Result<(), WorkspaceError> {
@@ -367,6 +571,21 @@ fn copy_regular_file(source_path: &Path, destination: &Path) -> Result<(), Works
         source,
     })?;
     Ok(())
+}
+
+fn write_regular_file(destination: &Path, contents: &[u8]) -> Result<(), WorkspaceError> {
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).map_err(|source| WorkspaceError::Io {
+            operation: "create destination parent",
+            path: parent.to_path_buf(),
+            source,
+        })?;
+    }
+    fs::write(destination, contents).map_err(|source| WorkspaceError::Io {
+        operation: "write snapshot file",
+        path: destination.to_path_buf(),
+        source,
+    })
 }
 
 fn is_excluded_directory(path: &Path, depth: usize, policy: &InventoryPolicy) -> bool {
