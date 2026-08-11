@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/reprocut-core",
+    "crates/reprocut-engine",
     "crates/reprocut-runner",
     "crates/reprocut-workspace",
 ]

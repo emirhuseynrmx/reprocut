@@ -1,0 +1,21 @@
+[package]
+name = "reprocut-engine"
+description = "End-to-end reduction orchestration for ReproCut"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+reprocut-core = { path = "../reprocut-core" }
+reprocut-runner = { path = "../reprocut-runner" }
+reprocut-workspace = { path = "../reprocut-workspace" }
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
