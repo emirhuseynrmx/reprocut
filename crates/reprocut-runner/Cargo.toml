@@ -1,0 +1,16 @@
+[package]
+name = "reprocut-runner"
+description = "Bounded process execution for ReproCut"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+reprocut-core = { path = "../reprocut-core" }
+thiserror.workspace = true
+
+[lints]
+workspace = true

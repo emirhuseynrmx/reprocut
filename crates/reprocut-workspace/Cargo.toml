@@ -1,0 +1,18 @@
+[package]
+name = "reprocut-workspace"
+description = "Disposable project materialization for ReproCut"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+reprocut-core = { path = "../reprocut-core" }
+tempfile.workspace = true
+thiserror.workspace = true
+walkdir.workspace = true
+
+[lints]
+workspace = true
