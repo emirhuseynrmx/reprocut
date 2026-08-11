@@ -9,7 +9,8 @@ use std::{
     time::Duration,
 };
 
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
+use clap_complete::{generate, Shell};
 use reprocut_adapters::{Adapter, AdapterError, Ecosystem, EcosystemSelection};
 use reprocut_core::{
     CandidateVerdict, ContentHasher, DiagnosticChannel, EvaluationPolicy, PolicyError,
@@ -61,6 +62,36 @@ enum Action {
     Protocol(ProtocolArgs),
     /// Prepare a redacted, local-only static gallery submission.
     Gallery(GalleryArgs),
+    /// Write a shell completion script to standard output.
+    Completions(CompletionsArgs),
+}
+
+#[derive(Debug, Args)]
+struct CompletionsArgs {
+    /// Target shell.
+    #[arg(value_enum)]
+    shell: CompletionShell,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum CompletionShell {
+    Bash,
+    Elvish,
+    Fish,
+    PowerShell,
+    Zsh,
+}
+
+impl From<CompletionShell> for Shell {
+    fn from(value: CompletionShell) -> Self {
+        match value {
+            CompletionShell::Bash => Self::Bash,
+            CompletionShell::Elvish => Self::Elvish,
+            CompletionShell::Fish => Self::Fish,
+            CompletionShell::PowerShell => Self::PowerShell,
+            CompletionShell::Zsh => Self::Zsh,
+        }
+    }
 }
 
 #[derive(Debug, Args)]
@@ -351,7 +382,21 @@ fn execute(cli: Cli) -> Result<(), CliError> {
         Action::Export(arguments) => export_artifact(arguments),
         Action::Protocol(arguments) => run_protocol(arguments),
         Action::Gallery(arguments) => run_gallery(arguments),
+        Action::Completions(arguments) => {
+            emit_completions(arguments);
+            Ok(())
+        }
     }
+}
+
+fn emit_completions(arguments: CompletionsArgs) {
+    let mut command = Cli::command();
+    generate(
+        Shell::from(arguments.shell),
+        &mut command,
+        "reprocut",
+        &mut io::stdout().lock(),
+    );
 }
 
 fn run_protocol(arguments: ProtocolArgs) -> Result<(), CliError> {
@@ -492,7 +537,14 @@ fn prepare_gallery(arguments: GalleryPrepareArgs) -> Result<(), CliError> {
             evidence.schema_version
         )));
     }
-    if !evidence.failure.same_failure || evidence.failure.fingerprint_sha256.len() != 64 {
+    if !evidence.failure.same_failure
+        || evidence.failure.fingerprint_sha256.len() != 64
+        || !evidence
+            .failure
+            .fingerprint_sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
         return Err(CliError::Gallery(
             "artifact has no verified same-failure fingerprint".to_owned(),
         ));

@@ -138,7 +138,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10", "3.11", "3.12", "3.13"]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -250,3 +250,23 @@ jobs:
           name: reprocut-release-packages
           path: dist
           if-no-files-found: error
+
+  developer-surfaces:
+    name: Editor, gallery, and static release audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.6.0"
+      - name: Validate the protocol-only editor client
+        run: node --test editors/vscode/test/*.test.js
+      - name: Validate redacted gallery submissions without executing them
+        run: node --test gallery/test/*.test.js
+      - name: Build the static gallery
+        run: node gallery/scripts/build.js
+      - name: Require every static 0.1 release condition
+        run: python scripts/release/audit.py --static-only

@@ -23,26 +23,47 @@ const REPORT_JS: &str = include_str!("../assets/report.js");
 /// and prevents a view from gaining filesystem authority.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReportModel {
+    /// Display-safe reproduction command.
     pub command: String,
+    /// Original regular-file count.
     pub original_files: usize,
+    /// Retained regular-file count.
     pub retained_files: usize,
+    /// Original project bytes.
     pub original_bytes: u64,
+    /// Retained project bytes.
     pub retained_bytes: u64,
+    /// Original logical line count.
     pub original_lines: u64,
+    /// Retained logical line count.
     pub retained_lines: u64,
+    /// End-to-end wall-clock observation in milliseconds.
     pub elapsed_ms: u64,
+    /// Total candidate attempts.
     pub attempts: u64,
+    /// Attempts classified as inconclusive.
     pub inconclusive_attempts: u64,
+    /// Compatible cached candidate results reused.
     pub cache_hits: u64,
+    /// Preserved final verification observations.
     pub final_verifications: u16,
+    /// Original and successively accepted file counts.
     pub accepted_sizes: Vec<usize>,
+    /// Human-readable termination and primary anchor.
     pub fingerprint: String,
+    /// Machine-stable lowercase SHA-256 failure identity.
     pub fingerprint_sha256: String,
+    /// Configured diagnostic stream selection.
     pub oracle_stream: String,
+    /// Stream-qualified diagnostic anchors.
     pub anchors: Vec<ChannelAnchor>,
+    /// Files present in the final verified snapshot.
     pub kept_files: Vec<RetentionEvidence>,
+    /// Accepted manifest and syntax edit descriptions.
     pub structured_edits: Vec<String>,
+    /// Explicit interpretation limitations.
     pub limitations: Vec<String>,
+    /// GitHub-ready Markdown derived from the same evidence.
     pub issue_markdown: String,
 }
 

@@ -1,82 +1,95 @@
 # ReproCut 0.1 release runbook
 
-Publishing is permanent. Run this only from the reviewed `v0.1.0` commit after
-all GitHub Actions jobs pass. Never paste registry tokens into logs, scripts, or
-the repository.
+crates.io and PyPI publication are irreversible external writes. The workflows
+are prepared, but the user chooses and manually approves each registry action.
+Never paste registry credentials into logs, scripts, issues, or the repository.
 
-## 1. Build and inspect artifacts
+## 1. Audit the immutable commit
 
-Download the `reprocut-release-packages` artifact produced by CI. It contains
-all `.crate` packages, Python wheels, and the Python source distribution. The CI
-job runs `cargo package --no-verify`, builds the ABI3 wheel, builds the sdist,
-and runs `twine check` before uploading the artifact.
+Require the static contract locally and every native gate on the same
+40-character commit in clean CI:
 
-The `--no-verify` flag is limited to pre-publication packaging because dependent
-ReproCut crates do not exist in the registry yet. Correctness is independently
-gated by the workspace test, Clippy, docs, platform, sanitizer, Miri, and Loom
-jobs. Actual `cargo publish` performs Cargo's normal verification.
+```console
+python scripts/release/audit.py --static-only
+python scripts/release/audit.py \
+  --ci-evidence output/ci-evidence.json \
+  --expected-commit "$(git rev-parse HEAD)"
+```
 
-## 2. Publish Rust crates in dependency order
+Recheck that the `reprocut` names remain available before the first upload.
+Registry availability is not ownership until publication succeeds.
 
-Authenticate locally with a scoped crates.io token. Publish exactly in this
-order, allowing the registry index to expose each layer before continuing:
+## 2. Create one signed release tag
 
-```sh
+The binary workflow is tag-driven, so the signed tag is created only after the
+audited commit is final and before either registry is published:
+
+```console
+git tag -s v0.1.0 -m "ReproCut 0.1.0"
+git push origin v0.1.0
+```
+
+The tag triggers six native archives, real-failure smoke tests, deterministic
+packaging, SPDX SBOMs, SHA-256 aggregation, and GitHub provenance. Publishing
+the GitHub Release additionally requires manual approval of the protected
+`release` environment. Never move or recreate the tag after any upload.
+
+## 3. Publish crates.io manually
+
+Run **Publish registries (manual)** with:
+
+- tag: `v0.1.0`
+- registry: `crates-io`
+- confirmation: `PUBLISH_REPROCUT_0_1_0`
+
+The protected `crates-io` environment holds the least-scope
+`CARGO_REGISTRY_TOKEN`. After approval, the workflow reruns format, Clippy, and
+tests; publishes in this dependency order; waits for each registry entry; and
+performs a clean `cargo install reprocut --version 0.1.0 --locked`:
+
+```text
+reprocut-core → reprocut-report → reprocut-oci
+reprocut-workspace → reprocut-runner → reprocut-state → reprocut-syntax
+reprocut-adapters → reprocut-engine → reprocut
+```
+
+The equivalent audited command order is:
+
+```console
 cargo publish -p reprocut-core
 cargo publish -p reprocut-report
 cargo publish -p reprocut-oci
-
 cargo publish -p reprocut-workspace
 cargo publish -p reprocut-runner
 cargo publish -p reprocut-state
 cargo publish -p reprocut-syntax
-
 cargo publish -p reprocut-adapters
 cargo publish -p reprocut-engine
 cargo publish -p reprocut
 ```
 
-Confirm the clean install in a new temporary directory:
+`reprocut-python` is intentionally `publish = false`; it is a Maturin build crate, not a
+user-facing crates.io package.
 
-```sh
-cargo install reprocut --version 0.1.0
-reprocut --version
-```
+## 4. Publish PyPI manually through OIDC
 
-`reprocut-python` is intentionally `publish = false`; it is a Maturin build
-crate, not a user-facing crates.io package.
+Register `.github/workflows/publish-registries.yml` as the PyPI Trusted
+Publisher for project `reprocut`, environment `pypi`, then run the same manual
+workflow with registry `pypi` and the exact confirmation.
 
-## 3. Publish Python distributions
+The workflow builds ABI3-Python-3.9 wheels for manylinux x86_64/aarch64,
+Windows x86_64, and macOS x86_64/aarch64, builds the sdist, runs `twine check`,
+and uses a short-lived OpenID Connect credential. No long-lived PyPI token is
+stored.
 
-Inspect the wheel and sdist names, then upload both from the downloaded CI
-artifact using a scoped PyPI token:
+After publication, validate a clean supported environment:
 
-```sh
-python -m pip install twine==7.0.0
-python -m twine check dist/wheels/* dist/sdist/*
-python -m twine upload dist/wheels/* dist/sdist/*
-```
-
-Validate in a clean Python 3.9+ virtual environment:
-
-```sh
+```console
 python -m pip install reprocut==0.1.0
 python -c "import reprocut; print(reprocut.BACKEND)"
 reprocut-py --help
 ```
 
-The Python package contains the native failure-oracle binding and typed client.
-Full project reduction additionally discovers the Rust `reprocut` binary via
-`REPROCUT_BINARY` or `PATH`; this boundary is explicit and tested.
-
-## 4. Tag only the published commit
-
-After both registries pass clean-install verification:
-
-```sh
-git tag -s v0.1.0 -m "ReproCut 0.1.0"
-git push origin v0.1.0
-```
-
-Create the GitHub release from the same tag and attach the package checksums,
-benchmark evidence, terminal demo, and source archive.
+The Python package contains the native oracle binding and typed shared-engine
+client. Full project reduction resolves the Rust `reprocut` CLI through
+`REPROCUT_BINARY` or `PATH`; it never falls back to a second Python reducer.

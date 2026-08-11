@@ -59,6 +59,14 @@ def compose_cli(*, runner_override: str | None = None) -> str:
     engine = compose_engine(runner_override=runner_override).removesuffix("fn main() {}")
     report = report_source()
     oci = read("crates/reprocut-oci/src/lib.rs")
+    completion_stub = r'''
+use std::io::Write;
+#[derive(Clone, Copy)]
+pub enum Shell { Bash, Elvish, Fish, PowerShell, Zsh }
+pub fn generate(_: Shell, _: &mut clap::Command, _: &str, output: &mut dyn Write) {
+    let _ = output.write_all(b"playground completion stub\n");
+}
+'''
     cli = (
         without_inner_attributes(read("crates/reprocut-cli/src/main.rs"))
         .replace("use reprocut_adapters::", "use crate::reprocut_adapters::")
@@ -69,7 +77,13 @@ def compose_cli(*, runner_override: str | None = None) -> str:
         .replace("use reprocut_workspace::", "use crate::reprocut_workspace::")
     )
     return "\n".join(
-        [engine, wrap("reprocut_oci", oci), wrap("reprocut_report", report), cli]
+        [
+            engine,
+            wrap("reprocut_oci", oci),
+            wrap("reprocut_report", report),
+            wrap("clap_complete", completion_stub),
+            cli,
+        ]
     )
 
 

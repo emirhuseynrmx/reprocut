@@ -1,33 +1,49 @@
 # Changelog
 
-All notable changes to ReproCut will be documented in this file.
+All notable changes to ReproCut are documented here.
 
 ## [Unreleased]
 
 ### Added
 
-- Stable failure oracle with volatile path, address, ID, whitespace, and newline normalization.
-- Deterministic hierarchical file reducer with conservative three-valued candidate results.
-- Disposable project inventories and candidate workspaces that do not follow symbolic links.
-- Bounded concurrent child-output capture, deadlines, direct-child termination, and reaping.
-- End-to-end engine with three baseline runs, run-local candidate caching, and three final verification runs.
-- No-clobber CLI artifact containing the retained project, JSON state, self-contained HTML report, and reproduction scripts.
-- Typed PyO3 oracle binding and a clearly identified source-checkout reference backend.
-- Atomic lowest-candidate primitive, Loom model, property tests, Criterion fixtures, and CI definitions for Miri, AddressSanitizer, cargo-deny, native wheels, and three host operating systems.
-- Measured 18-to-3 Python checkout demonstration and a verified 24-frame animated GIF.
+- Strict and flaky multi-stream same-failure oracles with bounded evidence.
+- Hierarchical subset/complement reduction, deterministic parallel frontiers,
+  SQLite attempt journaling, cache reuse, and compatibility-checked resume.
+- Descendant-process containment on Unix process groups and Windows Job Objects.
+- Cargo, Python, and npm discovery plus conservative manifest preparation.
+- Tree-sitter deletion and hoisting for Rust, Python, JavaScript, TypeScript, C,
+  C++, Go, and Java.
+- One schema-2 evidence model for JSON, JSONL, standalone HTML, GitHub issue
+  Markdown, reproducer scripts, protocol events, and the typed Python client.
+- Validated OCI archive export, redacted gallery preparation, and a protocol-only
+  VS Code/Cursor extension.
+- A pinned, opt-in 24-case GCC/Clang upstream reduction corpus.
+- A deterministic 312-file release benchmark recording raw wall time, engine
+  time, oracle runs, candidate/cache counters, project mass, and sampled RSS.
+- crates.io/PyPI package metadata, generated shell completions, six-target
+  deterministic archive tooling, SPDX/SHA-256 aggregation, provenance workflow,
+  and real failure smoke tests.
+- A schema-2 18-to-3 measured demo and evidence-bound 24-frame animation.
 
-### Verification evidence
+### Changed
 
-- Official Rust Playground compilation covers exhaustive reducer subsets, failure identity, bounded streams, timeout/reap behavior, disposable workspaces, real CLI publication, and the byte-exact report golden.
-- Local Python acceptance: 10 passed and 1 native-wheel-only test skipped.
-- Browser acceptance at 1440×1000 and 390×844: no horizontal overflow, no console errors, visible keyboard focus, reduced-motion final state, and no external requests.
-- GIF contract: 24 frames, 1200×675, infinite loop, 446,389 bytes.
+- Package `reprocut-cli` is published as crates.io package `reprocut` while the
+  binary name remains `reprocut`.
+- Python reduction now invokes the versioned Rust JSONL protocol instead of
+  maintaining a second reducer.
+- Failure detection defaults to stream-aware `auto` selection.
 
-### Known limitations
+### Release status
 
-- Reduction is regular-file-level only; manifest and syntax reducers are not implemented.
-- Candidate caching is memory-only and runs cannot resume.
-- The command must fail deterministically enough to form a stable baseline.
-- A disposable directory is an isolation boundary for project files, not a hostile-code security sandbox.
-- Timeout handling kills and reaps the direct child but does not yet guarantee descendant-process cleanup.
-- Native PyO3, Loom, Miri, Clippy, rustfmt 1.85, cargo-deny, sanitizer, and platform jobs are configured in CI but could not be executed locally because Windows Application Control blocks the installed Rust toolchain with OS error 4551.
+- Version remains `0.1.0` during release-candidate development.
+- crates.io/PyPI upload and the `v0.1.0` tag are intentionally left to the user.
+- Native Rust, Miri, sanitizer, wheel, OCI, cross-platform archive, SBOM, and
+  provenance gates are configured for clean CI because Windows Application
+  Control blocks the installed local Rust executables with OS error 4551.
+
+### Deliberate limits
+
+- ReproCut does not promise a global minimum or root-cause diagnosis.
+- Candidate commands run with user authority; the tool is not a hostile-code sandbox.
+- Retained files are observed final-snapshot facts, not semantic causality claims.
+- No benchmark speedup, public usage, testimonial, star, or download claim is made.

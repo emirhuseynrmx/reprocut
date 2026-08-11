@@ -1,0 +1,217 @@
+name: Release candidate
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v0.1.0"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  REPROCUT_VERSION: "0.1.0"
+
+jobs:
+  lockfile:
+    name: Resolve one dependency graph for every target
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal
+          rustup default 1.85.0
+      - name: Resolve and validate the release graph once
+        run: |
+          cargo generate-lockfile
+          cargo metadata --locked --format-version 1 > /dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-cargo-lock
+          path: Cargo.lock
+          if-no-files-found: error
+
+  build:
+    name: Build and smoke ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            binary: target/x86_64-unknown-linux-gnu/release/reprocut
+            launcher: "[]"
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+            binary: target/x86_64-unknown-linux-musl/release/reprocut
+            launcher: "[]"
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+            binary: target/aarch64-unknown-linux-gnu/release/reprocut
+            launcher: '["qemu-aarch64","-L","/usr/aarch64-linux-gnu"]'
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            binary: target/x86_64-pc-windows-msvc/release/reprocut.exe
+            launcher: "[]"
+          - target: x86_64-apple-darwin
+            runner: macos-13
+            binary: target/x86_64-apple-darwin/release/reprocut
+            launcher: "[]"
+          - target: aarch64-apple-darwin
+            runner: macos-14
+            binary: target/aarch64-apple-darwin/release/reprocut
+            launcher: "[]"
+    runs-on: ${{ matrix.runner }}
+    needs: lockfile
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: release-cargo-lock
+          path: .
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Validate release identity
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            test "${GITHUB_REF_NAME}" = "v${REPROCUT_VERSION}"
+          fi
+      - name: Install pinned Rust toolchain and target
+        shell: bash
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal
+          rustup default 1.85.0
+          rustup target add "${{ matrix.target }}"
+      - name: Install Linux cross toolchains
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes musl-tools gcc-aarch64-linux-gnu qemu-user
+      - name: Build target binary
+        shell: bash
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+          CC_x86_64_unknown_linux_musl: musl-gcc
+        run: cargo build --locked --release -p reprocut --target "${{ matrix.target }}"
+      - name: Generate completions from the same CLI schema
+        shell: bash
+        run: |
+          mkdir -p release-completions
+          cargo run --locked --release -p reprocut -- completions bash > release-completions/reprocut.bash
+          cargo run --locked --release -p reprocut -- completions zsh > release-completions/_reprocut
+          cargo run --locked --release -p reprocut -- completions fish > release-completions/reprocut.fish
+          cargo run --locked --release -p reprocut -- completions power-shell > release-completions/_reprocut.ps1
+      - name: Smoke the built binary on a real failure
+        shell: bash
+        run: >-
+          python scripts/release/smoke_binary.py
+          --binary "${{ matrix.binary }}"
+          --python "$(python -c 'import sys; print(sys.executable)')"
+          --fixture tests/fixtures/python_failure
+          --version "${REPROCUT_VERSION}"
+          --launcher-json '${{ matrix.launcher }}'
+      - name: Package and structurally verify the archive
+        id: package
+        shell: bash
+        run: |
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          ARCHIVE="$(python scripts/release/package_binary.py \
+            --binary "${{ matrix.binary }}" \
+            --completions release-completions \
+            --repository . \
+            --output dist \
+            --target "${{ matrix.target }}" \
+            --version "${REPROCUT_VERSION}" \
+            --source-revision "${GITHUB_SHA}" \
+            --source-date-epoch "${SOURCE_DATE_EPOCH}")"
+          python scripts/release/verify_archive.py "${ARCHIVE}" \
+            --target "${{ matrix.target }}" --version "${REPROCUT_VERSION}"
+          echo "archive=${ARCHIVE}" >> "${GITHUB_OUTPUT}"
+      - name: Generate SPDX JSON SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: ${{ steps.package.outputs.archive }}
+          format: spdx-json
+          output-file: ${{ steps.package.outputs.archive }}.spdx.json
+          upload-artifact: false
+      - name: Upload verified target pair
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: |
+            ${{ steps.package.outputs.archive }}
+            ${{ steps.package.outputs.archive }}.spdx.json
+          if-no-files-found: error
+
+  aggregate:
+    name: Bind checksums, SBOMs, and provenance
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Verify the complete six-target set and emit checksums
+        run: >-
+          python scripts/release/build_manifest.py
+          --input dist
+          --output dist
+          --version "${REPROCUT_VERSION}"
+          --source-revision "${GITHUB_SHA}"
+      - name: Attest every release subject
+        if: github.ref_type == 'tag'
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.spdx.json
+            dist/SHA256SUMS
+            dist/release-manifest.json
+      - name: Upload complete release candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: reprocut-${{ env.REPROCUT_VERSION }}-release-candidate
+          path: dist
+          if-no-files-found: error
+
+  publish-github-release:
+    name: Publish manually approved GitHub Release
+    if: github.ref_type == 'tag' && github.ref_name == 'v0.1.0'
+    needs: aggregate
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: reprocut-${{ env.REPROCUT_VERSION }}-release-candidate
+          path: dist
+      - name: Create immutable release assets from the verified tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${GITHUB_REF_NAME}"
+          dist/*
+          --verify-tag
+          --title "ReproCut ${REPROCUT_VERSION}"
+          --notes-file release/README.md

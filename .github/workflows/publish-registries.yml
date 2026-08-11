@@ -1,0 +1,198 @@
+name: Publish registries (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing immutable release tag"
+        required: true
+        default: "v0.1.0"
+      registry:
+        description: "Registry handoff to execute"
+        type: choice
+        options: [crates-io, pypi]
+        required: true
+      confirmation:
+        description: "Type PUBLISH_REPROCUT_0_1_0"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  REPROCUT_VERSION: "0.1.0"
+
+jobs:
+  guard:
+    name: Verify irreversible publication request
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require exact version, tag, and confirmation
+        run: |
+          test "${{ inputs.tag }}" = "v${REPROCUT_VERSION}"
+          test "${{ inputs.confirmation }}" = "PUBLISH_REPROCUT_0_1_0"
+
+  publish-crates:
+    name: Publish crates.io dependency chain
+    if: inputs.registry == 'crates-io'
+    needs: guard
+    runs-on: ubuntu-latest
+    environment: crates-io
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+      - name: Require the checked-out tag identity
+        run: |
+          test "$(git describe --tags --exact-match)" = "${{ inputs.tag }}"
+          test "$(git status --porcelain)" = ""
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.85.0
+      - name: Re-run publish-critical contracts
+        run: |
+          cargo generate-lockfile
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets --all-features -- -D warnings
+          cargo test --workspace --all-targets
+      - name: Publish in topological order and wait for index propagation
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          for package in \
+            reprocut-core reprocut-report reprocut-oci reprocut-workspace \
+            reprocut-runner reprocut-state reprocut-syntax reprocut-adapters \
+            reprocut-engine reprocut
+          do
+            cargo publish -p "${package}"
+            for attempt in $(seq 1 30)
+            do
+              status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+                "https://crates.io/api/v1/crates/${package}/${REPROCUT_VERSION}")"
+              if test "${status}" = "200"; then break; fi
+              if test "${attempt}" = "30"; then
+                echo "registry propagation timed out for ${package}" >&2
+                exit 1
+              fi
+              sleep 10
+            done
+          done
+      - name: Clean install the public crate
+        run: |
+          cargo install reprocut --version "${REPROCUT_VERSION}" --locked
+          reprocut --version
+
+  build-wheels:
+    name: Build/test wheel ${{ matrix.platform }}
+    if: inputs.registry == 'pypi'
+    needs: guard
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: manylinux-x86_64
+            runner: ubuntu-latest
+            target: x86_64
+          - platform: manylinux-aarch64
+            runner: ubuntu-latest
+            target: aarch64
+          - platform: windows-x86_64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+          - platform: macos-x86_64
+            runner: macos-13
+            target: x86_64-apple-darwin
+          - platform: macos-aarch64
+            runner: macos-14
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+      - name: Require the checked-out tag identity
+        shell: bash
+        run: |
+          test "$(git describe --tags --exact-match)" = "${{ inputs.tag }}"
+          test "$(git status --porcelain)" = ""
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Build ABI3 wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist
+          manylinux: auto
+      - name: Test native wheel on the matching host architecture
+        if: matrix.platform != 'manylinux-aarch64'
+        shell: bash
+        run: |
+          python -m pip install --force-reinstall dist/reprocut-*.whl
+          python -m pip install pytest==8.4.2 Pillow==12.2.0
+          REPROCUT_REQUIRE_NATIVE=1 python -m pytest python/tests -q
+      - name: Enable arm64 containers for the manylinux runtime smoke
+        if: matrix.platform == 'manylinux-aarch64'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+      - name: Test the arm64 wheel in a clean manylinux container
+        if: matrix.platform == 'manylinux-aarch64'
+        shell: bash
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v "${PWD}:/io" -w /io quay.io/pypa/manylinux_2_28_aarch64 \
+            bash -lc '
+              /opt/python/cp312-cp312/bin/python -m pip install dist/reprocut-*.whl \
+                pytest==8.4.2 Pillow==12.2.0 &&
+              REPROCUT_REQUIRE_NATIVE=1 /opt/python/cp312-cp312/bin/python \
+                -m pytest python/tests -q
+            '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.platform }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  publish-pypi:
+    name: Publish PyPI through Trusted Publishing
+    if: inputs.registry == 'pypi'
+    needs: build-wheels
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag }}
+      - name: Require the checked-out tag identity
+        run: |
+          test "$(git describe --tags --exact-match)" = "${{ inputs.tag }}"
+          test "$(git status --porcelain)" = ""
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install pinned Rust metadata toolchain
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal
+          rustup default 1.85.0
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: wheel-*
+          path: dist
+          merge-multiple: true
+      - name: Build source distribution and validate every file
+        run: |
+          python -m pip install maturin==1.14.1 twine==7.0.0
+          maturin sdist --out dist
+          python -m twine check dist/*
+      - name: Publish with short-lived OpenID Connect credentials
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist

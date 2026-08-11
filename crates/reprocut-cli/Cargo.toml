@@ -18,6 +18,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
+clap_complete.workspace = true
 reprocut-adapters = { path = "../reprocut-adapters", version = "0.1.0" }
 reprocut-core = { path = "../reprocut-core", version = "0.1.0" }
 reprocut-engine = { path = "../reprocut-engine", version = "0.1.0" }

@@ -59,6 +59,23 @@ fn oci_export_help_promises_a_real_archive_and_explicit_builder() {
 }
 
 #[test]
+fn emits_real_shell_completions_from_the_cli_schema() {
+    for (shell, marker) in [
+        ("bash", "_reprocut"),
+        ("fish", "complete -c reprocut"),
+        ("power-shell", "Register-ArgumentCompleter"),
+        ("zsh", "#compdef reprocut"),
+    ] {
+        Command::cargo_bin("reprocut")
+            .expect("binary is built")
+            .args(["completions", shell])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains(marker));
+    }
+}
+
+#[test]
 fn protocol_run_streams_versioned_jsonl_and_keeps_stdout_machine_only() {
     let sandbox = tempdir().expect("sandbox");
     let output = sandbox.path().join("minimal");
