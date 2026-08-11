@@ -1,4 +1,6 @@
-use reprocut_core::{CandidateVerdict, ExecutionObservation, FailureFingerprint};
+use reprocut_core::{
+    CandidateVerdict, DiagnosticChannel, ExecutionObservation, FailureFingerprint,
+};
 
 #[test]
 fn inconclusive_is_distinct_from_preserved_and_rejected() {
@@ -28,6 +30,11 @@ fn fingerprint_is_serializable_and_stable() {
 
     assert_eq!(
         encoded,
-        r#"{"exit_code":1,"signal":null,"anchor":"TypeError: currency"}"#
+        r#"{"exit_code":1,"signal":null,"anchor":"TypeError: currency","anchors":[{"channel":"stderr","text":"TypeError: currency"}],"normalization_schema":1}"#
     );
+    assert_eq!(
+        fingerprint.anchors()[0].channel(),
+        DiagnosticChannel::Stderr
+    );
+    assert_eq!(fingerprint.normalization_schema(), 1);
 }

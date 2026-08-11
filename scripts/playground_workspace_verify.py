@@ -38,10 +38,7 @@ def wrap(name: str, source: str) -> str:
 
 def compose_cli() -> str:
     model = read("crates/reprocut-core/src/model.rs")
-    oracle = read("crates/reprocut-core/src/oracle.rs").replace(
-        "use crate::{CandidateVerdict, ExecutionObservation, FailureFingerprint};",
-        "use super::{CandidateVerdict, ExecutionObservation, FailureFingerprint};",
-    )
+    oracle = read("crates/reprocut-core/src/oracle.rs").replace("use crate::{", "use super::{", 1)
     reducer = read("crates/reprocut-core/src/reducer.rs").replace(
         "use crate::CandidateVerdict;", "use super::CandidateVerdict;"
     )
@@ -51,7 +48,10 @@ mod model {{ {model} }}
 mod oracle {{ {oracle} }}
 mod reducer {{ {reducer} }}
 mod winner {{ {winner} }}
-pub use model::{{CandidateVerdict, ExecutionObservation, FailureFingerprint}};
+pub use model::{{
+    CandidateVerdict, DiagnosticAnchor, DiagnosticChannel, ExecutionObservation,
+    FailureFingerprint,
+}};
 pub use oracle::{{FailureOracle, OracleError}};
 pub use reducer::{{reduce, ReductionResult, ReductionUnit}};
 pub use winner::LowestWinner;

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from types import MappingProxyType
-from typing import Literal
+from typing import Literal, Union
 
 Verdict = Literal["preserved", "rejected", "inconclusive"]
-Baseline = tuple[int, str]
+Channel = Literal["auto", "stdout", "stderr", "combined"]
+LegacyBaseline = tuple[int, str]
+StreamBaseline = tuple[int, str, str]
+Baseline = Union[LegacyBaseline, StreamBaseline]
 
 _WINDOWS_PATH = re.compile(r"[A-Za-z]:\\(?:[^\\ \t\r\n:]+\\)*[^\\ \t\r\n:]+")
 _UNIX_PATH = re.compile(r"/(?:[^/ \t\r\n:]+/)*[^/ \t\r\n:]+")
@@ -30,42 +32,69 @@ def _normalize(diagnostic: str) -> str:
 class FailureOracle:
     """Reference implementation of the immutable native oracle contract."""
 
-    __slots__ = ("_anchor", "_exit_code")
+    __slots__ = ("_anchors", "_exit_code")
 
-    def __init__(self, exit_code: int, anchor: str, *, _factory: bool = False) -> None:
+    def __init__(
+        self,
+        exit_code: int,
+        anchors: tuple[tuple[str, str], ...],
+        *,
+        _factory: bool = False,
+    ) -> None:
         if not _factory:
             raise TypeError("use FailureOracle.from_baselines()")
         object.__setattr__(self, "_exit_code", exit_code)
-        object.__setattr__(self, "_anchor", anchor)
+        object.__setattr__(self, "_anchors", anchors)
 
     def __setattr__(self, name: str, value: object) -> None:
         del name, value
         raise AttributeError("FailureOracle is immutable")
 
     @classmethod
-    def from_baselines(cls, baselines: Sequence[Baseline]) -> FailureOracle:
+    def from_baselines(
+        cls, baselines: Sequence[Baseline], *, channel: Channel = "auto"
+    ) -> FailureOracle:
         if len(baselines) < 2:
             raise ValueError("at least two baseline observations are required")
-        first_exit, first_diagnostic = baselines[0]
-        if any(exit_code != first_exit for exit_code, _ in baselines[1:]):
-            raise ValueError("baseline exit states are unstable")
-        normalized = _normalize(first_diagnostic)
-        if any(_normalize(diagnostic) != normalized for _, diagnostic in baselines[1:]):
-            raise ValueError("baseline diagnostics are unstable")
+        if channel not in {"auto", "stdout", "stderr", "combined"}:
+            raise ValueError(f"unsupported diagnostic channel: {channel}")
 
-        anchor = ""
-        for line in normalized.splitlines():
-            if line and len(line) >= len(anchor):
-                anchor = line
-        if not anchor:
-            raise ValueError("baseline diagnostic has no stable non-empty anchor")
-        return cls(first_exit, anchor, _factory=True)
+        observations = tuple(_split_baseline(baseline) for baseline in baselines)
+        first_exit = observations[0][0]
+        if any(exit_code != first_exit for exit_code, _, _ in observations[1:]):
+            raise ValueError("baseline exit states are unstable")
+
+        stdout = _stable_stream(tuple(item[1] for item in observations))
+        stderr = _stable_stream(tuple(item[2] for item in observations))
+        anchors: list[tuple[str, str]] = []
+        if channel == "auto":
+            for name, stream in (("stdout", stdout), ("stderr", stderr)):
+                if stream[0] == "stable":
+                    anchors.append((name, _longest_line(stream[1])))
+            if not anchors:
+                if stdout[0] == "unstable" or stderr[0] == "unstable":
+                    raise ValueError("baseline diagnostics are unstable")
+                raise ValueError("baseline diagnostic has no stable non-empty anchor")
+        else:
+            selected = (
+                (("stdout", stdout), ("stderr", stderr))
+                if channel == "combined"
+                else ((channel, stdout if channel == "stdout" else stderr),)
+            )
+            for name, stream in selected:
+                if stream[0] == "unstable":
+                    raise ValueError("baseline diagnostics are unstable")
+                if stream[0] == "empty":
+                    raise ValueError("baseline diagnostic has no stable non-empty anchor")
+                anchors.append((name, _longest_line(stream[1])))
+        return cls(first_exit, tuple(anchors), _factory=True)
 
     def classify(
         self,
         exit_code: int,
         diagnostic: str,
         *,
+        stdout: str = "",
         timed_out: bool = False,
         truncated: bool = False,
     ) -> Verdict:
@@ -73,17 +102,41 @@ class FailureOracle:
             return "inconclusive"
         if exit_code != self._exit_code:
             return "rejected"
-        return "preserved" if self._anchor in _normalize(diagnostic).splitlines() else "rejected"
+        streams = {"stdout": _normalize(stdout), "stderr": _normalize(diagnostic)}
+        matches = all(text in streams[channel].splitlines() for channel, text in self._anchors)
+        return "preserved" if matches else "rejected"
 
     @property
-    def fingerprint(self) -> dict[str, int | str | None]:
-        # A new value prevents callers from mutating oracle state.
-        return dict(
-            MappingProxyType(
-                {
-                    "exit_code": self._exit_code,
-                    "signal": None,
-                    "anchor": self._anchor,
-                }
-            )
-        )
+    def fingerprint(self) -> dict[str, object]:
+        # Detached nested values prevent callers from mutating oracle state.
+        first_anchor = self._anchors[0][1]
+        return {
+            "exit_code": self._exit_code,
+            "signal": None,
+            "anchor": first_anchor,
+            "anchors": [
+                {"channel": channel, "text": text} for channel, text in self._anchors
+            ],
+            "normalization_schema": 1,
+        }
+
+
+def _split_baseline(baseline: Baseline) -> tuple[int, str, str]:
+    if len(baseline) == 2:
+        exit_code, diagnostic = baseline
+        return exit_code, "", diagnostic
+    exit_code, stdout, stderr = baseline
+    return exit_code, stdout, stderr
+
+
+def _stable_stream(values: tuple[str, ...]) -> tuple[str, str]:
+    normalized = tuple(_normalize(value) for value in values)
+    if any(value != normalized[0] for value in normalized[1:]):
+        return "unstable", ""
+    if not normalized[0]:
+        return "empty", ""
+    return "stable", normalized[0]
+
+
+def _longest_line(diagnostic: str) -> str:
+    return max((line for line in diagnostic.splitlines() if line), key=len)

@@ -3,7 +3,9 @@ use std::sync::OnceLock;
 use regex::Regex;
 use thiserror::Error;
 
-use crate::{CandidateVerdict, ExecutionObservation, FailureFingerprint};
+use crate::{
+    CandidateVerdict, DiagnosticAnchor, DiagnosticChannel, ExecutionObservation, FailureFingerprint,
+};
 
 /// A failure-oracle construction error.
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
@@ -34,6 +36,14 @@ pub struct FailureOracle {
 impl FailureOracle {
     /// Builds an oracle from repeated observations of the original failure.
     pub fn from_baselines(baselines: &[ExecutionObservation]) -> Result<Self, OracleError> {
+        Self::from_baselines_with_channel(DiagnosticChannel::Auto, baselines)
+    }
+
+    /// Builds an oracle under an explicit process-stream selection policy.
+    pub fn from_baselines_with_channel(
+        channel: DiagnosticChannel,
+        baselines: &[ExecutionObservation],
+    ) -> Result<Self, OracleError> {
         let Some(first) = baselines.first() else {
             return Err(OracleError::TooFewBaselines);
         };
@@ -52,24 +62,40 @@ impl FailureOracle {
             return Err(OracleError::UnstableExitState);
         }
 
-        let first_diagnostic = normalize_bytes(first.stderr());
-        if baselines
-            .iter()
-            .skip(1)
-            .any(|observation| normalize_bytes(observation.stderr()) != first_diagnostic)
-        {
-            return Err(OracleError::UnstableDiagnostic);
+        let stdout = stable_stream(baselines, ExecutionObservation::stdout);
+        let stderr = stable_stream(baselines, ExecutionObservation::stderr);
+        let mut anchors = Vec::with_capacity(2);
+
+        match channel {
+            DiagnosticChannel::Auto => {
+                if let StableStream::Stable(value) = &stdout {
+                    anchors.push(anchor_for(DiagnosticChannel::Stdout, value)?);
+                }
+                if let StableStream::Stable(value) = &stderr {
+                    anchors.push(anchor_for(DiagnosticChannel::Stderr, value)?);
+                }
+                if anchors.is_empty() {
+                    return Err(auto_stream_error(&stdout, &stderr));
+                }
+            }
+            DiagnosticChannel::Stdout => {
+                anchors.push(required_anchor(DiagnosticChannel::Stdout, stdout)?);
+            }
+            DiagnosticChannel::Stderr => {
+                anchors.push(required_anchor(DiagnosticChannel::Stderr, stderr)?);
+            }
+            DiagnosticChannel::Combined => {
+                anchors.push(required_anchor(DiagnosticChannel::Stdout, stdout)?);
+                anchors.push(required_anchor(DiagnosticChannel::Stderr, stderr)?);
+            }
         }
 
-        let anchor = first_diagnostic
-            .lines()
-            .filter(|line| !line.is_empty())
-            .max_by_key(|line| line.len())
-            .ok_or(OracleError::EmptyAnchor)?
-            .to_owned();
-
         Ok(Self {
-            fingerprint: FailureFingerprint::new(first.exit_code(), first.signal(), anchor),
+            fingerprint: FailureFingerprint::from_anchors(
+                first.exit_code(),
+                first.signal(),
+                anchors,
+            ),
         })
     }
 
@@ -89,15 +115,80 @@ impl FailureOracle {
             return CandidateVerdict::Rejected;
         }
 
-        let normalized = normalize_bytes(observation.stderr());
-        if normalized
-            .lines()
-            .any(|line| line == self.fingerprint.anchor())
-        {
+        let mut normalized_stdout = None;
+        let mut normalized_stderr = None;
+        let matches = self.fingerprint.anchors().iter().all(|anchor| {
+            let normalized =
+                match anchor.channel() {
+                    DiagnosticChannel::Stdout => normalized_stdout
+                        .get_or_insert_with(|| normalize_bytes(observation.stdout())),
+                    DiagnosticChannel::Stderr => normalized_stderr
+                        .get_or_insert_with(|| normalize_bytes(observation.stderr())),
+                    DiagnosticChannel::Auto | DiagnosticChannel::Combined => return false,
+                };
+            normalized.lines().any(|line| line == anchor.text())
+        });
+        if matches {
             CandidateVerdict::Preserved
         } else {
             CandidateVerdict::Rejected
         }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum StableStream {
+    Stable(String),
+    Empty,
+    Unstable,
+}
+
+fn stable_stream(
+    baselines: &[ExecutionObservation],
+    select: fn(&ExecutionObservation) -> &[u8],
+) -> StableStream {
+    let first = normalize_bytes(select(&baselines[0]));
+    if baselines
+        .iter()
+        .skip(1)
+        .any(|observation| normalize_bytes(select(observation)) != first)
+    {
+        StableStream::Unstable
+    } else if first.is_empty() {
+        StableStream::Empty
+    } else {
+        StableStream::Stable(first)
+    }
+}
+
+fn required_anchor(
+    channel: DiagnosticChannel,
+    stream: StableStream,
+) -> Result<DiagnosticAnchor, OracleError> {
+    match stream {
+        StableStream::Stable(value) => anchor_for(channel, &value),
+        StableStream::Empty => Err(OracleError::EmptyAnchor),
+        StableStream::Unstable => Err(OracleError::UnstableDiagnostic),
+    }
+}
+
+fn anchor_for(
+    channel: DiagnosticChannel,
+    diagnostic: &str,
+) -> Result<DiagnosticAnchor, OracleError> {
+    diagnostic
+        .lines()
+        .filter(|line| !line.is_empty())
+        .max_by_key(|line| line.len())
+        .map(|line| DiagnosticAnchor::new(channel, line.to_owned()))
+        .ok_or(OracleError::EmptyAnchor)
+}
+
+fn auto_stream_error(stdout: &StableStream, stderr: &StableStream) -> OracleError {
+    if matches!(stdout, StableStream::Unstable) || matches!(stderr, StableStream::Unstable) {
+        OracleError::UnstableDiagnostic
+    } else {
+        OracleError::EmptyAnchor
     }
 }
 

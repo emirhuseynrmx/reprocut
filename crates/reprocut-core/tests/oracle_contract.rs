@@ -1,4 +1,6 @@
-use reprocut_core::{CandidateVerdict, ExecutionObservation, FailureOracle, OracleError};
+use reprocut_core::{
+    CandidateVerdict, DiagnosticChannel, ExecutionObservation, FailureOracle, OracleError,
+};
 
 fn failed(stderr: &str) -> ExecutionObservation {
     ExecutionObservation::new(
@@ -64,4 +66,50 @@ fn unstable_baselines_are_refused() {
     .expect_err("different diagnostics must not form one oracle");
 
     assert_eq!(error, OracleError::UnstableDiagnostic);
+}
+
+#[test]
+fn auto_requires_every_stable_non_empty_channel() {
+    let oracle = FailureOracle::from_baselines_with_channel(
+        DiagnosticChannel::Auto,
+        &[
+            observed("stable stdout", "stable stderr"),
+            observed("stable stdout", "stable stderr"),
+        ],
+    )
+    .expect("both streams are stable");
+
+    assert_eq!(oracle.fingerprint().anchors().len(), 2);
+    assert_eq!(
+        oracle.classify(&observed("changed stdout", "stable stderr")),
+        CandidateVerdict::Rejected
+    );
+}
+
+#[test]
+fn auto_can_stabilize_a_stdout_only_failure() {
+    let oracle = FailureOracle::from_baselines_with_channel(
+        DiagnosticChannel::Auto,
+        &[
+            observed("panic on stdout", ""),
+            observed("panic on stdout", ""),
+        ],
+    )
+    .expect("stdout is eligible");
+
+    assert_eq!(
+        oracle.fingerprint().anchors()[0].channel(),
+        DiagnosticChannel::Stdout
+    );
+}
+
+fn observed(stdout: &str, stderr: &str) -> ExecutionObservation {
+    ExecutionObservation::new(
+        Some(1),
+        None,
+        stdout.as_bytes().to_vec(),
+        stderr.as_bytes().to_vec(),
+        false,
+        false,
+    )
 }
