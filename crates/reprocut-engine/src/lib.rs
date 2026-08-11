@@ -26,7 +26,8 @@ use reprocut_state::{
     AttemptRecord, SessionContract, StateError, StateStore, TransitionRecord, WriterHandle,
 };
 use reprocut_workspace::{
-    CandidateWorkspace, DirectoryHierarchy, ProjectInventory, WorkspaceError,
+    CandidateWorkspace, DirectoryHierarchy, InventoryPolicy, ProjectInventory, ProjectSnapshot,
+    WorkspaceError,
 };
 use thiserror::Error;
 
@@ -55,6 +56,7 @@ pub struct ReductionRequest {
     evaluation_policy: EvaluationPolicy,
     jobs: usize,
     session_mode: SessionMode,
+    inventory_policy: InventoryPolicy,
 }
 
 impl ReductionRequest {
@@ -76,6 +78,7 @@ impl ReductionRequest {
             evaluation_policy: EvaluationPolicy::strict(),
             jobs: 1,
             session_mode: SessionMode::Ephemeral,
+            inventory_policy: InventoryPolicy::source_only(),
         }
     }
 
@@ -94,6 +97,12 @@ impl ReductionRequest {
     pub fn with_runtime(mut self, jobs: usize, session_mode: SessionMode) -> Self {
         self.jobs = jobs;
         self.session_mode = session_mode;
+        self
+    }
+
+    /// Returns a request using exact nested-directory inventory exclusions.
+    pub fn with_inventory_policy(mut self, inventory_policy: InventoryPolicy) -> Self {
+        self.inventory_policy = inventory_policy;
         self
     }
 
@@ -141,6 +150,11 @@ impl ReductionRequest {
     pub const fn session_mode(&self) -> &SessionMode {
         &self.session_mode
     }
+
+    /// Returns exclusions applied before source inventory allocation.
+    pub const fn inventory_policy(&self) -> &InventoryPolicy {
+        &self.inventory_policy
+    }
 }
 
 /// A completed, repeatedly verified reduction.
@@ -155,6 +169,7 @@ pub struct ReductionOutcome {
     cache_hits: u64,
     state_path: Option<PathBuf>,
     resumed: bool,
+    snapshot: ProjectSnapshot,
 }
 
 impl ReductionOutcome {
@@ -202,6 +217,11 @@ impl ReductionOutcome {
     pub const fn resumed(&self) -> bool {
         self.resumed
     }
+
+    /// Returns the exact immutable project that passed final verification.
+    pub const fn snapshot(&self) -> &ProjectSnapshot {
+        &self.snapshot
+    }
 }
 
 /// A reduction orchestration failure.
@@ -244,7 +264,8 @@ impl ReductionEngine {
     /// Stabilizes, minimizes, and re-verifies one failing command.
     #[allow(clippy::too_many_lines)]
     pub fn run(request: &ReductionRequest) -> Result<ReductionOutcome, EngineError> {
-        let inventory = ProjectInventory::scan(request.source_root())?;
+        let inventory =
+            ProjectInventory::scan_with_policy(request.source_root(), request.inventory_policy())?;
         if inventory.units().is_empty() {
             return Err(EngineError::EmptyProject);
         }
@@ -377,13 +398,13 @@ impl ReductionEngine {
             return Err(error);
         }
 
-        let kept = reduction.kept().iter().collect::<Vec<_>>();
+        let snapshot = ProjectSnapshot::from_inventory(&inventory, reduction.kept())?;
         let mut final_error = None;
         let final_evidence = policy.aggregate(std::iter::from_fn(|| {
             if final_error.is_some() {
                 return None;
             }
-            Some(match run_candidate(request, &inventory, &kept) {
+            Some(match run_snapshot_candidate(request, &snapshot) {
                 Ok(observation) => oracle.classify(&observation),
                 Err(error) => {
                     final_error = Some(error);
@@ -409,6 +430,7 @@ impl ReductionEngine {
             cache_hits: cache_hits.load(Ordering::Relaxed),
             state_path,
             resumed,
+            snapshot,
         })
     }
 }
@@ -482,6 +504,21 @@ fn run_candidate(
     kept: &[&ReductionUnit],
 ) -> Result<reprocut_core::ExecutionObservation, EngineError> {
     let candidate = CandidateWorkspace::materialize(inventory, kept)?;
+    let command = CommandSpec::new(
+        request.program.clone(),
+        request.arguments.clone(),
+        candidate.root().to_path_buf(),
+        request.timeout,
+        request.max_output_bytes,
+    );
+    Ok(ProcessRunner::run(&command)?)
+}
+
+fn run_snapshot_candidate(
+    request: &ReductionRequest,
+    snapshot: &ProjectSnapshot,
+) -> Result<reprocut_core::ExecutionObservation, EngineError> {
+    let candidate = CandidateWorkspace::materialize_snapshot(snapshot)?;
     let command = CommandSpec::new(
         request.program.clone(),
         request.arguments.clone(),
@@ -657,11 +694,16 @@ fn session_contract(request: &ReductionRequest, source: ContentDigest) -> Sessio
     });
     command.extend_from_slice(&request.evaluation_policy().runs().to_le_bytes());
     command.extend_from_slice(&request.evaluation_policy().required().to_le_bytes());
+    let mut adapter_version = String::from("files-v2");
+    for name in request.inventory_policy().excluded_directory_names() {
+        adapter_version.push('\0');
+        adapter_version.push_str(name);
+    }
     SessionContract::new(
         source,
         ContentDigest::of(&command),
         1,
-        "files-v1".to_owned(),
+        adapter_version,
         env!("CARGO_PKG_VERSION").to_owned(),
     )
 }

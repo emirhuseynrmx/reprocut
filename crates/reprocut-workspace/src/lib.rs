@@ -43,6 +43,11 @@ impl InventoryPolicy {
     pub fn excludes(&self, name: &str) -> bool {
         self.excluded_directory_names.contains(name)
     }
+
+    /// Returns excluded basenames in stable lexical order for session contracts.
+    pub fn excluded_directory_names(&self) -> impl ExactSizeIterator<Item = &str> {
+        self.excluded_directory_names.iter().map(String::as_str)
+    }
 }
 
 impl Default for InventoryPolicy {

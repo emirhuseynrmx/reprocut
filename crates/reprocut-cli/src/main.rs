@@ -16,7 +16,7 @@ use reprocut_engine::{
     EngineError, ReductionEngine, ReductionOutcome, ReductionRequest, SessionMode,
 };
 use reprocut_report::{render_report, ReportModel};
-use reprocut_workspace::{ProjectInventory, WorkspaceError};
+use reprocut_workspace::WorkspaceError;
 use serde::Serialize;
 use tempfile::TempDir;
 use thiserror::Error;
@@ -346,9 +346,7 @@ fn publish_artifact(
     let artifact = staging.path().join("artifact");
     let project = artifact.join("project");
 
-    let inventory = ProjectInventory::scan(&arguments.root)?;
-    let kept = outcome.reduction().kept().iter().collect::<Vec<_>>();
-    inventory.copy_units_to(&kept, &project)?;
+    outcome.snapshot().copy_to(&project)?;
 
     let report = render_report(&report_model(arguments, outcome, summary));
     write_file(&artifact.join("report.html"), report.as_bytes())?;
