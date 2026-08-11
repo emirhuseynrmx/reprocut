@@ -9,6 +9,7 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+reprocut-adapters = { path = "../reprocut-adapters" }
 reprocut-core = { path = "../reprocut-core" }
 reprocut-runner = { path = "../reprocut-runner" }
 reprocut-state = { path = "../reprocut-state" }

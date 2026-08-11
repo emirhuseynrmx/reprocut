@@ -14,7 +14,7 @@ use reprocut_core::{
     DiagnosticAnchor, DiagnosticChannel, EvaluationPolicy, PolicyError, TerminationReason,
 };
 use reprocut_engine::{
-    EngineError, ReductionEngine, ReductionOutcome, ReductionRequest, SessionMode,
+    EngineError, PreparationMode, ReductionEngine, ReductionOutcome, ReductionRequest, SessionMode,
 };
 use reprocut_report::{render_report, ReportModel};
 use reprocut_workspace::WorkspaceError;
@@ -62,6 +62,10 @@ struct ReduceArgs {
     /// Project adapter used for commands, exclusions, manifests, and syntax.
     #[arg(long, value_enum, default_value_t = EcosystemArg::Auto)]
     ecosystem: EcosystemArg,
+
+    /// Candidate dependency preparation authority.
+    #[arg(long, value_enum, default_value_t = PrepareArg::Offline)]
+    prepare: PrepareArg,
 
     /// Deadline for each candidate execution.
     #[arg(long, default_value_t = DEFAULT_TIMEOUT_MS)]
@@ -128,6 +132,47 @@ impl EcosystemArg {
             Self::None => EcosystemSelection::Explicit(Ecosystem::None),
         }
     }
+
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Cargo => "cargo",
+            Self::Python => "python",
+            Self::Npm => "npm",
+            Self::None => "none",
+        }
+    }
+}
+
+impl From<Ecosystem> for EcosystemArg {
+    fn from(value: Ecosystem) -> Self {
+        match value {
+            Ecosystem::Cargo => Self::Cargo,
+            Ecosystem::Python => Self::Python,
+            Ecosystem::Npm => Self::Npm,
+            Ecosystem::None => Self::None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "snake_case")]
+enum PrepareArg {
+    None,
+    Offline,
+    LifecycleScripts,
+    IsolatedPython,
+}
+
+impl From<PrepareArg> for PreparationMode {
+    fn from(value: PrepareArg) -> Self {
+        match value {
+            PrepareArg::None => Self::None,
+            PrepareArg::Offline => Self::Offline,
+            PrepareArg::LifecycleScripts => Self::LifecycleScripts,
+            PrepareArg::IsolatedPython => Self::IsolatedPython,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -182,7 +227,8 @@ struct ReductionSummary {
     source_root: String,
     output: String,
     command: Vec<String>,
-    ecosystem: EcosystemArg,
+    ecosystem: &'static str,
+    prepare: PrepareArg,
     original_files: usize,
     retained_files: usize,
     attempts: u64,
@@ -244,6 +290,7 @@ fn reduce_project(mut arguments: ReduceArgs, resume: bool) -> Result<(), CliErro
     let evaluation_policy = evaluation_policy(&arguments)?;
     ensure_output_absent(&arguments.output)?;
     let adapter = Adapter::detect(&arguments.root, arguments.ecosystem.selection())?;
+    arguments.ecosystem = adapter.ecosystem().into();
     if arguments.command.is_empty() {
         let command = adapter.command().ok_or(CliError::InvalidArguments(
             "the selected ecosystem has no default command; pass one after --",
@@ -268,14 +315,15 @@ fn reduce_project(mut arguments: ReduceArgs, resume: bool) -> Result<(), CliErro
     )
     .with_evaluation(arguments.oracle_stream.into(), evaluation_policy)
     .with_runtime(arguments.jobs, session_mode(&arguments, resume))
-    .with_inventory_policy(adapter.inventory_policy().clone());
+    .with_inventory_policy(adapter.inventory_policy().clone())
+    .with_ecosystem(adapter.ecosystem(), arguments.prepare.into());
 
     eprintln!("reprocut: proving a stable baseline and searching safe cuts...");
     let outcome = ReductionEngine::run(&request)?;
     eprintln!(
         "reprocut: stable baseline preserved; {} → {} files",
         outcome.original_files(),
-        outcome.reduction().kept().len()
+        outcome.snapshot().files().len()
     );
 
     let summary = build_summary(&arguments, &outcome);
@@ -288,7 +336,7 @@ fn reduce_project(mut arguments: ReduceArgs, resume: bool) -> Result<(), CliErro
         println!(
             "Reduced {} files to {}. Open {}/report.html",
             outcome.original_files(),
-            outcome.reduction().kept().len(),
+            outcome.snapshot().files().len(),
             arguments.output.display()
         );
     }
@@ -309,9 +357,10 @@ fn build_summary(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> Reductio
         source_root: arguments.root.display().to_string(),
         output: arguments.output.display().to_string(),
         command: arguments.command.clone(),
-        ecosystem: arguments.ecosystem,
+        ecosystem: arguments.ecosystem.name(),
+        prepare: arguments.prepare,
         original_files: outcome.original_files(),
-        retained_files: outcome.reduction().kept().len(),
+        retained_files: outcome.snapshot().files().len(),
         attempts: outcome.reduction().attempts(),
         baseline_runs: outcome.baseline_runs(),
         final_verifications: outcome.final_verifications(),
@@ -323,10 +372,10 @@ fn build_summary(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> Reductio
         oracle_stream: arguments.oracle_stream.into(),
         evaluation_policy: policy_summary(arguments),
         kept_files: outcome
-            .reduction()
-            .kept()
+            .snapshot()
+            .files()
             .iter()
-            .map(|unit| unit.path().to_owned())
+            .map(|file| file.path().to_owned())
             .collect(),
         fingerprint: FingerprintSummary {
             exit_code: fingerprint.exit_code(),
@@ -420,7 +469,7 @@ fn report_model(
     ReportModel {
         command: display_command(&arguments.command),
         original_files: outcome.original_files(),
-        retained_files: outcome.reduction().kept().len(),
+        retained_files: outcome.snapshot().files().len(),
         attempts: outcome.reduction().attempts(),
         inconclusive_attempts: outcome.inconclusive_attempts(),
         cache_hits: outcome.cache_hits(),

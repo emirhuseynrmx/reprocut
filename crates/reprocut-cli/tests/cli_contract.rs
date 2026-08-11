@@ -42,7 +42,8 @@ fn reduce_help_exposes_failure_evidence_controls() {
         .stdout(predicate::str::contains("--flaky"))
         .stdout(predicate::str::contains("--jobs"))
         .stdout(predicate::str::contains("--state"))
-        .stdout(predicate::str::contains("--ecosystem"));
+        .stdout(predicate::str::contains("--ecosystem"))
+        .stdout(predicate::str::contains("--prepare"));
 }
 
 #[test]

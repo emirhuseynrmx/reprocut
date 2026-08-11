@@ -16,6 +16,7 @@ use std::{
     time::Duration,
 };
 
+use reprocut_adapters::{Ecosystem, NpmManifest, PreparationPlan};
 use reprocut_core::{
     reduce_hierarchical_frontiers, AggregateDecision, AggregateEvidence, CandidateRank,
     CandidateVerdict, ContentDigest, DiagnosticChannel, EvaluationPolicy, ExecutionObservation,
@@ -44,6 +45,19 @@ pub enum SessionMode {
     Restart(PathBuf),
 }
 
+/// Authority granted to candidate dependency preparation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PreparationMode {
+    /// Never run an ecosystem preparation command.
+    None,
+    /// Permit built-in network-disabled commands with lifecycle scripts disabled.
+    Offline,
+    /// Permit network-disabled npm lifecycle scripts explicitly.
+    LifecycleScripts,
+    /// Reserve an explicitly isolated Python environment for dependency edits.
+    IsolatedPython,
+}
+
 /// A complete reduction request.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReductionRequest {
@@ -57,6 +71,8 @@ pub struct ReductionRequest {
     jobs: usize,
     session_mode: SessionMode,
     inventory_policy: InventoryPolicy,
+    ecosystem: Ecosystem,
+    preparation_mode: PreparationMode,
 }
 
 impl ReductionRequest {
@@ -79,6 +95,8 @@ impl ReductionRequest {
             jobs: 1,
             session_mode: SessionMode::Ephemeral,
             inventory_policy: InventoryPolicy::source_only(),
+            ecosystem: Ecosystem::None,
+            preparation_mode: PreparationMode::None,
         }
     }
 
@@ -103,6 +121,17 @@ impl ReductionRequest {
     /// Returns a request using exact nested-directory inventory exclusions.
     pub fn with_inventory_policy(mut self, inventory_policy: InventoryPolicy) -> Self {
         self.inventory_policy = inventory_policy;
+        self
+    }
+
+    /// Enables ecosystem-aware preparation and structured reducer selection.
+    pub fn with_ecosystem(
+        mut self,
+        ecosystem: Ecosystem,
+        preparation_mode: PreparationMode,
+    ) -> Self {
+        self.ecosystem = ecosystem;
+        self.preparation_mode = preparation_mode;
         self
     }
 
@@ -154,6 +183,16 @@ impl ReductionRequest {
     /// Returns exclusions applied before source inventory allocation.
     pub const fn inventory_policy(&self) -> &InventoryPolicy {
         &self.inventory_policy
+    }
+
+    /// Returns the explicitly selected project family.
+    pub const fn ecosystem(&self) -> Ecosystem {
+        self.ecosystem
+    }
+
+    /// Returns candidate preparation authority.
+    pub const fn preparation_mode(&self) -> PreparationMode {
+        self.preparation_mode
     }
 }
 
@@ -242,6 +281,9 @@ pub enum EngineError {
     /// The supplied command completed successfully.
     #[error("baseline command succeeded; ReproCut requires a failure")]
     BaselineSucceeded,
+    /// A required offline baseline preparation command did not succeed.
+    #[error("baseline preparation failed; the failure oracle was not created")]
+    BaselinePreparationFailed,
     /// The final candidate did not repeatedly preserve the failure.
     #[error("final verification did not preserve the configured failure")]
     FinalVerificationFailed,
@@ -279,7 +321,12 @@ impl ReductionEngine {
         let mut baselines = Vec::with_capacity(usize::from(policy.runs()));
 
         for _ in 0..policy.runs() {
-            let observation = run_candidate(request, &inventory, &all_units)?;
+            let observation = match run_candidate(request, &inventory, &all_units)? {
+                CandidateExecution::Observed(observation) => observation,
+                CandidateExecution::PreparationRejected => {
+                    return Err(EngineError::BaselinePreparationFailed);
+                }
+            };
             if policy == EvaluationPolicy::strict()
                 && observation.exit_code() == Some(0)
                 && observation.signal().is_none()
@@ -405,7 +452,8 @@ impl ReductionEngine {
                 return None;
             }
             Some(match run_snapshot_candidate(request, &snapshot) {
-                Ok(observation) => oracle.classify(&observation),
+                Ok(CandidateExecution::Observed(observation)) => oracle.classify(&observation),
+                Ok(CandidateExecution::PreparationRejected) => CandidateVerdict::Rejected,
                 Err(error) => {
                     final_error = Some(error);
                     CandidateVerdict::Inconclusive
@@ -502,8 +550,11 @@ fn run_candidate(
     request: &ReductionRequest,
     inventory: &ProjectInventory,
     kept: &[&ReductionUnit],
-) -> Result<reprocut_core::ExecutionObservation, EngineError> {
+) -> Result<CandidateExecution, EngineError> {
     let candidate = CandidateWorkspace::materialize(inventory, kept)?;
+    if !prepare_candidate(request, candidate.root())? {
+        return Ok(CandidateExecution::PreparationRejected);
+    }
     let command = CommandSpec::new(
         request.program.clone(),
         request.arguments.clone(),
@@ -511,14 +562,17 @@ fn run_candidate(
         request.timeout,
         request.max_output_bytes,
     );
-    Ok(ProcessRunner::run(&command)?)
+    Ok(CandidateExecution::Observed(ProcessRunner::run(&command)?))
 }
 
 fn run_snapshot_candidate(
     request: &ReductionRequest,
     snapshot: &ProjectSnapshot,
-) -> Result<reprocut_core::ExecutionObservation, EngineError> {
+) -> Result<CandidateExecution, EngineError> {
     let candidate = CandidateWorkspace::materialize_snapshot(snapshot)?;
+    if !prepare_candidate(request, candidate.root())? {
+        return Ok(CandidateExecution::PreparationRejected);
+    }
     let command = CommandSpec::new(
         request.program.clone(),
         request.arguments.clone(),
@@ -526,7 +580,50 @@ fn run_snapshot_candidate(
         request.timeout,
         request.max_output_bytes,
     );
-    Ok(ProcessRunner::run(&command)?)
+    Ok(CandidateExecution::Observed(ProcessRunner::run(&command)?))
+}
+
+enum CandidateExecution {
+    Observed(ExecutionObservation),
+    PreparationRejected,
+}
+
+fn prepare_candidate(request: &ReductionRequest, root: &Path) -> Result<bool, EngineError> {
+    let Some(plan) = global_preparation(request) else {
+        return Ok(true);
+    };
+    run_preparation(request, root, &plan)
+}
+
+fn global_preparation(request: &ReductionRequest) -> Option<PreparationPlan> {
+    if request.ecosystem() != Ecosystem::Npm || request.preparation_mode() == PreparationMode::None
+    {
+        return None;
+    }
+    Some(NpmManifest::preparation(
+        request.preparation_mode() == PreparationMode::LifecycleScripts,
+    ))
+}
+
+fn run_preparation(
+    request: &ReductionRequest,
+    root: &Path,
+    plan: &PreparationPlan,
+) -> Result<bool, EngineError> {
+    for preparation in plan.commands() {
+        let command = CommandSpec::new(
+            PathBuf::from(preparation.program()),
+            preparation.arguments().to_vec(),
+            root.to_path_buf(),
+            request.timeout,
+            request.max_output_bytes,
+        );
+        let observation = ProcessRunner::run(&command)?;
+        if !is_success(&observation) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -605,7 +702,8 @@ impl FrontierEvaluationContext<'_> {
                 return None;
             }
             Some(match run_candidate(self.request, self.inventory, &kept) {
-                Ok(observation) => self.oracle.classify(&observation),
+                Ok(CandidateExecution::Observed(observation)) => self.oracle.classify(&observation),
+                Ok(CandidateExecution::PreparationRejected) => CandidateVerdict::Rejected,
                 Err(error) => {
                     set_error(&local_error, error);
                     CandidateVerdict::Inconclusive
@@ -694,6 +792,18 @@ fn session_contract(request: &ReductionRequest, source: ContentDigest) -> Sessio
     });
     command.extend_from_slice(&request.evaluation_policy().runs().to_le_bytes());
     command.extend_from_slice(&request.evaluation_policy().required().to_le_bytes());
+    command.push(match request.ecosystem() {
+        Ecosystem::Cargo => 1,
+        Ecosystem::Python => 2,
+        Ecosystem::Npm => 3,
+        Ecosystem::None => 0,
+    });
+    command.push(match request.preparation_mode() {
+        PreparationMode::None => 0,
+        PreparationMode::Offline => 1,
+        PreparationMode::LifecycleScripts => 2,
+        PreparationMode::IsolatedPython => 3,
+    });
     let mut adapter_version = String::from("files-v2");
     for name in request.inventory_policy().excluded_directory_names() {
         adapter_version.push('\0');
