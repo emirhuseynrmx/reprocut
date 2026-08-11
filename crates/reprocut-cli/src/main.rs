@@ -13,7 +13,8 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use reprocut_adapters::{Adapter, AdapterError, Ecosystem, EcosystemSelection};
 use reprocut_core::{
     CandidateVerdict, ContentHasher, DiagnosticChannel, EvaluationPolicy, PolicyError,
-    TerminationReason,
+    ProgressEventV1, ProtocolAction, ProtocolError, ReductionRequestV1, TerminationReason,
+    PROTOCOL_VERSION,
 };
 use reprocut_engine::{
     EngineError, PreparationMode, ReductionEngine, ReductionOutcome, ReductionRequest, SessionMode,
@@ -56,6 +57,27 @@ enum Action {
     Resume(ReduceArgs),
     /// Export a completed artifact into a distribution format.
     Export(ExportArgs),
+    /// Run the versioned JSONL integration protocol.
+    Protocol(ProtocolArgs),
+}
+
+#[derive(Debug, Args)]
+struct ProtocolArgs {
+    #[command(subcommand)]
+    action: ProtocolCommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum ProtocolCommand {
+    /// Execute one JSON request and stream tagged JSONL events.
+    Run(ProtocolRunArgs),
+}
+
+#[derive(Debug, Args)]
+struct ProtocolRunArgs {
+    /// JSON file containing a ReductionRequestV1.
+    #[arg(long)]
+    request: PathBuf,
 }
 
 #[derive(Debug, Args)]
@@ -262,16 +284,21 @@ enum CliError {
     Serialize(#[from] serde_json::Error),
     #[error(transparent)]
     Policy(#[from] PolicyError),
+    #[error(transparent)]
+    Protocol(#[from] ProtocolError),
     #[error("{0}")]
     InvalidArguments(&'static str),
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    let machine_protocol = matches!(&cli.action, Action::Protocol(_));
     match execute(cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("error: {error}");
+            if !machine_protocol {
+                eprintln!("error: {error}");
+            }
             ExitCode::FAILURE
         }
     }
@@ -283,7 +310,108 @@ fn execute(cli: Cli) -> Result<(), CliError> {
         Action::Reduce(arguments) => reduce_project(arguments, false),
         Action::Resume(arguments) => reduce_project(arguments, true),
         Action::Export(arguments) => export_artifact(arguments),
+        Action::Protocol(arguments) => run_protocol(arguments),
     }
+}
+
+fn run_protocol(arguments: ProtocolArgs) -> Result<(), CliError> {
+    let result = match arguments.action {
+        ProtocolCommand::Run(arguments) => run_protocol_request(&arguments.request),
+    };
+    if let Err(error) = &result {
+        let _ = emit_event(&ProgressEventV1::Failed {
+            protocol_version: PROTOCOL_VERSION,
+            message: error.to_string(),
+        });
+    }
+    result
+}
+
+fn run_protocol_request(path: &Path) -> Result<(), CliError> {
+    let bytes = fs::read(path).map_err(|source| io_error("read protocol request", path, source))?;
+    let request: ReductionRequestV1 = serde_json::from_slice(&bytes)?;
+    request.validate()?;
+    emit_event(&ProgressEventV1::Started {
+        protocol_version: PROTOCOL_VERSION,
+        action: request.action,
+        root: request.root.clone(),
+    })?;
+    let resume = request.action == ProtocolAction::Resume;
+    let arguments = protocol_reduce_args(request)?;
+    let completed = execute_reduction(arguments, resume, false)?;
+    emit_event(&ProgressEventV1::BaselineStable {
+        protocol_version: PROTOCOL_VERSION,
+        fingerprint_sha256: completed.evidence.failure.fingerprint_sha256.clone(),
+    })?;
+    emit_event(&ProgressEventV1::Completed {
+        protocol_version: PROTOCOL_VERSION,
+        evidence: completed.arguments.output.join("reduction.json"),
+        report: completed.arguments.output.join("report.html"),
+        issue: completed.arguments.output.join("issue.md"),
+        output: completed.arguments.output,
+    })
+}
+
+fn protocol_reduce_args(request: ReductionRequestV1) -> Result<ReduceArgs, CliError> {
+    let ecosystem = match request.ecosystem.as_str() {
+        "auto" => EcosystemArg::Auto,
+        "cargo" => EcosystemArg::Cargo,
+        "python" => EcosystemArg::Python,
+        "npm" => EcosystemArg::Npm,
+        "none" => EcosystemArg::None,
+        _ => return Err(CliError::InvalidArguments("unsupported protocol ecosystem")),
+    };
+    let prepare = match request.preparation.as_str() {
+        "none" => PrepareArg::None,
+        "offline" => PrepareArg::Offline,
+        "lifecycle_scripts" => PrepareArg::LifecycleScripts,
+        "isolated_python" => PrepareArg::IsolatedPython,
+        _ => {
+            return Err(CliError::InvalidArguments(
+                "unsupported protocol preparation",
+            ))
+        }
+    };
+    let oracle_stream = match request.oracle_stream.as_str() {
+        "auto" => OracleStreamArg::Auto,
+        "stderr" => OracleStreamArg::Stderr,
+        "stdout" => OracleStreamArg::Stdout,
+        "combined" => OracleStreamArg::Combined,
+        _ => {
+            return Err(CliError::InvalidArguments(
+                "unsupported protocol oracle stream",
+            ))
+        }
+    };
+    Ok(ReduceArgs {
+        root: request.root,
+        output: request.output,
+        ecosystem,
+        prepare,
+        timeout_ms: request.timeout_ms,
+        max_output_bytes: request.max_output_bytes,
+        oracle_stream,
+        flaky: request.flaky_runs.is_some() || request.flaky_required.is_some(),
+        flaky_runs: request.flaky_runs,
+        flaky_required: request.flaky_required,
+        json: false,
+        jobs: request.jobs,
+        state: request.state,
+        restart: request.restart,
+        command: request.command,
+    })
+}
+
+fn emit_event(event: &ProgressEventV1) -> Result<(), CliError> {
+    let stdout = io::stdout();
+    let mut output = stdout.lock();
+    serde_json::to_writer(&mut output, event)?;
+    output
+        .write_all(b"\n")
+        .map_err(|source| io_error("write protocol event", Path::new("<stdout>"), source))?;
+    output
+        .flush()
+        .map_err(|source| io_error("flush protocol event", Path::new("<stdout>"), source))
 }
 
 fn export_artifact(arguments: ExportArgs) -> Result<(), CliError> {
@@ -320,7 +448,33 @@ fn export_oci(arguments: OciArgs) -> Result<(), CliError> {
     Ok(())
 }
 
-fn reduce_project(mut arguments: ReduceArgs, resume: bool) -> Result<(), CliError> {
+struct CompletedReduction {
+    arguments: ReduceArgs,
+    outcome: ReductionOutcome,
+    evidence: ReductionEvidence,
+    json: Vec<u8>,
+}
+
+fn reduce_project(arguments: ReduceArgs, resume: bool) -> Result<(), CliError> {
+    let completed = execute_reduction(arguments, resume, true)?;
+    if completed.arguments.json {
+        println!("{}", String::from_utf8_lossy(&completed.json));
+    } else {
+        println!(
+            "Reduced {} files to {}. Open {}/report.html",
+            completed.outcome.original_files(),
+            completed.outcome.snapshot().files().len(),
+            completed.arguments.output.display()
+        );
+    }
+    Ok(())
+}
+
+fn execute_reduction(
+    mut arguments: ReduceArgs,
+    resume: bool,
+    human_progress: bool,
+) -> Result<CompletedReduction, CliError> {
     if resume && arguments.restart {
         return Err(CliError::InvalidArguments(
             "resume and --restart are mutually exclusive",
@@ -357,29 +511,28 @@ fn reduce_project(mut arguments: ReduceArgs, resume: bool) -> Result<(), CliErro
     .with_inventory_policy(adapter.inventory_policy().clone())
     .with_ecosystem(adapter.ecosystem(), arguments.prepare.into());
 
-    eprintln!("reprocut: proving a stable baseline and searching safe cuts...");
+    if human_progress {
+        eprintln!("reprocut: proving a stable baseline and searching safe cuts...");
+    }
     let outcome = ReductionEngine::run(&request)?;
-    eprintln!(
-        "reprocut: stable baseline preserved; {} → {} files",
-        outcome.original_files(),
-        outcome.snapshot().files().len()
-    );
+    if human_progress {
+        eprintln!(
+            "reprocut: stable baseline preserved; {} → {} files",
+            outcome.original_files(),
+            outcome.snapshot().files().len()
+        );
+    }
 
     let evidence = build_evidence(&arguments, &outcome);
     let json = serde_json::to_vec_pretty(&evidence)?;
     publish_artifact(&arguments, &outcome, &evidence, &json)?;
 
-    if arguments.json {
-        println!("{}", String::from_utf8_lossy(&json));
-    } else {
-        println!(
-            "Reduced {} files to {}. Open {}/report.html",
-            outcome.original_files(),
-            outcome.snapshot().files().len(),
-            arguments.output.display()
-        );
-    }
-    Ok(())
+    Ok(CompletedReduction {
+        arguments,
+        outcome,
+        evidence,
+        json,
+    })
 }
 
 fn split_command(command: &[String]) -> (&str, &[String]) {

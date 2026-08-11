@@ -59,6 +59,83 @@ fn oci_export_help_promises_a_real_archive_and_explicit_builder() {
 }
 
 #[test]
+fn protocol_run_streams_versioned_jsonl_and_keeps_stdout_machine_only() {
+    let sandbox = tempdir().expect("sandbox");
+    let output = sandbox.path().join("minimal");
+    let request_path = sandbox.path().join("request.json");
+    fs::write(
+        &request_path,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "protocol_version": 1,
+            "action": "minimize",
+            "root": fixture_root(),
+            "output": output,
+            "ecosystem": "python",
+            "preparation": "offline",
+            "command": [python(), "bug.py"],
+            "state": sandbox.path().join("state.sqlite3"),
+            "timeout_ms": 3000
+        }))
+        .expect("request JSON"),
+    )
+    .expect("request fixture");
+
+    let result = Command::cargo_bin("reprocut")
+        .expect("binary is built")
+        .args(["protocol", "run", "--request"])
+        .arg(request_path)
+        .output()
+        .expect("protocol process");
+
+    assert!(result.status.success());
+    assert!(
+        result.stderr.is_empty(),
+        "success protocol keeps stderr empty"
+    );
+    let events = String::from_utf8(result.stdout).expect("UTF-8 JSONL");
+    let events = events
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).expect("one event per line"))
+        .collect::<Vec<_>>();
+    assert_eq!(events.len(), 3);
+    assert_eq!(events[0]["type"], "started");
+    assert_eq!(events[1]["type"], "baseline_stable");
+    assert_eq!(events[2]["type"], "completed");
+    assert_eq!(events[2]["protocol_version"], 1);
+}
+
+#[test]
+fn protocol_validation_failure_is_one_machine_readable_terminal_event() {
+    let sandbox = tempdir().expect("sandbox");
+    let request_path = sandbox.path().join("request.json");
+    fs::write(
+        &request_path,
+        r#"{"protocol_version":99,"action":"minimize","root":"bug","output":"minimal"}"#,
+    )
+    .expect("request fixture");
+
+    let result = Command::cargo_bin("reprocut")
+        .expect("binary is built")
+        .args(["protocol", "run", "--request"])
+        .arg(request_path)
+        .output()
+        .expect("protocol process");
+
+    assert!(!result.status.success());
+    assert!(result.stderr.is_empty(), "protocol errors stay on JSONL stdout");
+    let events = String::from_utf8(result.stdout).expect("UTF-8 JSONL");
+    let lines = events.lines().collect::<Vec<_>>();
+    assert_eq!(lines.len(), 1);
+    let event: Value = serde_json::from_str(lines[0]).expect("terminal event");
+    assert_eq!(event["type"], "failed");
+    assert_eq!(event["protocol_version"], 1);
+    assert!(event["message"]
+        .as_str()
+        .expect("message")
+        .contains("unsupported protocol version 99"));
+}
+
+#[test]
 fn invalid_flaky_majority_is_rejected_before_execution() {
     Command::cargo_bin("reprocut")
         .expect("binary is built")

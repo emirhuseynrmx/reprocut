@@ -89,6 +89,7 @@ def compose_core() -> str:
     policy = read("crates/reprocut-core/src/policy.rs").replace(
         "use crate::CandidateVerdict;", "use super::CandidateVerdict;"
     )
+    protocol = read("crates/reprocut-core/src/protocol.rs")
     reducer = read("crates/reprocut-core/src/reducer.rs").replace(
         "use crate::{CandidateVerdict, FrontierClass};",
         "use super::{CandidateVerdict, FrontierClass};",
@@ -106,12 +107,14 @@ mod reprocut_core {{
 mod model {{ {model} }}
 mod oracle {{ {oracle} }}
 mod policy {{ {policy} }}
+mod protocol {{ {protocol} }}
 mod reducer {{ {reducer} }}
 mod winner {{ {winner} }}
 {transformation}
 pub use model::*;
 pub use oracle::*;
 pub use policy::*;
+pub use protocol::*;
 pub use reducer::*;
 pub use winner::*;
 }}

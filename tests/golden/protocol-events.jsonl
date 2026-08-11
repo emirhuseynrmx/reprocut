@@ -1,0 +1,3 @@
+{"type":"started","protocol_version":1,"action":"minimize","root":"bug"}
+{"type":"baseline_stable","protocol_version":1,"fingerprint_sha256":"abc123"}
+{"type":"completed","protocol_version":1,"output":"minimal","evidence":"minimal/reduction.json","report":"minimal/report.html","issue":"minimal/issue.md"}
