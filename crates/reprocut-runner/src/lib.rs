@@ -9,7 +9,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use reprocut_core::ExecutionObservation;
+use command_group::{CommandGroup, GroupChild};
+use reprocut_core::{ContainmentMechanism, ExecutionObservation, TerminationReason};
 use thiserror::Error;
 
 /// A bounded command execution request.
@@ -91,24 +92,24 @@ pub enum RunnerError {
 pub struct ProcessRunner;
 
 impl ProcessRunner {
-    /// Runs a command, drains both pipes, and always reaps the direct child.
+    /// Runs a command, drains both pipes, and always reaps its contained process group.
     pub fn run(spec: &CommandSpec) -> Result<ExecutionObservation, RunnerError> {
-        let mut child = Command::new(spec.program())
+        let mut command = Command::new(spec.program());
+        command
             .args(spec.arguments())
             .current_dir(spec.working_directory())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|source| RunnerError::Io {
-                operation: "spawn child",
-                source,
-            })?;
-        let stdout = child.stdout.take().ok_or_else(|| RunnerError::Io {
+            .stderr(Stdio::piped());
+        let mut child = ContainedChild::spawn(&mut command).map_err(|source| RunnerError::Io {
+            operation: "spawn child",
+            source,
+        })?;
+        let stdout = child.inner().stdout.take().ok_or_else(|| RunnerError::Io {
             operation: "capture child stdout",
             source: io::Error::new(io::ErrorKind::BrokenPipe, "stdout pipe was not created"),
         })?;
-        let stderr = child.stderr.take().ok_or_else(|| RunnerError::Io {
+        let stderr = child.inner().stderr.take().ok_or_else(|| RunnerError::Io {
             operation: "capture child stderr",
             source: io::Error::new(io::ErrorKind::BrokenPipe, "stderr pipe was not created"),
         })?;
@@ -124,16 +125,8 @@ impl ProcessRunner {
             })? {
                 Some(status) => (status, false),
                 None => {
-                    if let Err(source) = child.kill() {
-                        if source.kind() != io::ErrorKind::InvalidInput {
-                            return Err(RunnerError::Io {
-                                operation: "kill timed-out child",
-                                source,
-                            });
-                        }
-                    }
-                    let status = child.wait().map_err(|source| RunnerError::Io {
-                        operation: "reap timed-out child",
+                    let status = child.terminate().map_err(|source| RunnerError::Io {
+                        operation: "terminate timed-out process group",
                         source,
                     })?;
                     (status, true)
@@ -143,19 +136,90 @@ impl ProcessRunner {
         let (stdout, stdout_truncated) = join_capture(stdout_reader, "stdout")?;
         let (stderr, stderr_truncated) = join_capture(stderr_reader, "stderr")?;
 
-        Ok(ExecutionObservation::new(
-            status.code(),
-            exit_signal(&status),
+        Ok(ExecutionObservation::new_contained(
+            termination_reason(&status, timed_out),
             stdout,
             stderr,
-            timed_out,
             stdout_truncated || stderr_truncated,
+            containment_mechanism(),
         ))
     }
 }
 
+/// Returns the OS-level primitive used to own descendant processes.
+pub const fn containment_mechanism() -> ContainmentMechanism {
+    #[cfg(unix)]
+    {
+        ContainmentMechanism::PosixProcessGroup
+    }
+    #[cfg(windows)]
+    {
+        ContainmentMechanism::WindowsJobObject
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        ContainmentMechanism::DirectChild
+    }
+}
+
+struct ContainedChild {
+    child: GroupChild,
+    finished: bool,
+}
+
+impl ContainedChild {
+    fn spawn(command: &mut Command) -> io::Result<Self> {
+        Ok(Self {
+            child: spawn_group(command)?,
+            finished: false,
+        })
+    }
+
+    fn inner(&mut self) -> &mut std::process::Child {
+        self.child.inner()
+    }
+
+    fn try_wait(&mut self) -> io::Result<Option<std::process::ExitStatus>> {
+        let status = self.child.try_wait()?;
+        self.finished |= status.is_some();
+        Ok(status)
+    }
+
+    fn terminate(&mut self) -> io::Result<std::process::ExitStatus> {
+        match self.child.kill() {
+            Ok(()) => {}
+            Err(source) if source.kind() == io::ErrorKind::InvalidInput => {}
+            Err(source) => return Err(source),
+        }
+        let status = self.child.wait()?;
+        self.finished = true;
+        Ok(status)
+    }
+}
+
+impl Drop for ContainedChild {
+    fn drop(&mut self) {
+        if self.finished {
+            return;
+        }
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        self.finished = true;
+    }
+}
+
+#[cfg(windows)]
+fn spawn_group(command: &mut Command) -> io::Result<GroupChild> {
+    command.group().kill_on_drop(true).spawn()
+}
+
+#[cfg(not(windows))]
+fn spawn_group(command: &mut Command) -> io::Result<GroupChild> {
+    command.group_spawn()
+}
+
 fn wait_until(
-    child: &mut std::process::Child,
+    child: &mut ContainedChild,
     timeout: Duration,
 ) -> io::Result<Option<std::process::ExitStatus>> {
     const POLL_INTERVAL: Duration = Duration::from_millis(5);
@@ -213,4 +277,16 @@ fn exit_signal(status: &std::process::ExitStatus) -> Option<i32> {
 #[cfg(not(unix))]
 const fn exit_signal(_status: &std::process::ExitStatus) -> Option<i32> {
     None
+}
+
+fn termination_reason(status: &std::process::ExitStatus, timed_out: bool) -> TerminationReason {
+    if timed_out {
+        TerminationReason::TimedOut
+    } else if let Some(signal) = exit_signal(status) {
+        TerminationReason::UnixSignal(signal)
+    } else if let Some(code) = status.code() {
+        TerminationReason::ExitCode(code)
+    } else {
+        TerminationReason::RunnerFailure
+    }
 }

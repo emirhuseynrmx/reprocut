@@ -1,6 +1,7 @@
-use std::{env, ffi::OsString, thread, time::Duration};
+use std::{env, ffi::OsString, fs, process::Command, thread, time::Duration};
 
-use reprocut_runner::{CommandSpec, ProcessRunner};
+use reprocut_core::ContainmentMechanism;
+use reprocut_runner::{containment_mechanism, CommandSpec, ProcessRunner};
 
 #[test]
 fn captures_real_child_output() {
@@ -28,6 +29,21 @@ fn timeout_kills_and_reaps_the_child() {
     let observation = ProcessRunner::run(&spec).expect("timed execution");
 
     assert!(observation.timed_out());
+    assert_eq!(observation.containment(), containment_mechanism());
+}
+
+#[test]
+fn timeout_prevents_a_descendant_from_writing_after_the_parent_dies() {
+    let temporary = tempfile::tempdir().expect("temporary marker directory");
+    let marker = temporary.path().join("descendant-survived");
+    let spec = child_spec("child_spawns_descendant", Duration::from_millis(40), 1_024);
+    env::set_var("REPROCUT_DESCENDANT_MARKER", &marker);
+    let observation = ProcessRunner::run(&spec).expect("timed process group");
+    env::remove_var("REPROCUT_DESCENDANT_MARKER");
+
+    assert!(observation.timed_out());
+    thread::sleep(Duration::from_millis(350));
+    assert!(!marker.exists(), "a descendant escaped process containment");
 }
 
 #[test]
@@ -47,6 +63,43 @@ fn child_floods() {
 #[ignore = "spawned by timeout_kills_and_reaps_the_child"]
 fn child_sleeps() {
     thread::sleep(Duration::from_secs(5));
+}
+
+#[test]
+#[ignore = "spawned by the descendant containment contract"]
+fn child_spawns_descendant() {
+    Command::new(env::current_exe().expect("test executable"))
+        .args([
+            "--exact",
+            "descendant_writes_marker",
+            "--ignored",
+            "--nocapture",
+        ])
+        .spawn()
+        .expect("spawn descendant");
+    thread::sleep(Duration::from_secs(5));
+}
+
+#[test]
+#[ignore = "spawned by child_spawns_descendant"]
+fn descendant_writes_marker() {
+    let marker = env::var_os("REPROCUT_DESCENDANT_MARKER").expect("marker path");
+    thread::sleep(Duration::from_millis(200));
+    fs::write(marker, b"descendant-survived").expect("write survival marker");
+}
+
+#[test]
+fn platform_reports_a_real_group_containment_mechanism() {
+    #[cfg(unix)]
+    assert_eq!(
+        containment_mechanism(),
+        ContainmentMechanism::PosixProcessGroup
+    );
+    #[cfg(windows)]
+    assert_eq!(
+        containment_mechanism(),
+        ContainmentMechanism::WindowsJobObject
+    );
 }
 
 fn child_spec(test_name: &str, timeout: Duration, max_output_bytes: usize) -> CommandSpec {

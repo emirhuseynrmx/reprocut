@@ -56,9 +56,11 @@ impl FailureOracle {
         {
             return Err(OracleError::IncompleteBaseline);
         }
-        if baselines.iter().skip(1).any(|observation| {
-            observation.exit_code() != first.exit_code() || observation.signal() != first.signal()
-        }) {
+        if baselines
+            .iter()
+            .skip(1)
+            .any(|observation| observation.termination() != first.termination())
+        {
             return Err(OracleError::UnstableExitState);
         }
 
@@ -91,11 +93,7 @@ impl FailureOracle {
         }
 
         Ok(Self {
-            fingerprint: FailureFingerprint::from_anchors(
-                first.exit_code(),
-                first.signal(),
-                anchors,
-            ),
+            fingerprint: FailureFingerprint::from_anchors(first.termination(), anchors),
         })
     }
 
@@ -109,9 +107,7 @@ impl FailureOracle {
         if observation.timed_out() || observation.streams_truncated() {
             return CandidateVerdict::Inconclusive;
         }
-        if observation.exit_code() != self.fingerprint.exit_code()
-            || observation.signal() != self.fingerprint.signal()
-        {
+        if observation.termination() != self.fingerprint.termination() {
             return CandidateVerdict::Rejected;
         }
 

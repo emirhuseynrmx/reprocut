@@ -53,8 +53,8 @@ mod policy {{ {policy} }}
 mod reducer {{ {reducer} }}
 mod winner {{ {winner} }}
 pub use model::{{
-    CandidateVerdict, DiagnosticAnchor, DiagnosticChannel, ExecutionObservation,
-    FailureFingerprint,
+    CandidateVerdict, ContainmentMechanism, DiagnosticAnchor, DiagnosticChannel,
+    ExecutionObservation, FailureFingerprint, TerminationReason,
 }};
 pub use oracle::{{FailureOracle, OracleError}};
 pub use policy::{{

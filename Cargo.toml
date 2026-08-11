@@ -21,6 +21,7 @@ repository = "https://github.com/emirhuseynrmx/reprocut"
 [workspace.dependencies]
 assert_cmd = "2.0"
 clap = { version = "4.5", features = ["derive"] }
+command-group = "=5.0.1"
 criterion = { version = "0.5", features = ["html_reports"] }
 loom = "0.7"
 predicates = "3.1"

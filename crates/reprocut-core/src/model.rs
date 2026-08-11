@@ -12,6 +12,46 @@ pub enum CandidateVerdict {
     Inconclusive,
 }
 
+/// A platform-neutral account of how a candidate command ended.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind", content = "value")]
+pub enum TerminationReason {
+    /// The process returned a conventional numeric status.
+    ExitCode(i32),
+    /// A Unix host reported a terminating signal.
+    UnixSignal(i32),
+    /// ReproCut terminated the process group after its deadline.
+    TimedOut,
+    /// The runner could not obtain a trustworthy process result.
+    RunnerFailure,
+}
+
+impl TerminationReason {
+    const fn from_legacy(exit_code: Option<i32>, signal: Option<i32>, timed_out: bool) -> Self {
+        if timed_out {
+            Self::TimedOut
+        } else if let Some(signal) = signal {
+            Self::UnixSignal(signal)
+        } else if let Some(exit_code) = exit_code {
+            Self::ExitCode(exit_code)
+        } else {
+            Self::RunnerFailure
+        }
+    }
+}
+
+/// The operating-system primitive responsible for descendant teardown.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContainmentMechanism {
+    /// Compatibility observations that do not claim process-tree ownership.
+    DirectChild,
+    /// A POSIX process group owned by the runner.
+    PosixProcessGroup,
+    /// A Windows Job Object owned by the runner.
+    WindowsJobObject,
+}
+
 /// Selects which bounded process stream contributes failure evidence.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -59,6 +99,8 @@ pub struct ExecutionObservation {
     stderr: Vec<u8>,
     timed_out: bool,
     streams_truncated: bool,
+    termination: TerminationReason,
+    containment: ContainmentMechanism,
 }
 
 impl ExecutionObservation {
@@ -71,6 +113,7 @@ impl ExecutionObservation {
         timed_out: bool,
         streams_truncated: bool,
     ) -> Self {
+        let termination = TerminationReason::from_legacy(exit_code, signal, timed_out);
         Self {
             exit_code,
             signal,
@@ -78,6 +121,34 @@ impl ExecutionObservation {
             stderr,
             timed_out,
             streams_truncated,
+            termination,
+            containment: ContainmentMechanism::DirectChild,
+        }
+    }
+
+    /// Creates an observation that records portable termination and containment evidence.
+    pub fn new_contained(
+        termination: TerminationReason,
+        stdout: Vec<u8>,
+        stderr: Vec<u8>,
+        streams_truncated: bool,
+        containment: ContainmentMechanism,
+    ) -> Self {
+        let (exit_code, signal, timed_out) = match termination {
+            TerminationReason::ExitCode(code) => (Some(code), None, false),
+            TerminationReason::UnixSignal(signal) => (None, Some(signal), false),
+            TerminationReason::TimedOut => (None, None, true),
+            TerminationReason::RunnerFailure => (None, None, false),
+        };
+        Self {
+            exit_code,
+            signal,
+            stdout,
+            stderr,
+            timed_out,
+            streams_truncated,
+            termination,
+            containment,
         }
     }
 
@@ -110,6 +181,16 @@ impl ExecutionObservation {
     pub const fn streams_truncated(&self) -> bool {
         self.streams_truncated
     }
+
+    /// Returns the portable process termination reason.
+    pub const fn termination(&self) -> TerminationReason {
+        self.termination
+    }
+
+    /// Returns the process-tree ownership primitive used for this run.
+    pub const fn containment(&self) -> ContainmentMechanism {
+        self.containment
+    }
 }
 
 /// A stable, serializable identity for the failure ReproCut must preserve.
@@ -117,6 +198,7 @@ impl ExecutionObservation {
 pub struct FailureFingerprint {
     exit_code: Option<i32>,
     signal: Option<i32>,
+    termination: TerminationReason,
     anchor: String,
     anchors: Vec<DiagnosticAnchor>,
     normalization_schema: u16,
@@ -132,6 +214,7 @@ impl FailureFingerprint {
         Self {
             exit_code,
             signal,
+            termination: TerminationReason::from_legacy(exit_code, signal, false),
             anchor,
             anchors,
             normalization_schema: 1,
@@ -140,8 +223,7 @@ impl FailureFingerprint {
 
     /// Creates a fingerprint from stream-qualified anchors.
     pub(crate) fn from_anchors(
-        exit_code: Option<i32>,
-        signal: Option<i32>,
+        termination: TerminationReason,
         anchors: Vec<DiagnosticAnchor>,
     ) -> Self {
         debug_assert!(!anchors.is_empty());
@@ -150,8 +232,15 @@ impl FailureFingerprint {
             .map(|item| item.text.clone())
             .unwrap_or_default();
         Self {
-            exit_code,
-            signal,
+            exit_code: match termination {
+                TerminationReason::ExitCode(code) => Some(code),
+                _ => None,
+            },
+            signal: match termination {
+                TerminationReason::UnixSignal(signal) => Some(signal),
+                _ => None,
+            },
+            termination,
             anchor,
             anchors,
             normalization_schema: 1,
@@ -166,6 +255,11 @@ impl FailureFingerprint {
     /// Returns the expected terminating signal.
     pub const fn signal(&self) -> Option<i32> {
         self.signal
+    }
+
+    /// Returns the expected portable process termination reason.
+    pub const fn termination(&self) -> TerminationReason {
+        self.termination
     }
 
     /// Returns the stable diagnostic anchor.

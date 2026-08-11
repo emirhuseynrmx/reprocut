@@ -7,7 +7,8 @@ mod reducer;
 mod winner;
 
 pub use model::{
-    CandidateVerdict, DiagnosticAnchor, DiagnosticChannel, ExecutionObservation, FailureFingerprint,
+    CandidateVerdict, ContainmentMechanism, DiagnosticAnchor, DiagnosticChannel,
+    ExecutionObservation, FailureFingerprint, TerminationReason,
 };
 pub use oracle::{normalize_diagnostic, FailureOracle, OracleError};
 pub use policy::{

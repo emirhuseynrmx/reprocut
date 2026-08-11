@@ -1,5 +1,6 @@
 use reprocut_core::{
-    CandidateVerdict, DiagnosticChannel, ExecutionObservation, FailureFingerprint,
+    CandidateVerdict, ContainmentMechanism, DiagnosticChannel, ExecutionObservation,
+    FailureFingerprint, TerminationReason,
 };
 
 #[test]
@@ -21,6 +22,15 @@ fn observation_keeps_bounded_stream_metadata() {
 
     assert_eq!(observation.exit_code(), Some(1));
     assert_eq!(observation.stderr(), b"TypeError: currency");
+    assert_eq!(observation.termination(), TerminationReason::ExitCode(1));
+    assert_eq!(observation.containment(), ContainmentMechanism::DirectChild);
+}
+
+#[test]
+fn timeout_is_a_portable_termination_reason() {
+    let observation = ExecutionObservation::new(None, None, Vec::new(), Vec::new(), true, false);
+
+    assert_eq!(observation.termination(), TerminationReason::TimedOut);
 }
 
 #[test]
@@ -30,7 +40,7 @@ fn fingerprint_is_serializable_and_stable() {
 
     assert_eq!(
         encoded,
-        r#"{"exit_code":1,"signal":null,"anchor":"TypeError: currency","anchors":[{"channel":"stderr","text":"TypeError: currency"}],"normalization_schema":1}"#
+        r#"{"exit_code":1,"signal":null,"termination":{"kind":"exit_code","value":1},"anchor":"TypeError: currency","anchors":[{"channel":"stderr","text":"TypeError: currency"}],"normalization_schema":1}"#
     );
     assert_eq!(
         fingerprint.anchors()[0].channel(),
