@@ -1,0 +1,9 @@
+/target/
+/.reprocut/
+/reprocut-output/
+/.venv/
+/.pytest_cache/
+*.pyd
+*.so
+__pycache__/
+
