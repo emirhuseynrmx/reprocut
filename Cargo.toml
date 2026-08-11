@@ -4,6 +4,7 @@ members = [
     "crates/reprocut-cli",
     "crates/reprocut-core",
     "crates/reprocut-engine",
+    "crates/reprocut-oci",
     "crates/reprocut-python",
     "crates/reprocut-report",
     "crates/reprocut-runner",

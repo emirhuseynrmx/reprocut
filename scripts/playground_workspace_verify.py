@@ -58,19 +58,29 @@ def report_source() -> str:
 def compose_cli() -> str:
     engine = compose_engine().removesuffix("fn main() {}")
     report = report_source()
+    oci = read("crates/reprocut-oci/src/lib.rs")
     cli = (
         without_inner_attributes(read("crates/reprocut-cli/src/main.rs"))
         .replace("use reprocut_adapters::", "use crate::reprocut_adapters::")
         .replace("use reprocut_core::", "use crate::reprocut_core::")
         .replace("use reprocut_engine::", "use crate::reprocut_engine::")
+        .replace("use reprocut_oci::", "use crate::reprocut_oci::")
         .replace("use reprocut_report::", "use crate::reprocut_report::")
         .replace("use reprocut_workspace::", "use crate::reprocut_workspace::")
     )
-    return "\n".join([engine, wrap("reprocut_report", report), cli])
+    return "\n".join(
+        [engine, wrap("reprocut_oci", oci), wrap("reprocut_report", report), cli]
+    )
 
 
 def compose_report() -> str:
     return "\n".join([wrap("reprocut_report", report_source()), "fn main() {}"])
+
+
+def compose_oci() -> str:
+    return "\n".join(
+        [wrap("reprocut_oci", read("crates/reprocut-oci/src/lib.rs")), "fn main() {}"]
+    )
 
 
 def compose_core() -> str:
@@ -322,6 +332,7 @@ def main() -> int:
             "adapters",
             "pipeline",
             "report",
+            "oci",
         ),
         default="full",
     )
@@ -337,6 +348,7 @@ def main() -> int:
         "adapters": compose_adapters,
         "pipeline": compose_pipeline,
         "report": compose_report,
+        "oci": compose_oci,
     }[args.scope]()
     append_path = args.append.resolve()
     try:

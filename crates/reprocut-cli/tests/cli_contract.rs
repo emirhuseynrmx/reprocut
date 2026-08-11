@@ -47,6 +47,18 @@ fn reduce_help_exposes_failure_evidence_controls() {
 }
 
 #[test]
+fn oci_export_help_promises_a_real_archive_and_explicit_builder() {
+    Command::cargo_bin("reprocut")
+        .expect("binary is built")
+        .args(["export", "oci", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("OCI image archive"))
+        .stdout(predicate::str::contains("--from"))
+        .stdout(predicate::str::contains("--builder"));
+}
+
+#[test]
 fn invalid_flaky_majority_is_rejected_before_execution() {
     Command::cargo_bin("reprocut")
         .expect("binary is built")

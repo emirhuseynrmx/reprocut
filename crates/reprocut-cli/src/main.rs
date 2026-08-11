@@ -18,6 +18,7 @@ use reprocut_core::{
 use reprocut_engine::{
     EngineError, PreparationMode, ReductionEngine, ReductionOutcome, ReductionRequest, SessionMode,
 };
+use reprocut_oci::{export_archive, Builder, OciError, OciRequest, RuntimeFamily};
 use reprocut_report::{
     render_issue, render_report, write_attempts_jsonl, AttemptSummary, ChannelAnchor,
     EvaluationPolicyEvidence, FailureEvidence, MaterialMeasurement, MeasurementSet,
@@ -53,6 +54,42 @@ enum Action {
     Reduce(ReduceArgs),
     /// Continue an exactly compatible interrupted reduction.
     Resume(ReduceArgs),
+    /// Export a completed artifact into a distribution format.
+    Export(ExportArgs),
+}
+
+#[derive(Debug, Args)]
+struct ExportArgs {
+    #[command(subcommand)]
+    format: ExportFormat,
+}
+
+#[derive(Debug, Subcommand)]
+enum ExportFormat {
+    /// Build and validate a real OCI image archive.
+    Oci(OciArgs),
+}
+
+#[derive(Debug, Args)]
+struct OciArgs {
+    /// Completed ReproCut artifact containing project/ and reduction.json.
+    #[arg(long, value_name = "ARTIFACT")]
+    from: PathBuf,
+
+    /// New OCI archive path; existing files are never overwritten.
+    #[arg(short, long, default_value = "reprocut.oci.tar")]
+    output: PathBuf,
+
+    /// OCI builder frontend; auto probes Docker Buildx then BuildKit.
+    #[arg(long, value_enum, default_value_t = BuilderArg::Auto)]
+    builder: BuilderArg,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum BuilderArg {
+    Auto,
+    DockerBuildx,
+    BuildKit,
 }
 
 #[derive(Debug, Args)]
@@ -208,6 +245,8 @@ enum CliError {
     Engine(#[from] EngineError),
     #[error(transparent)]
     Workspace(#[from] WorkspaceError),
+    #[error(transparent)]
+    Oci(#[from] OciError),
     #[error("output path already exists: {0}")]
     OutputExists(PathBuf),
     #[error("output path has no usable parent: {0}")]
@@ -243,7 +282,42 @@ fn execute(cli: Cli) -> Result<(), CliError> {
         Action::Minimize(arguments) => reduce_project(arguments, false),
         Action::Reduce(arguments) => reduce_project(arguments, false),
         Action::Resume(arguments) => reduce_project(arguments, true),
+        Action::Export(arguments) => export_artifact(arguments),
     }
+}
+
+fn export_artifact(arguments: ExportArgs) -> Result<(), CliError> {
+    match arguments.format {
+        ExportFormat::Oci(arguments) => export_oci(arguments),
+    }
+}
+
+fn export_oci(arguments: OciArgs) -> Result<(), CliError> {
+    let evidence_path = arguments.from.join("reduction.json");
+    let bytes = fs::read(&evidence_path)
+        .map_err(|source| io_error("read reduction evidence", &evidence_path, source))?;
+    let evidence: ReductionEvidence = serde_json::from_slice(&bytes)?;
+    let runtime = match evidence.ecosystem.as_str() {
+        "cargo" => RuntimeFamily::Cargo,
+        "python" => RuntimeFamily::Python,
+        "npm" => RuntimeFamily::Npm,
+        _ => RuntimeFamily::Generic,
+    };
+    let mut request = OciRequest::new(
+        arguments.from,
+        arguments.output,
+        runtime,
+        evidence.command,
+        evidence.failure.fingerprint_sha256,
+    );
+    request = match arguments.builder {
+        BuilderArg::Auto => request,
+        BuilderArg::DockerBuildx => request.with_builder(Builder::DockerBuildx),
+        BuilderArg::BuildKit => request.with_builder(Builder::BuildKit),
+    };
+    let builder = export_archive(&request)?;
+    println!("Exported {} with {builder:?}", request.output().display());
+    Ok(())
 }
 
 fn reduce_project(mut arguments: ReduceArgs, resume: bool) -> Result<(), CliError> {

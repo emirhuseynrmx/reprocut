@@ -17,6 +17,7 @@ clap.workspace = true
 reprocut-adapters = { path = "../reprocut-adapters" }
 reprocut-core = { path = "../reprocut-core" }
 reprocut-engine = { path = "../reprocut-engine" }
+reprocut-oci = { path = "../reprocut-oci" }
 reprocut-report = { path = "../reprocut-report" }
 reprocut-workspace = { path = "../reprocut-workspace" }
 serde.workspace = true

@@ -118,6 +118,20 @@ jobs:
         with:
           command: check
 
+  oci-archive:
+    name: Real OCI archive export
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal
+          rustup default 1.85.0
+      - name: Cache the network-disabled build base
+        run: docker pull debian:bookworm-slim
+      - name: Build and structurally validate an OCI archive
+        run: cargo test -p reprocut-oci --test oci_builder -- --ignored --nocapture
+
   python-wheel:
     name: Native wheel / Python ${{ matrix.python }}
     runs-on: ubuntu-latest

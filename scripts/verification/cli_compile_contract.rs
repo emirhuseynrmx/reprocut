@@ -11,6 +11,7 @@ mod cli_compile_contract {
         let mut command = Cli::command();
         let help = command.render_long_help().to_string();
         assert!(help.contains("resume"));
+        assert!(help.contains("export"));
         let reduce_help = command
             .find_subcommand_mut("reduce")
             .expect("reduce subcommand")
