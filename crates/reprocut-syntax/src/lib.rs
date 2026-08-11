@@ -19,6 +19,14 @@ pub enum SyntaxLanguage {
     TypeScript,
     /// TypeScript JSX source.
     Tsx,
+    /// C source or a `.h` header whose dialect cannot be inferred safely.
+    C,
+    /// C++ source or an explicitly C++-suffixed header.
+    Cpp,
+    /// Go source.
+    Go,
+    /// Java source.
+    Java,
 }
 
 impl SyntaxLanguage {
@@ -30,6 +38,10 @@ impl SyntaxLanguage {
             "js" | "jsx" | "mjs" | "cjs" => Some(Self::JavaScript),
             "ts" | "mts" | "cts" => Some(Self::TypeScript),
             "tsx" => Some(Self::Tsx),
+            "c" | "h" => Some(Self::C),
+            "cc" | "cpp" | "cxx" | "hh" | "hpp" | "hxx" => Some(Self::Cpp),
+            "go" => Some(Self::Go),
+            "java" => Some(Self::Java),
             _ => None,
         }
     }
@@ -41,6 +53,10 @@ impl SyntaxLanguage {
             Self::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
             Self::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
             Self::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
+            Self::C => tree_sitter_c::LANGUAGE.into(),
+            Self::Cpp => tree_sitter_cpp::LANGUAGE.into(),
+            Self::Go => tree_sitter_go::LANGUAGE.into(),
+            Self::Java => tree_sitter_java::LANGUAGE.into(),
         }
     }
 }
@@ -344,6 +360,58 @@ fn is_deletable(language: SyntaxLanguage, kind: &str) -> bool {
                 | "enum_declaration"
                 | "method_definition"
                 | "pair"
+        ),
+        SyntaxLanguage::C => matches!(
+            kind,
+            "function_definition"
+                | "declaration"
+                | "type_definition"
+                | "preproc_include"
+                | "preproc_def"
+                | "preproc_function_def"
+                | "expression_statement"
+                | "return_statement"
+        ),
+        SyntaxLanguage::Cpp => matches!(
+            kind,
+            "function_definition"
+                | "declaration"
+                | "namespace_definition"
+                | "template_declaration"
+                | "alias_declaration"
+                | "using_declaration"
+                | "preproc_include"
+                | "preproc_def"
+                | "preproc_function_def"
+                | "expression_statement"
+                | "return_statement"
+        ),
+        SyntaxLanguage::Go => matches!(
+            kind,
+            "function_declaration"
+                | "method_declaration"
+                | "type_declaration"
+                | "var_declaration"
+                | "const_declaration"
+                | "import_declaration"
+                | "short_var_declaration"
+                | "expression_statement"
+                | "return_statement"
+        ),
+        SyntaxLanguage::Java => matches!(
+            kind,
+            "method_declaration"
+                | "constructor_declaration"
+                | "class_declaration"
+                | "interface_declaration"
+                | "enum_declaration"
+                | "annotation_type_declaration"
+                | "import_declaration"
+                | "package_declaration"
+                | "field_declaration"
+                | "local_variable_declaration"
+                | "expression_statement"
+                | "return_statement"
         ),
     }
 }

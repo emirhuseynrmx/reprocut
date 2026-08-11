@@ -83,6 +83,62 @@ fn syntax_fixpoint_removes_grammar_valid_noise_and_reverifies_the_snapshot() {
     );
 }
 
+#[test]
+fn native_language_grammars_reduce_inside_retained_files_without_compilers() {
+    const ORACLE: &str = "from pathlib import Path; import sys; text = Path(sys.argv[1]).read_text(encoding='utf-8'); failed = 'keep_failure' in text; sys.stderr.write('REPROCUT_SENTINEL\\n' if failed else ''); raise SystemExit(7 if failed else 0)";
+    let cases: [(&str, &[u8]); 4] = [
+        (
+            "bug.c",
+            b"int unused(void) { return 1; }\nint keep_failure(void) { return 2; }\n",
+        ),
+        (
+            "bug.cpp",
+            b"int unused() { return 1; }\nint keep_failure() { return 2; }\n",
+        ),
+        (
+            "bug.go",
+            b"package main\nfunc unused() int { return 1 }\nfunc keep_failure() int { return 2 }\n",
+        ),
+        (
+            "Bug.java",
+            b"class Bug { int unused() { return 1; } int keep_failure() { return 2; } }\n",
+        ),
+    ];
+
+    for (path, original) in cases {
+        let source = tempfile::tempdir().expect("source tempdir");
+        fs::write(source.path().join(path), original).expect("source fixture");
+        let request = ReductionRequest::new(
+            source.path().to_path_buf(),
+            python_executable(),
+            vec![
+                OsString::from("-c"),
+                OsString::from(ORACLE),
+                OsString::from(path),
+            ],
+            Duration::from_secs(5),
+            64 * 1_024,
+        );
+
+        let outcome = ReductionEngine::run(&request).expect("structured reduction");
+        let reduced = outcome.snapshot().file(path).expect("retained source");
+        let reduced = String::from_utf8_lossy(reduced);
+
+        assert!(reduced.len() < original.len(), "{path} should shrink");
+        assert!(!reduced.contains("unused"), "{path} should lose noise");
+        assert!(reduced.contains("keep_failure"), "{path} keeps failure");
+        let accepted_prefix = format!("syntax:{path}:");
+        assert!(outcome
+            .accepted_structured_edits()
+            .iter()
+            .any(|edit| edit.starts_with(&accepted_prefix)));
+        assert_eq!(
+            fs::read(source.path().join(path)).expect("source"),
+            original
+        );
+    }
+}
+
 fn fixture_copy() -> tempfile::TempDir {
     let source = tempfile::tempdir().expect("source tempdir");
     fs::create_dir(source.path().join("nested")).expect("nested directory");
