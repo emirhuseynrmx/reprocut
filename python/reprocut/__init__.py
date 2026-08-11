@@ -1,4 +1,16 @@
-"""Python surface for ReproCut's failure oracle."""
+"""Typed Python surface for ReproCut's oracle and shared Rust reducer."""
+
+from .client import (
+    BaselineStableEvent,
+    CompletedEvent,
+    FailedEvent,
+    ProgressEvent,
+    ReductionRequest,
+    ReductionResult,
+    ReproCutError,
+    StartedEvent,
+    reduce,
+)
 
 try:
     from ._native import EvaluationPolicy, FailureOracle
@@ -11,4 +23,17 @@ except ModuleNotFoundError as error:
 else:
     BACKEND = "native"
 
-__all__ = ["BACKEND", "EvaluationPolicy", "FailureOracle"]
+__all__ = [
+    "BACKEND",
+    "BaselineStableEvent",
+    "CompletedEvent",
+    "EvaluationPolicy",
+    "FailedEvent",
+    "FailureOracle",
+    "ProgressEvent",
+    "ReductionRequest",
+    "ReductionResult",
+    "ReproCutError",
+    "StartedEvent",
+    "reduce",
+]

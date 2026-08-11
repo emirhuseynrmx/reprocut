@@ -1,5 +1,5 @@
 [package]
-name = "reprocut-cli"
+name = "reprocut"
 description = "Deterministic failing-project minimizer"
 version.workspace = true
 edition.workspace = true
@@ -7,6 +7,10 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+homepage.workspace = true
+readme = "../../README.md"
+keywords = ["debugging", "delta-debugging", "reproducer", "testing", "cli"]
+categories = ["command-line-utilities", "development-tools::debugging"]
 
 [[bin]]
 name = "reprocut"
@@ -14,12 +18,12 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
-reprocut-adapters = { path = "../reprocut-adapters" }
-reprocut-core = { path = "../reprocut-core" }
-reprocut-engine = { path = "../reprocut-engine" }
-reprocut-oci = { path = "../reprocut-oci" }
-reprocut-report = { path = "../reprocut-report" }
-reprocut-workspace = { path = "../reprocut-workspace" }
+reprocut-adapters = { path = "../reprocut-adapters", version = "0.1.0" }
+reprocut-core = { path = "../reprocut-core", version = "0.1.0" }
+reprocut-engine = { path = "../reprocut-engine", version = "0.1.0" }
+reprocut-oci = { path = "../reprocut-oci", version = "0.1.0" }
+reprocut-report = { path = "../reprocut-report", version = "0.1.0" }
+reprocut-workspace = { path = "../reprocut-workspace", version = "0.1.0" }
 serde.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true

@@ -1,9 +1,11 @@
 [package]
 name = "reprocut-report"
 version = "0.1.0"
+description = "Machine-readable evidence and self-contained reports for ReproCut"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+authors.workspace = true
 repository.workspace = true
 
 [lib]

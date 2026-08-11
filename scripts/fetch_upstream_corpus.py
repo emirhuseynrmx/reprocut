@@ -27,8 +27,10 @@ def load_manifest(path: Path) -> dict[str, object]:
     if document.get("schema_version") != 1:
         raise CorpusError("unsupported corpus schema")
     commit = document.get("commit")
-    if not isinstance(commit, str) or len(commit) != 40 or any(
-        character not in "0123456789abcdef" for character in commit
+    if (
+        not isinstance(commit, str)
+        or len(commit) != 40
+        or any(character not in "0123456789abcdef" for character in commit)
     ):
         raise CorpusError("corpus commit must be a lowercase 40-character Git object ID")
     cases = document.get("cases")
@@ -96,8 +98,7 @@ def fetch_selected_files(manifest: dict[str, object], staging: Path) -> int:
     commit = manifest.get("commit")
     if (
         not isinstance(template, str)
-        or template
-        != "https://raw.githubusercontent.com/uw-pluverse/perses/{commit}/{path}"
+        or template != "https://raw.githubusercontent.com/uw-pluverse/perses/{commit}/{path}"
         or not isinstance(commit, str)
     ):
         raise CorpusError("raw_url_template must be the reviewed Perses HTTPS endpoint")

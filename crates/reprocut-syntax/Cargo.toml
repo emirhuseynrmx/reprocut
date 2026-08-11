@@ -9,7 +9,7 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-reprocut-core = { path = "../reprocut-core" }
+reprocut-core = { path = "../reprocut-core", version = "0.1.0" }
 thiserror.workspace = true
 tree-sitter.workspace = true
 tree-sitter-c.workspace = true

@@ -176,7 +176,7 @@ jobs:
           rustup toolchain install 1.85.0 --profile minimal
           rustup default 1.85.0
       - name: Exercise the real CLI fixture
-        run: cargo test -p reprocut-cli --test cli_contract
+        run: cargo test -p reprocut --test cli_contract
         env:
           TEST_PYTHON: python
 
@@ -194,7 +194,7 @@ jobs:
           rustup toolchain install 1.85.0 --profile minimal
           rustup default 1.85.0
       - name: Build the measured release binary
-        run: cargo build --release -p reprocut-cli
+        run: cargo build --release -p reprocut
       - name: Install the pinned process-tree sampler
         run: python -m pip install psutil==7.2.2
       - name: Measure five fresh reductions
@@ -210,4 +210,43 @@ jobs:
         with:
           name: reprocut-release-benchmark
           path: output/release-benchmark
+          if-no-files-found: error
+
+  release-packages:
+    name: crates.io and PyPI package artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal
+          rustup default 1.85.0
+      - name: Install pinned Python packaging tools
+        run: python -m pip install maturin==1.14.1 twine==7.0.0
+      - name: Package every publishable Rust crate
+        run: |
+          for package in \
+            reprocut-core reprocut-report reprocut-oci reprocut-workspace \
+            reprocut-runner reprocut-state reprocut-syntax reprocut-adapters \
+            reprocut-engine reprocut
+          do
+            cargo package -p "$package" --no-verify
+          done
+          mkdir -p dist/crates
+          cp target/package/*.crate dist/crates/
+      - name: Build ABI3 wheel and source distribution
+        run: |
+          maturin build --release --out dist/wheels
+          maturin sdist --out dist/sdist
+      - name: Validate Python package metadata and contents
+        run: python -m twine check dist/wheels/* dist/sdist/*
+      - name: Upload registry-ready packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: reprocut-release-packages
+          path: dist
           if-no-files-found: error

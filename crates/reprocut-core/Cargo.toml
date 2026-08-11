@@ -18,6 +18,7 @@ thiserror.workspace = true
 [dev-dependencies]
 criterion.workspace = true
 proptest.workspace = true
+serde_json.workspace = true
 
 [features]
 loom = ["dep:loom"]
@@ -25,7 +26,6 @@ loom = ["dep:loom"]
 [[bench]]
 name = "reducer"
 harness = false
-serde_json.workspace = true
 
 [lints]
 workspace = true

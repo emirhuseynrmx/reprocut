@@ -110,8 +110,10 @@ def oracle_runs(evidence: dict[str, Any]) -> int:
     """Count actual observed oracle executions, excluding cache hits."""
     search = evidence["search"]
     attempts = evidence["attempts"]
-    return int(search["baseline_runs"]) + int(search["final_verifications"]) + sum(
-        int(attempt["observed_runs"]) for attempt in attempts
+    return (
+        int(search["baseline_runs"])
+        + int(search["final_verifications"])
+        + sum(int(attempt["observed_runs"]) for attempt in attempts)
     )
 
 
@@ -126,7 +128,9 @@ def run_once(
     try:
         import psutil
     except ModuleNotFoundError as error:
-        raise BenchmarkError("install the pinned benchmark extra: pip install .[benchmark]") from error
+        raise BenchmarkError(
+            "install the pinned benchmark extra: pip install .[benchmark]"
+        ) from error
 
     with tempfile.TemporaryDirectory(prefix="reprocut-benchmark-") as temporary:
         temporary_root = Path(temporary)
@@ -180,7 +184,10 @@ def run_once(
         if not events or events[-1].get("type") != "completed":
             raise BenchmarkError("protocol did not emit a completed terminal event")
         evidence = json.loads((output / "reduction.json").read_text(encoding="utf-8"))
-        if evidence.get("schema_version") != 2 or evidence["failure"].get("same_failure") is not True:
+        if (
+            evidence.get("schema_version") != 2
+            or evidence["failure"].get("same_failure") is not True
+        ):
             raise BenchmarkError("run did not publish schema-v2 same-failure evidence")
         measurements = evidence["measurements"]
         search = evidence["search"]
@@ -349,7 +356,9 @@ def main() -> int:
     }
     output = args.output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="reprocut-benchmark-publish-", dir=output.parent) as temp:
+    with tempfile.TemporaryDirectory(
+        prefix="reprocut-benchmark-publish-", dir=output.parent
+    ) as temp:
         staging = Path(temp) / "artifact"
         staging.mkdir()
         (staging / "benchmark.json").write_text(

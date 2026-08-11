@@ -21,6 +21,7 @@ rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 authors = ["Emir Hüseyin İnci"]
 repository = "https://github.com/emirhuseynrmx/reprocut"
+homepage = "https://github.com/emirhuseynrmx/reprocut"
 
 [workspace.dependencies]
 assert_cmd = "2.0"
