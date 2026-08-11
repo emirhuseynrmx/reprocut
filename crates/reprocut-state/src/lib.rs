@@ -14,7 +14,7 @@ use reprocut_core::{CandidateVerdict, ContentDigest};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use thiserror::Error;
 
-use schema::{MIGRATION_0001, SCHEMA_VERSION};
+use schema::{MIGRATION_0001, MIGRATION_0002, SCHEMA_VERSION};
 
 const WRITER_QUEUE_CAPACITY: usize = 64;
 
@@ -231,6 +231,7 @@ impl CachedVerdict {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct StateSnapshot {
     attempts: u64,
+    attempt_events: u64,
     transitions: u64,
     cache_entries: u64,
 }
@@ -239,6 +240,11 @@ impl StateSnapshot {
     /// Returns persisted attempt count.
     pub const fn attempts(self) -> u64 {
         self.attempts
+    }
+
+    /// Returns distinct persisted attempt evidence events, including retries.
+    pub const fn attempt_events(self) -> u64 {
+        self.attempt_events
     }
 
     /// Returns committed transition count.
@@ -566,7 +572,7 @@ fn record_attempt(
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(database_error)?;
-    insert_attempt(&transaction, session_id, attempt)?;
+    record_attempt_evidence(&transaction, session_id, attempt)?;
     insert_cache(&transaction, session_id, attempt)?;
     transaction.commit().map_err(database_error)
 }
@@ -584,7 +590,7 @@ fn accept_transition(
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(database_error)?;
-    insert_attempt(&transaction, session_id, attempt)?;
+    record_attempt_evidence(&transaction, session_id, attempt)?;
     let changed = transaction
         .execute(
             "INSERT INTO transitions(
@@ -634,31 +640,11 @@ fn accept_transition(
     transaction.commit().map_err(database_error)
 }
 
-fn insert_attempt(
+fn record_attempt_evidence(
     connection: &Connection,
     session_id: i64,
     attempt: &AttemptRecord,
 ) -> Result<(), StateError> {
-    let changed = connection
-        .execute(
-            "INSERT INTO attempts(
-                session_id, candidate_digest, verdict, observed_runs,
-                inconclusive_runs, evidence_json
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-             ON CONFLICT(session_id, candidate_digest) DO NOTHING",
-            params![
-                session_id,
-                attempt.candidate.as_bytes().as_slice(),
-                verdict_name(attempt.verdict),
-                i64::from(attempt.observed_runs),
-                i64::from(attempt.inconclusive_runs),
-                attempt.evidence_json,
-            ],
-        )
-        .map_err(database_error)?;
-    if changed != 0 {
-        return Ok(());
-    }
     let existing = connection
         .query_row(
             "SELECT verdict, observed_runs, inconclusive_runs, evidence_json
@@ -673,6 +659,7 @@ fn insert_attempt(
                 ))
             },
         )
+        .optional()
         .map_err(database_error)?;
     let expected = (
         verdict_name(attempt.verdict).to_owned(),
@@ -680,13 +667,56 @@ fn insert_attempt(
         i64::from(attempt.inconclusive_runs),
         attempt.evidence_json.clone(),
     );
-    if existing == expected {
-        Ok(())
-    } else {
-        Err(StateError::InvalidRecord(
-            "candidate digest was reused with different evidence",
-        ))
+    if existing.as_ref() == Some(&expected) {
+        return Ok(());
     }
+    if existing
+        .as_ref()
+        .is_some_and(|existing| existing.0 != "inconclusive")
+    {
+        return Err(StateError::InvalidRecord(
+            "terminal candidate evidence cannot be replaced",
+        ));
+    }
+    connection
+        .execute(
+            "INSERT INTO attempts(
+                session_id, candidate_digest, verdict, observed_runs,
+                inconclusive_runs, evidence_json
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(session_id, candidate_digest) DO UPDATE SET
+                verdict = excluded.verdict,
+                observed_runs = excluded.observed_runs,
+                inconclusive_runs = excluded.inconclusive_runs,
+                evidence_json = excluded.evidence_json,
+                completed_at = unixepoch()",
+            params![
+                session_id,
+                attempt.candidate.as_bytes().as_slice(),
+                verdict_name(attempt.verdict),
+                i64::from(attempt.observed_runs),
+                i64::from(attempt.inconclusive_runs),
+                attempt.evidence_json,
+            ],
+        )
+        .map_err(database_error)?;
+    connection
+        .execute(
+            "INSERT INTO attempt_events(
+                session_id, candidate_digest, verdict, observed_runs,
+                inconclusive_runs, evidence_json
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                session_id,
+                attempt.candidate.as_bytes().as_slice(),
+                verdict_name(attempt.verdict),
+                i64::from(attempt.observed_runs),
+                i64::from(attempt.inconclusive_runs),
+                attempt.evidence_json,
+            ],
+        )
+        .map_err(database_error)?;
+    Ok(())
 }
 
 fn insert_cache(
@@ -758,6 +788,7 @@ fn lookup_cache(
 fn snapshot(connection: &Connection, session_id: i64) -> Result<StateSnapshot, StateError> {
     Ok(StateSnapshot {
         attempts: count_rows(connection, "attempts", session_id)?,
+        attempt_events: count_rows(connection, "attempt_events", session_id)?,
         transitions: count_rows(connection, "transitions", session_id)?,
         cache_entries: count_rows(connection, "cache_entries", session_id)?,
     })
@@ -843,8 +874,16 @@ fn migrate(connection: &Connection) -> Result<(), StateError> {
         .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
         .map_err(database_error)?;
     match version {
-        0 => connection
-            .execute_batch(MIGRATION_0001)
+        0 => {
+            connection
+                .execute_batch(MIGRATION_0001)
+                .map_err(database_error)?;
+            connection
+                .execute_batch(MIGRATION_0002)
+                .map_err(database_error)
+        }
+        1 => connection
+            .execute_batch(MIGRATION_0002)
             .map_err(database_error),
         SCHEMA_VERSION => Ok(()),
         found => Err(StateError::SchemaVersion {

@@ -55,6 +55,47 @@ mod state_contract {
         assert_eq!(restarted.session_id(), 2);
     }
 
+    #[test]
+    fn inconclusive_retry_history_can_converge_to_terminal_evidence() {
+        let temporary = tempfile::tempdir().expect("state directory");
+        let store = StateStore::create(temporary.path().join("state.sqlite3"), session("retry"))
+            .expect("create state");
+        let writer = store.writer();
+        let candidate = ContentDigest::of(b"retry");
+        for (runs, evidence) in [(1, "first"), (2, "second")] {
+            writer
+                .record_attempt(AttemptRecord::new(
+                    candidate,
+                    CandidateVerdict::Inconclusive,
+                    runs,
+                    1,
+                    evidence.to_owned(),
+                ))
+                .expect("inconclusive retry");
+        }
+        writer
+            .record_attempt(AttemptRecord::new(
+                candidate,
+                CandidateVerdict::Rejected,
+                3,
+                0,
+                "terminal".to_owned(),
+            ))
+            .expect("terminal retry");
+
+        let snapshot = writer.snapshot().expect("snapshot");
+        assert_eq!(snapshot.attempts(), 1);
+        assert_eq!(snapshot.attempt_events(), 3);
+        assert_eq!(
+            writer
+                .lookup_cache(candidate)
+                .expect("cache")
+                .expect("terminal")
+                .verdict(),
+            CandidateVerdict::Rejected
+        );
+    }
+
     fn session(seed: &str) -> SessionContract {
         SessionContract::new(
             ContentDigest::of(format!("source-{seed}").as_bytes()),

@@ -83,6 +83,67 @@ fn duplicate_attempt_messages_are_idempotent() {
         .expect("first message");
     writer.record_attempt(record).expect("duplicate message");
     assert_eq!(writer.snapshot().expect("snapshot").attempts(), 1);
+    assert_eq!(writer.snapshot().expect("snapshot").attempt_events(), 1);
+}
+
+#[test]
+fn inconclusive_retries_append_evidence_and_can_become_terminal() {
+    let temporary = tempfile::tempdir().expect("state directory");
+    let store = StateStore::create(temporary.path().join("state.sqlite3"), contract("retry"))
+        .expect("create state");
+    let writer = store.writer();
+    let candidate = ContentDigest::of(b"retry-candidate");
+    for (observed_runs, evidence_json) in [(1, "{\"run\":1}"), (2, "{\"run\":2}")] {
+        writer
+            .record_attempt(AttemptRecord::new(
+                candidate,
+                CandidateVerdict::Inconclusive,
+                observed_runs,
+                1,
+                evidence_json.to_owned(),
+            ))
+            .expect("retry evidence");
+    }
+    writer
+        .record_attempt(AttemptRecord::new(
+            candidate,
+            CandidateVerdict::Preserved,
+            3,
+            0,
+            "{\"run\":3}".to_owned(),
+        ))
+        .expect("terminal evidence");
+
+    let snapshot = writer.snapshot().expect("snapshot");
+    assert_eq!(snapshot.attempts(), 1);
+    assert_eq!(snapshot.attempt_events(), 3);
+    assert_eq!(
+        writer
+            .lookup_cache(candidate)
+            .expect("cache")
+            .expect("terminal cache")
+            .verdict(),
+        CandidateVerdict::Preserved
+    );
+}
+
+#[test]
+fn schema_one_journals_migrate_without_losing_compatibility() {
+    let temporary = tempfile::tempdir().expect("state directory");
+    let database = temporary.path().join("state.sqlite3");
+    let connection = rusqlite::Connection::open(&database).expect("database");
+    connection
+        .execute_batch(include_str!("../migrations/0001.sql"))
+        .expect("schema one");
+    drop(connection);
+
+    drop(StateStore::create(&database, contract("migrated")).expect("migrated store"));
+
+    let connection = rusqlite::Connection::open(&database).expect("database");
+    let version = connection
+        .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+        .expect("version");
+    assert_eq!(version, 2);
 }
 
 #[test]
