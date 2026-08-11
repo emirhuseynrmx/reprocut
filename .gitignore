@@ -4,6 +4,7 @@
 /output/
 /.venv/
 /.pytest_cache/
+/.test-deps/
 *.pyd
 *.so
 __pycache__/

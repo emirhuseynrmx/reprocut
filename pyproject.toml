@@ -1,0 +1,28 @@
+[build-system]
+requires = ["maturin>=1.8,<2"]
+build-backend = "maturin"
+
+[project]
+name = "reprocut"
+version = "0.1.0"
+description = "Deterministic failure identity and project reduction primitives"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT OR Apache-2.0"
+authors = [{ name = "Emir Hüseyin İnci" }]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Rust",
+  "Typing :: Typed",
+]
+
+[tool.maturin]
+bindings = "pyo3"
+manifest-path = "crates/reprocut-python/Cargo.toml"
+python-source = "python"
+module-name = "reprocut._native"
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers --strict-config"
+testpaths = ["python/tests"]
