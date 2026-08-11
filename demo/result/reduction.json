@@ -1,0 +1,33 @@
+{
+  "accepted_sizes": [
+    18,
+    9,
+    6,
+    4,
+    3
+  ],
+  "attempts": 19,
+  "baseline_runs": 3,
+  "cache_hits": 5,
+  "final_verifications": 3,
+  "fingerprint": {
+    "anchor": "TypeError: unsupported operand type(s) for +: 'decimal.Decimal' and 'str'",
+    "exit_code": 1,
+    "signal": null
+  },
+  "inconclusive_attempts": 0,
+  "kept_files": [
+    "bug.py",
+    "checkout.py",
+    "fixtures/order.json"
+  ],
+  "original_files": 18,
+  "retained_files": 3,
+  "schema_version": 1,
+  "source_root": "demo/source",
+  "output": "demo/result",
+  "command": [
+    "python",
+    "bug.py"
+  ]
+}

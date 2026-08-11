@@ -2,6 +2,8 @@
 
 **Turn a failing project into the smallest project that still fails.**
 
+![ReproCut reducing an 18-file checkout failure to three files](assets/reprocut-demo.gif)
+
 Bug reports often arrive as entire repositories. Removing “irrelevant” files by hand is slow, and one careless deletion can replace the original failure with a different one. ReproCut stabilizes the failure first, tests isolated project copies, and accepts a cut only when the same exit state and normalized diagnostic remain.
 
 ```console
@@ -12,6 +14,8 @@ Reduced 18 files to 3. Open ./minimal/report.html
 ```
 
 The original checkout is never edited. `minimal/` is published only after the reduced command passes three final verification runs.
+
+Regenerate the measured demo with `python scripts/build_demo.py --refresh`, then `python scripts/capture_demo.py`.
 
 ## What the output contains
 

@@ -1,0 +1,1 @@
+WAREHOUSES = ("Bursa", "Gemlik", "Nilüfer")

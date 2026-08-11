@@ -17,6 +17,9 @@ classifiers = [
   "Typing :: Typed",
 ]
 
+[project.optional-dependencies]
+test = ["Pillow==12.2.0", "pytest==8.4.2"]
+
 [tool.maturin]
 bindings = "pyo3"
 manifest-path = "crates/reprocut-python/Cargo.toml"
