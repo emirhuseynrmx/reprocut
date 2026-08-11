@@ -182,9 +182,13 @@ def compose_adapters() -> str:
         read("crates/reprocut-adapters/src/discovery.rs")
         .replace("use reprocut_workspace::", "use crate::reprocut_workspace::")
     )
+    manifests = read("crates/reprocut-adapters/src/manifests.rs").replace(
+        "use crate::AdapterCommand;", "use super::AdapterCommand;"
+    )
     adapters = (
         read("crates/reprocut-adapters/src/lib.rs")
         .replace("mod discovery;", f"mod discovery {{ {discovery} }}")
+        .replace("mod manifests;", f"mod manifests {{ {manifests} }}")
         .replace("pub use reprocut_workspace::", "pub use crate::reprocut_workspace::")
     )
     return "\n".join(

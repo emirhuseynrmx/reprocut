@@ -12,6 +12,7 @@ repository.workspace = true
 reprocut-workspace = { path = "../reprocut-workspace" }
 serde_json.workspace = true
 thiserror.workspace = true
+toml_edit.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
