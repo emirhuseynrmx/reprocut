@@ -1,10 +1,14 @@
 #[cfg(test)]
 mod cli_remote_contract {
-    use std::{fs, path::Path, time::{SystemTime, UNIX_EPOCH}};
+    use std::{
+        fs,
+        path::Path,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     use clap::CommandFactory as _;
 
-    use super::{Action, Cli, CliError, ReduceArgs, execute};
+    use super::{execute, Action, Cli, CliError, ReduceArgs};
 
     fn sandbox(label: &str) -> std::path::PathBuf {
         let nonce = SystemTime::now()
@@ -41,14 +45,20 @@ mod cli_remote_contract {
         let source = sandbox.join("source");
         let output = sandbox.join("minimal");
         fs::create_dir(&source).expect("source created");
-        fs::write(source.join("bug.sh"), "#!/bin/sh\necho 'ValueError: stable bug' >&2\nexit 1\n")
-            .expect("bug fixture written");
+        fs::write(
+            source.join("bug.sh"),
+            "#!/bin/sh\necho 'ValueError: stable bug' >&2\nexit 1\n",
+        )
+        .expect("bug fixture written");
         fs::write(source.join("noise.txt"), "removable").expect("noise written");
         fs::create_dir(source.join("nested")).expect("nested directory created");
-        fs::write(source.join("nested/unused.txt"), "also removable").expect("nested noise written");
+        fs::write(source.join("nested/unused.txt"), "also removable")
+            .expect("nested noise written");
 
-        execute(Cli { action: Action::Reduce(reduction_args(&source, &output)) })
-            .expect("reduction succeeds");
+        execute(Cli {
+            action: Action::Reduce(reduction_args(&source, &output)),
+        })
+        .expect("reduction succeeds");
 
         assert!(source.join("noise.txt").is_file());
         assert!(output.join("project/bug.sh").is_file());
@@ -74,8 +84,10 @@ mod cli_remote_contract {
         fs::create_dir(&output).expect("output created");
         fs::write(output.join("marker.txt"), "user data").expect("marker written");
 
-        let error = execute(Cli { action: Action::Reduce(reduction_args(&source, &output)) })
-            .expect_err("existing output must fail");
+        let error = execute(Cli {
+            action: Action::Reduce(reduction_args(&source, &output)),
+        })
+        .expect_err("existing output must fail");
         assert!(matches!(error, CliError::OutputExists(_)));
         assert_eq!(
             fs::read_to_string(output.join("marker.txt")).expect("marker remains readable"),

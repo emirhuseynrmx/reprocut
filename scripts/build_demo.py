@@ -17,7 +17,6 @@ from pathlib import Path
 
 from playground_workspace_verify import ROOT, compose_cli
 
-
 SOURCE = ROOT / "demo" / "source"
 RESULT = ROOT / "demo" / "result"
 EXPECTED_KEPT = ["bug.py", "checkout.py", "fixtures/order.json"]
@@ -72,9 +71,7 @@ def stable_python_failure(root: Path) -> tuple[object, str]:
     ]
     if any(run.returncode == 0 for run in runs):
         raise RuntimeError("demo command unexpectedly succeeded")
-    oracle = FailureOracle.from_baselines(
-        [(run.returncode, run.stderr) for run in runs]
-    )
+    oracle = FailureOracle.from_baselines([(run.returncode, run.stderr) for run in runs])
     return oracle, runs[0].stderr
 
 
@@ -83,16 +80,14 @@ def remote_program() -> str:
     for path in source_files(SOURCE):
         relative = path.relative_to(SOURCE).as_posix()
         contents = path.read_text(encoding="utf-8")
-        writes.append(
-            f"write_demo_file(&source, {raw_string(relative)}, {raw_string(contents)});"
-        )
+        writes.append(f"write_demo_file(&source, {raw_string(relative)}, {raw_string(contents)});")
 
     shell_oracle = (
         "if [ -f bug.py ] && [ -f checkout.py ] && "
         "[ -f fixtures/order.json ]; then "
-        "printf \"%s\\n\" \"TypeError: unsupported operand type(s) for +: "
+        'printf "%s\\n" "TypeError: unsupported operand type(s) for +: '
         "'decimal.Decimal' and 'str'\" >&2; exit 1; "
-        "fi; printf \"%s\\n\" \"required demo material missing\" >&2; exit 2"
+        'fi; printf "%s\\n" "required demo material missing" >&2; exit 2'
     )
     fixture_writes = "\n    ".join(writes)
     harness = f"""
@@ -172,9 +167,7 @@ fn main() {{
     println!("{HTML_END}");
 }}
 """
-    code = compose_cli().replace(
-        "fn main() -> ExitCode {", "fn cli_entry() -> ExitCode {", 1
-    )
+    code = compose_cli().replace("fn main() -> ExitCode {", "fn cli_entry() -> ExitCode {", 1)
     return code + "\n" + harness
 
 
@@ -227,13 +220,8 @@ def write_reproduction_scripts(artifact: Path) -> None:
     )
 
 
-def format_summary(
-    *, output: str, original_files: int, retained_files: int, attempts: int
-) -> str:
-    return (
-        f"built {output}: {original_files} -> {retained_files} files, "
-        f"{attempts} candidates"
-    )
+def format_summary(*, output: str, original_files: int, retained_files: int, attempts: int) -> str:
+    return f"built {output}: {original_files} -> {retained_files} files, {attempts} candidates"
 
 
 def publish_demo(artifact: Path, *, refresh: bool) -> None:
@@ -298,9 +286,7 @@ def main(*, refresh: bool = False) -> int:
             encoding="utf-8",
             newline="\n",
         )
-        (artifact / "report.html").write_text(
-            report + "\n", encoding="utf-8", newline="\n"
-        )
+        (artifact / "report.html").write_text(report + "\n", encoding="utf-8", newline="\n")
         write_reproduction_scripts(artifact)
 
         reduced = subprocess.run(

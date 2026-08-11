@@ -7,7 +7,6 @@ from collections.abc import Sequence
 from types import MappingProxyType
 from typing import Literal
 
-
 Verdict = Literal["preserved", "rejected", "inconclusive"]
 Baseline = tuple[int, str]
 
@@ -31,7 +30,7 @@ def _normalize(diagnostic: str) -> str:
 class FailureOracle:
     """Reference implementation of the immutable native oracle contract."""
 
-    __slots__ = ("_exit_code", "_anchor")
+    __slots__ = ("_anchor", "_exit_code")
 
     def __init__(self, exit_code: int, anchor: str, *, _factory: bool = False) -> None:
         if not _factory:
@@ -79,8 +78,12 @@ class FailureOracle:
     @property
     def fingerprint(self) -> dict[str, int | str | None]:
         # A new value prevents callers from mutating oracle state.
-        return dict(MappingProxyType({
-            "exit_code": self._exit_code,
-            "signal": None,
-            "anchor": self._anchor,
-        }))
+        return dict(
+            MappingProxyType(
+                {
+                    "exit_code": self._exit_code,
+                    "signal": None,
+                    "anchor": self._anchor,
+                }
+            )
+        )

@@ -18,7 +18,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-test = ["Pillow==12.2.0", "pytest==8.4.2"]
+test = ["Pillow==12.2.0", "pytest==8.4.2", "ruff==0.16.2"]
 
 [tool.maturin]
 bindings = "pyo3"
@@ -29,3 +29,11 @@ module-name = "reprocut._native"
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers --strict-config"
 testpaths = ["python/tests"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+exclude = ["demo/result"]
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "PERF", "RUF", "SIM", "UP"]

@@ -1,7 +1,5 @@
 use proptest::prelude::*;
-use reprocut_core::{
-    normalize_diagnostic, CandidateVerdict, ExecutionObservation, FailureOracle,
-};
+use reprocut_core::{normalize_diagnostic, CandidateVerdict, ExecutionObservation, FailureOracle};
 
 fn failed(stderr: &str) -> ExecutionObservation {
     ExecutionObservation::new(

@@ -25,8 +25,7 @@ fn inventory_is_sorted_and_excludes_internal_metadata() {
 #[test]
 fn removal_changes_only_the_disposable_candidate() {
     let source = tempfile::tempdir().expect("source tempdir");
-    fs::write(source.path().join("bug.py"), b"raise TypeError('currency')")
-        .expect("bug fixture");
+    fs::write(source.path().join("bug.py"), b"raise TypeError('currency')").expect("bug fixture");
     fs::write(source.path().join("noise.txt"), b"noise").expect("noise fixture");
     let inventory = ProjectInventory::scan(source.path()).expect("inventory");
     let kept = inventory.units().iter().collect::<Vec<_>>();

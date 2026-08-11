@@ -1,6 +1,4 @@
-use reprocut_core::{
-    CandidateVerdict, ExecutionObservation, FailureOracle, OracleError,
-};
+use reprocut_core::{CandidateVerdict, ExecutionObservation, FailureOracle, OracleError};
 
 fn failed(stderr: &str) -> ExecutionObservation {
     ExecutionObservation::new(
@@ -22,7 +20,10 @@ fn stable_baselines_create_an_oracle() {
     ])
     .expect("volatile identifiers must normalize");
 
-    assert!(oracle.fingerprint().anchor().contains("TypeError: currency"));
+    assert!(oracle
+        .fingerprint()
+        .anchor()
+        .contains("TypeError: currency"));
 }
 
 #[test]
@@ -48,19 +49,9 @@ fn truncated_or_timed_out_execution_is_inconclusive() {
         failed("TypeError: currency"),
     ])
     .expect("baseline is stable");
-    let timed_out = ExecutionObservation::new(
-        None,
-        None,
-        Vec::new(),
-        Vec::new(),
-        true,
-        false,
-    );
+    let timed_out = ExecutionObservation::new(None, None, Vec::new(), Vec::new(), true, false);
 
-    assert_eq!(
-        oracle.classify(&timed_out),
-        CandidateVerdict::Inconclusive
-    );
+    assert_eq!(oracle.classify(&timed_out), CandidateVerdict::Inconclusive);
 }
 
 #[test]

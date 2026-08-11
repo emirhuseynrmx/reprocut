@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod contract_tests {
-    use super::{ReportModel, render_report};
+    use super::{render_report, ReportModel};
 
     fn fixture() -> ReportModel {
         ReportModel {

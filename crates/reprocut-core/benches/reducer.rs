@@ -1,7 +1,5 @@
-use criterion::{BatchSize, Criterion, Throughput, black_box, criterion_group, criterion_main};
-use reprocut_core::{
-    CandidateVerdict, ExecutionObservation, FailureOracle, ReductionUnit, reduce,
-};
+use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion, Throughput};
+use reprocut_core::{reduce, CandidateVerdict, ExecutionObservation, FailureOracle, ReductionUnit};
 
 fn benchmark_reducer(criterion: &mut Criterion) {
     const UNIT_COUNT: usize = 4_096;
@@ -24,9 +22,10 @@ fn benchmark_reducer(criterion: &mut Criterion) {
             || units.clone(),
             |candidate_units| {
                 let result = reduce(&candidate_units, |candidate| {
-                    if REQUIRED.iter().all(|required| {
-                        candidate.iter().any(|unit| unit.id() == *required)
-                    }) {
+                    if REQUIRED
+                        .iter()
+                        .all(|required| candidate.iter().any(|unit| unit.id() == *required))
+                    {
                         CandidateVerdict::Preserved
                     } else {
                         CandidateVerdict::Rejected

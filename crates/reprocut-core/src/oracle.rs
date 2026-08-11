@@ -47,8 +47,7 @@ impl FailureOracle {
             return Err(OracleError::IncompleteBaseline);
         }
         if baselines.iter().skip(1).any(|observation| {
-            observation.exit_code() != first.exit_code()
-                || observation.signal() != first.signal()
+            observation.exit_code() != first.exit_code() || observation.signal() != first.signal()
         }) {
             return Err(OracleError::UnstableExitState);
         }
@@ -118,15 +117,12 @@ pub fn normalize_diagnostic(input: &str) -> String {
         Regex::new(r"/(?:[^/ \t\r\n:]+/)*[^/ \t\r\n:]+")
             .expect("Unix path regex is static and valid")
     });
-    let hex_address = HEX_ADDRESS.get_or_init(|| {
-        Regex::new(r"0[xX][0-9a-fA-F]+").expect("hex regex is static and valid")
-    });
-    let decimal_id = DECIMAL_ID.get_or_init(|| {
-        Regex::new(r"[0-9]+").expect("decimal regex is static and valid")
-    });
-    let horizontal_space = HORIZONTAL_SPACE.get_or_init(|| {
-        Regex::new(r"[\t ]+").expect("whitespace regex is static and valid")
-    });
+    let hex_address = HEX_ADDRESS
+        .get_or_init(|| Regex::new(r"0[xX][0-9a-fA-F]+").expect("hex regex is static and valid"));
+    let decimal_id = DECIMAL_ID
+        .get_or_init(|| Regex::new(r"[0-9]+").expect("decimal regex is static and valid"));
+    let horizontal_space = HORIZONTAL_SPACE
+        .get_or_init(|| Regex::new(r"[\t ]+").expect("whitespace regex is static and valid"));
 
     let normalized_newlines = input.replace("\r\n", "\n").replace('\r', "\n");
     let without_windows_paths = windows_path.replace_all(&normalized_newlines, "<path>");

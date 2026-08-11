@@ -10,7 +10,6 @@ import sys
 import urllib.request
 from pathlib import Path
 
-
 INCLUDE_STR = re.compile(r'include_str!\("([^"]+)"\)')
 
 
@@ -37,9 +36,7 @@ def main() -> int:
     code = inline_includes(source_path, source_path.read_text(encoding="utf-8"))
     if args.append is not None:
         append_path = args.append.resolve()
-        code += "\n" + inline_includes(
-            append_path, append_path.read_text(encoding="utf-8")
-        )
+        code += "\n" + inline_includes(append_path, append_path.read_text(encoding="utf-8"))
 
     body = json.dumps(
         {

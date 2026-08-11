@@ -1,7 +1,7 @@
 # ReproCut Product and System Design
 
 Date: 2026-08-11
-Status: Proposed for user review
+Status: File-reduction MVP implemented; broader research design remains staged
 Repository name: `reprocut`
 
 ## 1. Product thesis
@@ -48,20 +48,29 @@ The first release is a local CLI with no account, hosted service, API key, or ed
 
 ## 3. Product boundaries
 
-### 3.1 MVP capabilities
+### 3.1 Implemented first public slice
 
-- Windows, macOS, and Linux orchestration through a portable Rust core.
-- Language-agnostic directory and file reduction.
+- Portable Rust orchestration intended for Windows, macOS, and Linux, with platform smoke tests defined in CI.
+- Language-agnostic regular-file reduction for an arbitrary repeatable command.
+- Stable failure identity from repeated exit state and normalized stderr diagnostics.
+- Three-valued candidate evaluation: preserved, rejected, or inconclusive.
+- A fresh disposable workspace for every baseline, candidate, and final verification.
+- Deterministic hierarchical delta debugging with an in-memory candidate cache.
+- Bounded concurrent stdout/stderr drains and a per-run deadline.
+- JSON result state, a self-contained HTML report, and shell/PowerShell launchers.
+- A typed PyO3 surface for the stabilized failure oracle plus an explicit source-checkout reference backend.
+- Loom, Miri, sanitizer, Clippy, rustfmt, dependency-policy, native-wheel, and platform jobs defined in CI.
+
+### 3.2 Explicit post-MVP slices
+
 - Manifest-aware dependency reduction for Rust, Python, and JavaScript/TypeScript.
-- Syntax-aware source reduction for an initial bundled grammar set.
-- Configurable failure matching based on exit status, signal, timeout, stdout/stderr patterns, and normalized failure fingerprints.
-- A disposable candidate workspace for every attempted reduction.
-- Deterministic JSON state so interrupted reductions can resume.
-- Terminal progress plus a local HTML reduction report.
-- Shell and PowerShell reproduction launchers.
-- Python plugin API for custom failure predicates and reducers after the Rust protocol is stable.
+- Syntax-aware statement, function, and module reduction.
+- Persistent candidate caching, interruption recovery, and resume.
+- Parallel candidate execution; the atomic lowest-winner primitive exists, but the engine remains sequential.
+- User-configurable stdout/stderr patterns and plugin-defined predicates.
+- Prebuilt signed binaries and release automation.
 
-### 3.2 Explicit non-goals for MVP
+### 3.3 Explicit non-goals for MVP
 
 - Automatically fixing or explaining the bug.
 - Supporting every build system with equal semantic depth.
@@ -439,14 +448,14 @@ This follows Show HN’s preference for non-trivial work that people can try dir
 
 ## 14. Success criteria
 
-Engineering MVP is successful when:
+Engineering status for the implemented file-reduction slice:
 
-1. A fresh user can install and reduce a supplied fixture with one command.
-2. The emitted project independently reproduces the configured failure.
-3. The original project remains byte-for-byte unchanged in supported workflows.
-4. Parallel and sequential schedulers choose the same accepted reduction chain.
-5. Interrupted runs resume without repeating cached work.
-6. At least one real project in each first-party ecosystem is materially reduced.
+1. **Implemented, CI verification pending:** source installation and one-command fixture reduction.
+2. **Verified:** the emitted three-file Python project independently reproduces the stabilized failure.
+3. **Verified:** source-tree digests are unchanged in the acceptance flow.
+4. **Deferred:** a parallel scheduler is not integrated; the current engine is deterministic and sequential.
+5. **Deferred:** the cache is run-local and interrupted runs do not resume.
+6. **Partially demonstrated:** one Python checkout fixture is materially reduced; first-party semantic ecosystem adapters are deferred.
 
 Launch targets are directional, not guaranteed:
 
@@ -509,3 +518,19 @@ Mitigation: language-agnostic file reduction is universal; Rust, Python, and JS/
 - Coq Bug Minimizer: https://arxiv.org/abs/2202.13823
 - Delta debugging overview: https://en.wikipedia.org/wiki/Delta_debugging
 - Show HN guidelines: https://news.ycombinator.com/showhn.html
+
+## 18. Implementation audit
+
+The 0.1 implementation is intentionally the smallest honest product slice of this design: stabilize one failure, remove regular files in isolated copies, repeatedly prove the final result, and publish a portable artifact. It does not represent completion of the manifest-aware, syntax-aware, resumable, or parallel research system described elsewhere in this document.
+
+Measured checked-in demo result:
+
+- 18 original regular files;
+- 3 retained files;
+- 19 candidate evaluations;
+- 5 in-memory cache reuses;
+- 0 inconclusive evaluations;
+- 3 baseline and 3 final verification runs;
+- exact retained set: `bug.py`, `checkout.py`, `fixtures/order.json`.
+
+The detailed evidence and local host constraints are recorded in `docs/verification/2026-08-11-mvp.md`.

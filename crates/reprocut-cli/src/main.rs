@@ -10,7 +10,7 @@ use std::{
 
 use clap::{Args, Parser, Subcommand};
 use reprocut_engine::{EngineError, ReductionEngine, ReductionOutcome, ReductionRequest};
-use reprocut_report::{ReportModel, render_report};
+use reprocut_report::{render_report, ReportModel};
 use reprocut_workspace::{ProjectInventory, WorkspaceError};
 use serde::Serialize;
 use tempfile::TempDir;
@@ -204,7 +204,8 @@ fn publish_artifact(
     json: &[u8],
 ) -> Result<(), CliError> {
     let parent = usable_parent(&arguments.output)?;
-    fs::create_dir_all(parent).map_err(|source| io_error("create output parent", parent, source))?;
+    fs::create_dir_all(parent)
+        .map_err(|source| io_error("create output parent", parent, source))?;
     let staging = tempfile::Builder::new()
         .prefix(".reprocut-publish-")
         .tempdir_in(parent)
@@ -230,13 +231,8 @@ fn report_model(
     outcome: &ReductionOutcome,
     summary: &ReductionSummary,
 ) -> ReportModel {
-    let mut accepted_sizes = Vec::with_capacity(
-        outcome
-            .reduction()
-            .accepted_sizes()
-            .len()
-            .saturating_add(1),
-    );
+    let mut accepted_sizes =
+        Vec::with_capacity(outcome.reduction().accepted_sizes().len().saturating_add(1));
     accepted_sizes.push(outcome.original_files());
     accepted_sizes.extend_from_slice(outcome.reduction().accepted_sizes());
 
@@ -330,7 +326,8 @@ fn usable_parent(output: &Path) -> Result<&Path, CliError> {
 }
 
 fn publish_staging(staging: TempDir, artifact: &Path, output: &Path) -> Result<(), CliError> {
-    fs::rename(artifact, output).map_err(|source| io_error("publish output atomically", output, source))?;
+    fs::rename(artifact, output)
+        .map_err(|source| io_error("publish output atomically", output, source))?;
     drop(staging);
     Ok(())
 }

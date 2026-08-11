@@ -117,29 +117,28 @@ impl ProcessRunner {
         let stdout_reader = thread::spawn(move || read_bounded(stdout, stdout_limit));
         let stderr_reader = thread::spawn(move || read_bounded(stderr, stderr_limit));
 
-        let (status, timed_out) = match wait_until(&mut child, spec.timeout()).map_err(|source| {
-            RunnerError::Io {
+        let (status, timed_out) =
+            match wait_until(&mut child, spec.timeout()).map_err(|source| RunnerError::Io {
                 operation: "wait for child",
                 source,
-            }
-        })? {
-            Some(status) => (status, false),
-            None => {
-                if let Err(source) = child.kill() {
-                    if source.kind() != io::ErrorKind::InvalidInput {
-                        return Err(RunnerError::Io {
-                            operation: "kill timed-out child",
-                            source,
-                        });
+            })? {
+                Some(status) => (status, false),
+                None => {
+                    if let Err(source) = child.kill() {
+                        if source.kind() != io::ErrorKind::InvalidInput {
+                            return Err(RunnerError::Io {
+                                operation: "kill timed-out child",
+                                source,
+                            });
+                        }
                     }
+                    let status = child.wait().map_err(|source| RunnerError::Io {
+                        operation: "reap timed-out child",
+                        source,
+                    })?;
+                    (status, true)
                 }
-                let status = child.wait().map_err(|source| RunnerError::Io {
-                    operation: "reap timed-out child",
-                    source,
-                })?;
-                (status, true)
-            }
-        };
+            };
 
         let (stdout, stdout_truncated) = join_capture(stdout_reader, "stdout")?;
         let (stderr, stderr_truncated) = join_capture(stderr_reader, "stderr")?;

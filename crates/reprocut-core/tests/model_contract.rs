@@ -23,8 +23,7 @@ fn observation_keeps_bounded_stream_metadata() {
 
 #[test]
 fn fingerprint_is_serializable_and_stable() {
-    let fingerprint =
-        FailureFingerprint::new(Some(1), None, "TypeError: currency".into());
+    let fingerprint = FailureFingerprint::new(Some(1), None, "TypeError: currency".into());
     let encoded = serde_json::to_string(&fingerprint).expect("fingerprint must serialize");
 
     assert_eq!(

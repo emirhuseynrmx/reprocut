@@ -11,7 +11,6 @@ from pathlib import Path
 
 from PIL import Image
 
-
 ROOT = Path(__file__).resolve().parent.parent
 REPORT = ROOT / "demo" / "result" / "report.html"
 FRAMES = ROOT / "output" / "playwright" / "gif-frames"

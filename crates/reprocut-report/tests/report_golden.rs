@@ -1,4 +1,4 @@
-use reprocut_report::{ReportModel, render_report};
+use reprocut_report::{render_report, ReportModel};
 
 fn fixture_model() -> ReportModel {
     ReportModel {
@@ -21,8 +21,8 @@ fn fixture_model() -> ReportModel {
 #[test]
 fn renders_the_reviewed_report_byte_for_byte() {
     let actual = render_report(&fixture_model()).replace("\r\n", "\n");
-    let expected = include_str!("../../../tests/golden/reduction-report.html")
-        .replace("\r\n", "\n");
+    let expected =
+        include_str!("../../../tests/golden/reduction-report.html").replace("\r\n", "\n");
 
     assert_eq!(actual, expected);
 }

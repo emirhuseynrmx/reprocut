@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod golden_contract {
-    use super::{ReportModel, render_report};
+    use super::{render_report, ReportModel};
 
     #[test]
     fn renderer_matches_the_reviewed_golden_file_byte_for_byte() {
@@ -20,8 +20,8 @@ mod golden_contract {
             ],
         })
         .replace("\r\n", "\n");
-        let expected = include_str!("../../tests/golden/reduction-report.html")
-            .replace("\r\n", "\n");
+        let expected =
+            include_str!("../../tests/golden/reduction-report.html").replace("\r\n", "\n");
 
         assert_eq!(actual, expected);
     }

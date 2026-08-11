@@ -59,8 +59,7 @@ fn a_successful_baseline_is_not_presented_as_a_failure() {
 fn fixture_copy() -> tempfile::TempDir {
     let source = tempfile::tempdir().expect("source tempdir");
     fs::create_dir(source.path().join("nested")).expect("nested directory");
-    fs::copy(fixture_root().join("bug.py"), source.path().join("bug.py"))
-        .expect("bug fixture");
+    fs::copy(fixture_root().join("bug.py"), source.path().join("bug.py")).expect("bug fixture");
     fs::copy(
         fixture_root().join("noise.txt"),
         source.path().join("noise.txt"),

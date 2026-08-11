@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from reprocut import FailureOracle
 
 
@@ -54,7 +53,4 @@ def test_volatile_paths_and_ids_do_not_change_failure_identity() -> None:
             (1, "TypeError: request 20 at /var/run/beta.py"),
         ]
     )
-    assert (
-        oracle.classify(1, "TypeError: request 30 at /opt/build/gamma.py")
-        == "preserved"
-    )
+    assert oracle.classify(1, "TypeError: request 30 at /opt/build/gamma.py") == "preserved"
