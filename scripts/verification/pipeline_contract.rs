@@ -35,4 +35,30 @@ mod pipeline_contract {
         assert!(first.contains("serde"));
         assert!(candidates[0].preparation().is_some());
     }
+
+    #[test]
+    fn python_dependencies_require_explicit_caller_isolation() {
+        let root = tempfile::tempdir().expect("project");
+        fs::write(
+            root.path().join("pyproject.toml"),
+            "[project]\nname='demo'\ndependencies=['requests']\n[project.scripts]\ndemo='demo:main'\n",
+        )
+        .expect("manifest");
+        let inventory = ProjectInventory::scan(root.path()).expect("inventory");
+        let snapshot =
+            ProjectSnapshot::from_inventory(&inventory, inventory.units()).expect("snapshot");
+
+        let safe = manifest_candidates(&snapshot, Ecosystem::Python, PreparationMode::Offline)
+            .expect("safe candidates");
+        let isolated = manifest_candidates(
+            &snapshot,
+            Ecosystem::Python,
+            PreparationMode::IsolatedPython,
+        )
+        .expect("isolated candidates");
+
+        assert_eq!(safe.len(), 1);
+        assert_eq!(safe[0].key(), "python:project.scripts.demo");
+        assert_eq!(isolated.len(), 2);
+    }
 }

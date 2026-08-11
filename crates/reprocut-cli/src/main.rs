@@ -63,7 +63,7 @@ struct ReduceArgs {
     #[arg(long, value_enum, default_value_t = EcosystemArg::Auto)]
     ecosystem: EcosystemArg,
 
-    /// Candidate dependency preparation authority.
+    /// Candidate preparation authority; isolated-python trusts your command environment.
     #[arg(long, value_enum, default_value_t = PrepareArg::Offline)]
     prepare: PrepareArg,
 

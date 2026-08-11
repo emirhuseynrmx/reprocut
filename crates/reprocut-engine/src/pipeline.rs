@@ -139,7 +139,7 @@ fn cargo_candidates(
 
 fn python_candidates(
     snapshot: &ProjectSnapshot,
-    _preparation_mode: PreparationMode,
+    preparation_mode: PreparationMode,
 ) -> Result<Vec<StructuredCandidate>, PipelineError> {
     let Some(source) = snapshot.file("pyproject.toml") else {
         return Ok(Vec::new());
@@ -148,7 +148,9 @@ fn python_candidates(
     let manifest = PythonManifest::parse(source)?;
     let mut candidates = Vec::new();
     for entry in manifest.entries() {
-        if entry.capability() == ManifestCapability::RequiresIsolatedPython {
+        if entry.capability() == ManifestCapability::RequiresIsolatedPython
+            && preparation_mode != PreparationMode::IsolatedPython
+        {
             continue;
         }
         let mut edited = manifest.clone();

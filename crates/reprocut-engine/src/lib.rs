@@ -59,7 +59,7 @@ pub enum PreparationMode {
     Offline,
     /// Permit network-disabled npm lifecycle scripts explicitly.
     LifecycleScripts,
-    /// Reserve an explicitly isolated Python environment for dependency edits.
+    /// Trust the caller-provided Python command as isolated for dependency edits.
     IsolatedPython,
 }
 
