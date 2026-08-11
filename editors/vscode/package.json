@@ -1,0 +1,93 @@
+{
+  "name": "reprocut-vscode",
+  "displayName": "ReproCut",
+  "description": "Minimize a failing project with the local ReproCut CLI.",
+  "version": "0.1.0",
+  "publisher": "reprocut",
+  "license": "MIT OR Apache-2.0",
+  "private": true,
+  "engines": {
+    "vscode": "^1.91.0"
+  },
+  "categories": [
+    "Testing",
+    "Other"
+  ],
+  "main": "./src/extension.js",
+  "activationEvents": [
+    "onCommand:reprocut.minimize",
+    "onCommand:reprocut.resume",
+    "onCommand:reprocut.openReport",
+    "onCommand:reprocut.openIssue",
+    "onCommand:reprocut.openReducedProject"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "reprocut.minimize",
+        "title": "ReproCut: Minimize This Failure"
+      },
+      {
+        "command": "reprocut.resume",
+        "title": "ReproCut: Resume Reduction"
+      },
+      {
+        "command": "reprocut.openReport",
+        "title": "ReproCut: Open Last Report"
+      },
+      {
+        "command": "reprocut.openIssue",
+        "title": "ReproCut: Open Last Issue Body"
+      },
+      {
+        "command": "reprocut.openReducedProject",
+        "title": "ReproCut: Open Last Reduced Project"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "reprocut.minimize",
+          "group": "navigation@90",
+          "when": "resourceScheme == file"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "ReproCut",
+      "properties": {
+        "reprocut.binary": {
+          "type": "string",
+          "default": "reprocut",
+          "description": "Path to the ReproCut CLI. The extension never downloads a binary."
+        },
+        "reprocut.command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Exact failing command argv; empty uses ecosystem discovery."
+        },
+        "reprocut.ecosystem": {
+          "type": "string",
+          "enum": ["auto", "cargo", "python", "npm", "none"],
+          "default": "auto"
+        },
+        "reprocut.preparation": {
+          "type": "string",
+          "enum": ["none", "offline", "lifecycle_scripts", "isolated_python"],
+          "default": "offline"
+        },
+        "reprocut.jobs": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

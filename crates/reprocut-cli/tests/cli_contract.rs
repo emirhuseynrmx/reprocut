@@ -122,7 +122,10 @@ fn protocol_validation_failure_is_one_machine_readable_terminal_event() {
         .expect("protocol process");
 
     assert!(!result.status.success());
-    assert!(result.stderr.is_empty(), "protocol errors stay on JSONL stdout");
+    assert!(
+        result.stderr.is_empty(),
+        "protocol errors stay on JSONL stdout"
+    );
     let events = String::from_utf8(result.stdout).expect("UTF-8 JSONL");
     let lines = events.lines().collect::<Vec<_>>();
     assert_eq!(lines.len(), 1);
@@ -271,6 +274,66 @@ fn resume_reuses_terminal_evidence_and_replays_the_same_chain() {
         fs::read(first_output.join("project/bug.py")).expect("first project"),
         fs::read(second_output.join("project/bug.py")).expect("second project")
     );
+}
+
+#[test]
+fn gallery_prepare_is_redacted_local_only_and_no_clobber() {
+    let sandbox = tempdir().expect("sandbox created");
+    let artifact = sandbox.path().join("minimal");
+    let submission = sandbox.path().join("submission");
+
+    Command::cargo_bin("reprocut")
+        .expect("binary is built")
+        .args(["reduce", "--root"])
+        .arg(fixture_root())
+        .arg("--output")
+        .arg(&artifact)
+        .arg("--state")
+        .arg(sandbox.path().join("state.sqlite3"))
+        .args(["--", &python(), "bug.py"])
+        .assert()
+        .success();
+
+    Command::cargo_bin("reprocut")
+        .expect("binary is built")
+        .args(["gallery", "prepare", "--from"])
+        .arg(&artifact)
+        .arg("--output")
+        .arg(&submission)
+        .args([
+            "--title",
+            "Decimal checkout type mismatch",
+            "--license",
+            "MIT",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("no upload performed"));
+
+    let entry: Value =
+        serde_json::from_slice(&fs::read(submission.join("entry.json")).expect("entry exists"))
+            .expect("entry JSON");
+    assert_eq!(entry["schema_version"], 1);
+    assert_eq!(entry["source_included"], false);
+    assert_eq!(entry["featured"], false);
+    assert_eq!(entry["original_files"], 3);
+    assert_eq!(entry["retained_files"], 1);
+    assert!(entry.get("command").is_none());
+    assert!(entry.get("source_root").is_none());
+    assert!(!submission.join("source").exists());
+    assert!(submission.join("index.html").is_file());
+    assert!(submission.join("LICENSE_DECLARATION.md").is_file());
+
+    Command::cargo_bin("reprocut")
+        .expect("binary is built")
+        .args(["gallery", "prepare", "--from"])
+        .arg(&artifact)
+        .arg("--output")
+        .arg(&submission)
+        .args(["--title", "Second", "--license", "MIT"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("already exists"));
 }
 
 #[test]

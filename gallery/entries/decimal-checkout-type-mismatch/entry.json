@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "slug": "decimal-checkout-type-mismatch",
+  "title": "Decimal checkout type mismatch",
+  "license": "MIT",
+  "ecosystem": "python",
+  "fingerprint_sha256": "e9fcf47255b5def95058ae8dc0dd1d0a7e176d2c7d8361b51f32e5c221a37d4e",
+  "termination": "exit 1",
+  "original_files": 18,
+  "retained_files": 3,
+  "original_bytes": 1669,
+  "retained_bytes": 675,
+  "source_included": false,
+  "featured": false
+}

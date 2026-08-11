@@ -2,6 +2,7 @@
 /.reprocut/
 /reprocut-output/
 /output/
+/gallery/dist/
 /.venv/
 /.pytest_cache/
 /.test-deps/

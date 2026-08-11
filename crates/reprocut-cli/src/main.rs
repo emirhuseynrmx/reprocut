@@ -25,7 +25,7 @@ use reprocut_report::{
     EvaluationPolicyEvidence, FailureEvidence, MaterialMeasurement, MeasurementSet,
     ReductionEvidence, ReportModel, RetentionEvidence, SearchEvidence, EVIDENCE_SCHEMA_VERSION,
 };
-use reprocut_workspace::WorkspaceError;
+use reprocut_workspace::{ProjectInventory, ProjectSnapshot, WorkspaceError};
 use serde::Serialize;
 use tempfile::TempDir;
 use thiserror::Error;
@@ -59,6 +59,43 @@ enum Action {
     Export(ExportArgs),
     /// Run the versioned JSONL integration protocol.
     Protocol(ProtocolArgs),
+    /// Prepare a redacted, local-only static gallery submission.
+    Gallery(GalleryArgs),
+}
+
+#[derive(Debug, Args)]
+struct GalleryArgs {
+    #[command(subcommand)]
+    action: GalleryCommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum GalleryCommand {
+    /// Create a reviewable submission directory without uploading anything.
+    Prepare(GalleryPrepareArgs),
+}
+
+#[derive(Debug, Args)]
+struct GalleryPrepareArgs {
+    /// Completed ReproCut artifact containing reduction.json.
+    #[arg(long, value_name = "ARTIFACT")]
+    from: PathBuf,
+
+    /// New local submission directory; existing paths are never overwritten.
+    #[arg(short, long, default_value = "reprocut-gallery-submission")]
+    output: PathBuf,
+
+    /// Public gallery title (1..=100 printable characters).
+    #[arg(long)]
+    title: String,
+
+    /// SPDX license expression covering submitted metadata and optional source.
+    #[arg(long, value_name = "SPDX")]
+    license: String,
+
+    /// Explicitly copy the verified minimal project into the submission.
+    #[arg(long)]
+    include_source: bool,
 }
 
 #[derive(Debug, Args)]
@@ -286,6 +323,8 @@ enum CliError {
     Policy(#[from] PolicyError),
     #[error(transparent)]
     Protocol(#[from] ProtocolError),
+    #[error("gallery submission is invalid: {0}")]
+    Gallery(String),
     #[error("{0}")]
     InvalidArguments(&'static str),
 }
@@ -311,6 +350,7 @@ fn execute(cli: Cli) -> Result<(), CliError> {
         Action::Resume(arguments) => reduce_project(arguments, true),
         Action::Export(arguments) => export_artifact(arguments),
         Action::Protocol(arguments) => run_protocol(arguments),
+        Action::Gallery(arguments) => run_gallery(arguments),
     }
 }
 
@@ -412,6 +452,198 @@ fn emit_event(event: &ProgressEventV1) -> Result<(), CliError> {
     output
         .flush()
         .map_err(|source| io_error("flush protocol event", Path::new("<stdout>"), source))
+}
+
+#[derive(Debug, Serialize)]
+struct GalleryEntry {
+    schema_version: u16,
+    slug: String,
+    title: String,
+    license: String,
+    ecosystem: String,
+    fingerprint_sha256: String,
+    termination: String,
+    original_files: u64,
+    retained_files: u64,
+    original_bytes: u64,
+    retained_bytes: u64,
+    source_included: bool,
+    featured: bool,
+}
+
+fn run_gallery(arguments: GalleryArgs) -> Result<(), CliError> {
+    match arguments.action {
+        GalleryCommand::Prepare(arguments) => prepare_gallery(arguments),
+    }
+}
+
+fn prepare_gallery(arguments: GalleryPrepareArgs) -> Result<(), CliError> {
+    validate_gallery_text(&arguments.title, "title", 100)?;
+    validate_gallery_license(&arguments.license)?;
+    ensure_output_absent(&arguments.output)?;
+
+    let evidence_path = arguments.from.join("reduction.json");
+    let bytes = fs::read(&evidence_path)
+        .map_err(|source| io_error("read reduction evidence", &evidence_path, source))?;
+    let evidence: ReductionEvidence = serde_json::from_slice(&bytes)?;
+    if evidence.schema_version != EVIDENCE_SCHEMA_VERSION {
+        return Err(CliError::Gallery(format!(
+            "expected evidence schema {EVIDENCE_SCHEMA_VERSION}, found {}",
+            evidence.schema_version
+        )));
+    }
+    if !evidence.failure.same_failure || evidence.failure.fingerprint_sha256.len() != 64 {
+        return Err(CliError::Gallery(
+            "artifact has no verified same-failure fingerprint".to_owned(),
+        ));
+    }
+    let title = arguments.title.trim().to_owned();
+    let license = arguments.license.trim().to_owned();
+    let entry = GalleryEntry {
+        schema_version: 1,
+        slug: gallery_slug(&title, &evidence.failure.fingerprint_sha256),
+        title,
+        license,
+        ecosystem: evidence.ecosystem.clone(),
+        fingerprint_sha256: evidence.failure.fingerprint_sha256.clone(),
+        termination: evidence.failure.termination.clone(),
+        original_files: evidence.measurements.original.files,
+        retained_files: evidence.measurements.retained.files,
+        original_bytes: evidence.measurements.original.bytes,
+        retained_bytes: evidence.measurements.retained.bytes,
+        source_included: arguments.include_source,
+        featured: false,
+    };
+
+    let parent = usable_parent(&arguments.output)?;
+    fs::create_dir_all(parent)
+        .map_err(|source| io_error("create gallery output parent", parent, source))?;
+    let staging = tempfile::Builder::new()
+        .prefix(".reprocut-gallery-")
+        .tempdir_in(parent)
+        .map_err(|source| io_error("create gallery staging directory", parent, source))?;
+    let submission = staging.path().join("submission");
+    fs::create_dir(&submission)
+        .map_err(|source| io_error("create gallery submission", &submission, source))?;
+
+    let mut json = serde_json::to_vec_pretty(&entry)?;
+    json.push(b'\n');
+    write_file(&submission.join("entry.json"), &json)?;
+    write_file(
+        &submission.join("index.html"),
+        gallery_html(&entry).as_bytes(),
+    )?;
+    write_file(
+        &submission.join("LICENSE_DECLARATION.md"),
+        format!(
+            "# License declaration\n\nThe submitter declares this gallery submission under `{}`.\n",
+            entry.license
+        )
+        .as_bytes(),
+    )?;
+    write_file(
+        &submission.join("README.md"),
+        format!(
+            "# {}\n\nRedacted ReproCut gallery submission. Fingerprint: `{}`.\n\nNothing in this directory was uploaded automatically. Review every file before opening a pull request.\n",
+            entry.title, entry.fingerprint_sha256
+        )
+        .as_bytes(),
+    )?;
+    if arguments.include_source {
+        let project = arguments.from.join("project");
+        let inventory = ProjectInventory::scan(&project)?;
+        ProjectSnapshot::from_inventory(&inventory, inventory.units())?
+            .copy_to(&submission.join("source"))?;
+    }
+
+    ensure_output_absent(&arguments.output)?;
+    publish_staging(staging, &submission, &arguments.output)?;
+    println!(
+        "Prepared redacted gallery submission at {} (no upload performed)",
+        arguments.output.display()
+    );
+    Ok(())
+}
+
+fn validate_gallery_text(value: &str, field: &str, max_chars: usize) -> Result<(), CliError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty()
+        || trimmed.chars().count() > max_chars
+        || trimmed.chars().any(char::is_control)
+    {
+        return Err(CliError::Gallery(format!(
+            "{field} must contain 1..={max_chars} printable characters"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_gallery_license(value: &str) -> Result<(), CliError> {
+    validate_gallery_text(value, "license", 100)?;
+    if !value
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || "-+.()/ :".contains(character))
+    {
+        return Err(CliError::Gallery(
+            "license must be a bounded SPDX expression".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn gallery_slug(title: &str, fingerprint: &str) -> String {
+    let mut slug = String::with_capacity(title.len().min(64));
+    let mut separator = false;
+    for character in title.chars().flat_map(char::to_lowercase) {
+        if character.is_ascii_alphanumeric() {
+            let separator_bytes = usize::from(separator && !slug.is_empty());
+            if slug.len().saturating_add(separator_bytes).saturating_add(1) > 64 {
+                break;
+            }
+            if separator_bytes == 1 {
+                slug.push('-');
+            }
+            separator = false;
+            slug.push(character);
+        } else {
+            separator = true;
+        }
+    }
+    if slug.is_empty() {
+        format!("repro-{}", &fingerprint[..12])
+    } else {
+        slug
+    }
+}
+
+fn gallery_html(entry: &GalleryEntry) -> String {
+    format!(
+        "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{title} · ReproCut</title><style>body{{font:16px/1.55 system-ui;max-width:760px;margin:10vh auto;padding:0 24px;background:#0b0d10;color:#e9eef4}}code{{color:#7ee787}}.metric{{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}}article{{border:1px solid #30363d;border-radius:16px;padding:24px}}</style><article><small>REPROCUT GALLERY · REDACTED</small><h1>{title}</h1><p><code>{fingerprint}</code></p><div class=\"metric\"><p>Files<br><strong>{original_files} → {retained_files}</strong></p><p>Bytes<br><strong>{original_bytes} → {retained_bytes}</strong></p></div><p>{termination} · {ecosystem}</p><p>License: {license}</p></article></html>\n",
+        title = escape_gallery_html(&entry.title),
+        fingerprint = escape_gallery_html(&entry.fingerprint_sha256),
+        original_files = entry.original_files,
+        retained_files = entry.retained_files,
+        original_bytes = entry.original_bytes,
+        retained_bytes = entry.retained_bytes,
+        termination = escape_gallery_html(&entry.termination),
+        ecosystem = escape_gallery_html(&entry.ecosystem),
+        license = escape_gallery_html(&entry.license),
+    )
+}
+
+fn escape_gallery_html(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#39;"),
+            _ => escaped.push(character),
+        }
+    }
+    escaped
 }
 
 fn export_artifact(arguments: ExportArgs) -> Result<(), CliError> {

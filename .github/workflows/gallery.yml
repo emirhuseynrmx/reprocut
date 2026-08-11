@@ -1,0 +1,50 @@
+name: Static gallery
+
+on:
+  pull_request:
+    paths:
+      - "gallery/**"
+      - ".github/workflows/gallery.yml"
+  push:
+    branches: [main]
+    paths:
+      - "gallery/**"
+      - ".github/workflows/gallery.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate without executing submissions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.6.0"
+      - name: Run schema, path, size, license, and secret contracts
+        run: node --test gallery/test/*.test.js
+      - name: Build static HTML from redacted JSON only
+        run: node gallery/scripts/build.js
+      - name: Upload Pages artifact
+        if: github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: gallery/dist
+
+  deploy:
+    name: Deploy reviewed main-branch gallery
+    if: github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
