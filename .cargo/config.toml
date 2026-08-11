@@ -1,0 +1,10 @@
+[alias]
+check-all = "check --workspace --all-targets --all-features"
+lint-all = "clippy --workspace --all-targets --all-features -- -D warnings"
+test-all = "test --workspace --all-targets"
+
+[net]
+retry = 3
+
+[term]
+color = "always"

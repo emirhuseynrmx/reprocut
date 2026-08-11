@@ -9,12 +9,21 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+loom = { workspace = true, optional = true }
 regex.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 proptest.workspace = true
+
+[features]
+loom = ["dep:loom"]
+
+[[bench]]
+name = "reducer"
+harness = false
 serde_json.workspace = true
 
 [lints]

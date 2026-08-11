@@ -77,7 +77,10 @@ mod cli_remote_contract {
         let error = execute(Cli { action: Action::Reduce(reduction_args(&source, &output)) })
             .expect_err("existing output must fail");
         assert!(matches!(error, CliError::OutputExists(_)));
-        assert_eq!(fs::read_to_string(output.join("marker.txt")).unwrap(), "user data");
+        assert_eq!(
+            fs::read_to_string(output.join("marker.txt")).expect("marker remains readable"),
+            "user data"
+        );
 
         fs::remove_dir_all(sandbox).expect("sandbox removed");
     }
