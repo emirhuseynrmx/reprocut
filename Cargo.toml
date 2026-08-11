@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/reprocut-adapters",
     "crates/reprocut-cli",
     "crates/reprocut-core",
     "crates/reprocut-engine",

@@ -1,0 +1,20 @@
+[package]
+name = "reprocut-adapters"
+description = "Deterministic ecosystem discovery and manifest transforms for ReproCut"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+reprocut-workspace = { path = "../reprocut-workspace" }
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

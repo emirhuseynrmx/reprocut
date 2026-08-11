@@ -3,6 +3,7 @@
 mod hierarchy;
 
 use std::{
+    collections::BTreeSet,
     fs, io,
     path::{Component, Path, PathBuf},
 };
@@ -13,6 +14,41 @@ use thiserror::Error;
 use walkdir::WalkDir;
 
 pub use hierarchy::{DirectoryHierarchy, HierarchyGroup, HierarchyGroupKind};
+
+/// Directory-name exclusions applied before traversal descends into generated trees.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InventoryPolicy {
+    excluded_directory_names: BTreeSet<String>,
+}
+
+impl InventoryPolicy {
+    /// Creates the source-control and ReproCut safety baseline.
+    pub fn source_only() -> Self {
+        Self {
+            excluded_directory_names: [".git", ".reprocut", "reprocut-output"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+        }
+    }
+
+    /// Adds an exact directory basename exclusion.
+    pub fn exclude(mut self, name: impl Into<String>) -> Self {
+        self.excluded_directory_names.insert(name.into());
+        self
+    }
+
+    /// Reports whether traversal may enter this directory basename.
+    pub fn excludes(&self, name: &str) -> bool {
+        self.excluded_directory_names.contains(name)
+    }
+}
+
+impl Default for InventoryPolicy {
+    fn default() -> Self {
+        Self::source_only()
+    }
+}
 
 /// A workspace inventory or materialization failure.
 #[derive(Debug, Error)]
@@ -70,6 +106,11 @@ pub struct ProjectInventory {
 impl ProjectInventory {
     /// Scans regular files without following symbolic links.
     pub fn scan(root: &Path) -> Result<Self, WorkspaceError> {
+        Self::scan_with_policy(root, &InventoryPolicy::default())
+    }
+
+    /// Scans regular files while pruning generated/cache directories at traversal time.
+    pub fn scan_with_policy(root: &Path, policy: &InventoryPolicy) -> Result<Self, WorkspaceError> {
         if !root.is_dir() {
             return Err(WorkspaceError::InvalidRoot {
                 path: root.to_path_buf(),
@@ -85,7 +126,7 @@ impl ProjectInventory {
         for entry in WalkDir::new(&root)
             .follow_links(false)
             .into_iter()
-            .filter_entry(|entry| !is_internal_directory(entry.path(), entry.depth()))
+            .filter_entry(|entry| !is_excluded_directory(entry.path(), entry.depth(), policy))
         {
             let entry = entry?;
             if !entry.file_type().is_file() {
@@ -328,13 +369,13 @@ fn copy_regular_file(source_path: &Path, destination: &Path) -> Result<(), Works
     Ok(())
 }
 
-fn is_internal_directory(path: &Path, depth: usize) -> bool {
+fn is_excluded_directory(path: &Path, depth: usize, policy: &InventoryPolicy) -> bool {
     depth > 0
         && path.is_dir()
-        && matches!(
-            path.file_name().and_then(|name| name.to_str()),
-            Some(".git" | ".reprocut" | "reprocut-output")
-        )
+        && path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| policy.excludes(name))
 }
 
 fn display_relative(relative: &Path) -> Result<String, WorkspaceError> {

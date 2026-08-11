@@ -173,12 +173,44 @@ impl ProcessRunner {
     )
 
 
+def compose_adapters() -> str:
+    core = compose_core().replace("fn main() {}\n", "")
+    workspace = workspace_source().replace(
+        "use reprocut_core::", "use crate::reprocut_core::"
+    )
+    discovery = (
+        read("crates/reprocut-adapters/src/discovery.rs")
+        .replace("use reprocut_workspace::", "use crate::reprocut_workspace::")
+    )
+    adapters = (
+        read("crates/reprocut-adapters/src/lib.rs")
+        .replace("mod discovery;", f"mod discovery {{ {discovery} }}")
+        .replace("pub use reprocut_workspace::", "pub use crate::reprocut_workspace::")
+    )
+    return "\n".join(
+        [
+            core,
+            wrap("reprocut_workspace", workspace),
+            wrap("reprocut_adapters", adapters),
+            "fn main() {}",
+        ]
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--append", type=Path, required=True)
     parser.add_argument(
         "--scope",
-        choices=("full", "core", "workspace", "state", "scheduler", "engine"),
+        choices=(
+            "full",
+            "core",
+            "workspace",
+            "state",
+            "scheduler",
+            "engine",
+            "adapters",
+        ),
         default="full",
     )
     args = parser.parse_args()
@@ -190,6 +222,7 @@ def main() -> int:
         "state": compose_state,
         "scheduler": compose_scheduler,
         "engine": compose_engine,
+        "adapters": compose_adapters,
     }[args.scope]()
     code = workspace + "\n" + args.append.resolve().read_text(encoding="utf-8")
     payload = json.dumps(
