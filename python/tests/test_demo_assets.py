@@ -75,6 +75,7 @@ def test_checked_in_demo_is_measured_and_reproducible() -> None:
 
 def test_demo_gif_contract() -> None:
     gif_path = ROOT / "assets" / "reprocut-demo.gif"
+    evidence = json.loads((ROOT / "demo" / "result" / "reduction.json").read_text())
     assert 0 < gif_path.stat().st_size < 8 * 1024 * 1024
 
     with Image.open(gif_path) as animation:
@@ -82,6 +83,7 @@ def test_demo_gif_contract() -> None:
         assert animation.size == (1200, 675)
         assert animation.n_frames == 24
         assert animation.info.get("loop") == 0
+        assert evidence["failure"]["fingerprint_sha256"].encode() in animation.info["comment"]
 
 
 def test_reduced_demo_preserves_the_stabilized_source_failure() -> None:

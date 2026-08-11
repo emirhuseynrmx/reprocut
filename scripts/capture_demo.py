@@ -1,131 +1,206 @@
 #!/usr/bin/env python3
-"""Capture and verify the deterministic ReproCut report GIF."""
+"""Render the deterministic evidence-driven ReproCut demo animation."""
 
 from __future__ import annotations
 
-import os
-import shutil
-import subprocess
+import json
+import math
 import sys
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
-REPORT = ROOT / "demo" / "result" / "report.html"
-FRAMES = ROOT / "output" / "playwright" / "gif-frames"
+EVIDENCE = ROOT / "demo" / "result" / "reduction.json"
 OUTPUT = ROOT / "assets" / "reprocut-demo.gif"
-EXPECTED_SIZE = (1200, 675)
-EXPECTED_FRAMES = 24
+SIZE = (1200, 675)
+FRAME_COUNT = 24
 MAX_BYTES = 8 * 1024 * 1024
 
+PAPER = "#f2efe6"
+INK = "#171a1d"
+MUTED = "#66717d"
+GRID = "#c9cfd4"
+COBALT = "#3157d5"
+RUST = "#bf4e3a"
+PROOF = "#247655"
+WHITE = "#fffdf8"
 
-def bundled_node() -> tuple[Path, Path]:
-    runtime = (
-        Path.home()
-        / ".cache"
-        / "codex-runtimes"
-        / "codex-primary-runtime"
-        / "dependencies"
-        / "node"
+
+def font(size: int, *, mono: bool = False, bold: bool = False) -> ImageFont.FreeTypeFont:
+    names = (
+        (
+            ["DejaVuSansMono-Bold.ttf", "consolab.ttf"]
+            if bold
+            else ["DejaVuSansMono.ttf", "consola.ttf"]
+        )
+        if mono
+        else (["DejaVuSans-Bold.ttf", "arialbd.ttf"] if bold else ["DejaVuSans.ttf", "arial.ttf"])
     )
-    executable = runtime / "bin" / ("node.exe" if os.name == "nt" else "node")
-    module = runtime / "node_modules" / "playwright"
-    if executable.is_file() and module.is_dir():
-        return executable, module
+    for name in names:
+        try:
+            return ImageFont.truetype(name, size=size)
+        except OSError:
+            continue
+    raise RuntimeError(f"no bundled TrueType font found for {names}")
 
-    discovered = shutil.which("node")
-    if discovered is None:
-        raise RuntimeError("Node.js was not found")
-    result = subprocess.run(
-        [discovered, "-p", "require.resolve('playwright/package.json')"],
-        check=True,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
+
+DISPLAY = font(66, bold=True)
+NUMBER = font(88, mono=True, bold=True)
+BODY = font(22)
+BODY_BOLD = font(22, bold=True)
+MONO = font(17, mono=True)
+MONO_SMALL = font(14, mono=True)
+LABEL = font(14, mono=True, bold=True)
+
+
+def load_evidence() -> dict[str, object]:
+    evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
+    if evidence["schema_version"] != 2 or evidence["failure"]["same_failure"] is not True:
+        raise RuntimeError("demo evidence is not a verified schema-2 reduction")
+    if evidence["measurements"]["original"]["files"] != 18:
+        raise RuntimeError("demo animation contract expects the measured 18-file fixture")
+    return evidence
+
+
+def ease(value: float) -> float:
+    return 1.0 - (1.0 - value) ** 3
+
+
+def retained_count(frame: int, stages: list[int]) -> int:
+    position = ease(frame / (FRAME_COUNT - 1)) * (len(stages) - 1)
+    left = min(int(position), len(stages) - 1)
+    right = min(left + 1, len(stages) - 1)
+    blend = position - left
+    return round(stages[left] * (1 - blend) + stages[right] * blend)
+
+
+def draw_grid(draw: ImageDraw.ImageDraw) -> None:
+    for x in range(0, SIZE[0], 32):
+        draw.line((x, 0, x, SIZE[1]), fill=GRID, width=1)
+    for y in range(0, SIZE[1], 32):
+        draw.line((0, y, SIZE[0], y), fill=GRID, width=1)
+
+
+def render_frame(evidence: dict[str, object], index: int) -> Image.Image:
+    image = Image.new("RGB", SIZE, PAPER)
+    draw = ImageDraw.Draw(image)
+    draw_grid(draw)
+    progress = index / (FRAME_COUNT - 1)
+    stages = evidence["search"]["accepted_file_sizes"]
+    current = retained_count(index, stages)
+    attempts = evidence["search"]["attempts"]
+    observed_attempt = min(attempts, max(1, math.ceil(progress * attempts)))
+    fingerprint = evidence["failure"]["fingerprint_sha256"]
+
+    draw.rounded_rectangle((48, 42, 1152, 633), radius=24, fill=WHITE, outline=INK, width=3)
+    draw.text((78, 66), "REPRO", font=DISPLAY, fill=INK)
+    repro_width = draw.textlength("REPRO", font=DISPLAY)
+    draw.text((78 + repro_width - 1, 66), "/CUT", font=DISPLAY, fill=COBALT)
+    draw.text((810, 82), "FAILURE REDUCTION RECORD", font=LABEL, fill=MUTED)
+    draw.line((78, 151, 1122, 151), fill=INK, width=2)
+
+    draw.text((82, 176), "$ reprocut minimize --root ./checkout", font=MONO, fill=INK)
+    draw.text((82, 211), "same failure, less project", font=BODY, fill=MUTED)
+
+    draw.text((78, 258), "18", font=NUMBER, fill=INK)
+    draw.text((212, 282), "→", font=font(52, bold=True), fill=RUST)
+    draw.text((278, 258), str(current).rjust(2, "0"), font=NUMBER, fill=COBALT)
+    draw.text((82, 354), "FILES", font=LABEL, fill=MUTED)
+    draw.text((278, 354), "RETAINED", font=LABEL, fill=MUTED)
+
+    cell_x, cell_y = 500, 188
+    for item in range(18):
+        column, row = item % 6, item // 6
+        left = cell_x + column * 98
+        top = cell_y + row * 74
+        kept = item < current
+        final = item < 3
+        color = COBALT if final else (INK if kept else GRID)
+        fill = "#e8ecfb" if final else ("#f5f3ed" if kept else "#eceae4")
+        draw.rounded_rectangle(
+            (left, top, left + 76, top + 50), radius=7, fill=fill, outline=color, width=3
+        )
+        draw.line((left + 14, top + 16, left + 60, top + 16), fill=color, width=2)
+        draw.line((left + 14, top + 27, left + 48, top + 27), fill=color, width=2)
+        if not kept:
+            draw.line((left + 9, top + 9, left + 67, top + 41), fill=RUST, width=2)
+
+    bar_left, bar_top, bar_right = 82, 418, 1120
+    draw.rounded_rectangle((bar_left, bar_top, bar_right, bar_top + 14), radius=7, fill="#dfe3e5")
+    draw.rounded_rectangle(
+        (
+            bar_left,
+            bar_top,
+            bar_left + max(14, int((bar_right - bar_left) * progress)),
+            bar_top + 14,
+        ),
+        radius=7,
+        fill=COBALT,
     )
-    return Path(discovered), Path(result.stdout.strip()).parent
-
-
-def prepare_frame_directory() -> None:
-    output_root = (ROOT / "output").resolve()
-    resolved_frames = FRAMES.resolve()
-    if output_root not in resolved_frames.parents:
-        raise RuntimeError("frame directory escaped the repository output root")
-    if FRAMES.exists():
-        shutil.rmtree(FRAMES)
-    FRAMES.mkdir(parents=True)
-
-
-def capture_frames() -> None:
-    node, playwright = bundled_node()
-    environment = {**os.environ, "REPROCUT_PLAYWRIGHT_MODULE": str(playwright)}
-    subprocess.run(
-        [node, ROOT / "scripts" / "capture_frames.cjs", REPORT, FRAMES],
-        check=True,
-        cwd=ROOT,
-        env=environment,
+    draw.text(
+        (82, 448), f"CANDIDATE {observed_attempt:02d} / {attempts:02d}", font=MONO_SMALL, fill=MUTED
     )
+    draw.text((855, 448), "STRICT 3 / 3", font=MONO_SMALL, fill=MUTED)
+
+    draw.line((78, 492, 1122, 492), fill=GRID, width=2)
+    kept_files = [entry["path"] for entry in evidence["kept_files"]]
+    draw.text((82, 518), "FINAL SNAPSHOT", font=LABEL, fill=MUTED)
+    draw.text((82, 547), "  ·  ".join(kept_files), font=MONO, fill=INK)
+    draw.text((82, 582), f"sha256:{fingerprint[:20]}…", font=MONO_SMALL, fill=MUTED)
+
+    if index >= FRAME_COUNT - 4:
+        draw.rounded_rectangle((850, 526, 1120, 594), radius=10, fill=PROOF)
+        draw.text((878, 539), "SAME FAILURE", font=BODY_BOLD, fill=WHITE)
+        draw.text((915, 566), "PRESERVED", font=LABEL, fill=WHITE)
+    else:
+        draw.text((934, 552), "VERIFYING", font=LABEL, fill=RUST)
+    return image
 
 
-def encode_gif() -> None:
-    frame_paths = sorted(FRAMES.glob("frame-*.png"))
-    if len(frame_paths) != EXPECTED_FRAMES:
-        raise RuntimeError(f"expected {EXPECTED_FRAMES} frames, found {len(frame_paths)}")
-
-    frames: list[Image.Image] = []
-    for frame_path in frame_paths:
-        with Image.open(frame_path) as frame:
-            if frame.size != EXPECTED_SIZE:
-                raise RuntimeError(f"unexpected frame dimensions: {frame.size}")
-            frames.append(frame.convert("P", palette=Image.Palette.ADAPTIVE, colors=128))
-
+def encode(evidence: dict[str, object]) -> None:
+    frames = [render_frame(evidence, index) for index in range(FRAME_COUNT)]
+    quantized = [frame.quantize(colors=128, method=Image.Quantize.MEDIANCUT) for frame in frames]
+    durations = [650] + [95] * (FRAME_COUNT - 2) + [1_200]
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    durations = [700] + [90] * 22 + [900]
-    frames[0].save(
+    quantized[0].save(
         OUTPUT,
         format="GIF",
         save_all=True,
-        append_images=frames[1:],
+        append_images=quantized[1:],
         duration=durations,
         loop=0,
         optimize=True,
         disposal=2,
+        comment=f"ReproCut evidence {evidence['failure']['fingerprint_sha256']}".encode(),
     )
 
 
-def verify_gif() -> None:
+def verify(evidence: dict[str, object]) -> None:
     size = OUTPUT.stat().st_size
     if not 0 < size < MAX_BYTES:
         raise RuntimeError(f"GIF size outside bounded contract: {size} bytes")
     with Image.open(OUTPUT) as animation:
-        if animation.format != "GIF":
-            raise RuntimeError(f"unexpected animation format: {animation.format}")
-        if animation.size != EXPECTED_SIZE:
-            raise RuntimeError(f"unexpected GIF dimensions: {animation.size}")
-        if getattr(animation, "n_frames", 1) < 20:
-            raise RuntimeError("GIF contains fewer than 20 frames")
-        if animation.info.get("loop") != 0:
-            raise RuntimeError("GIF is not configured for an infinite loop")
-        print(
-            f"verified GIF: {animation.n_frames} frames, "
-            f"{animation.size[0]}x{animation.size[1]}, {size} bytes"
-        )
+        if animation.format != "GIF" or animation.size != SIZE:
+            raise RuntimeError("demo animation format or dimensions changed")
+        if animation.n_frames != FRAME_COUNT or animation.info.get("loop") != 0:
+            raise RuntimeError("demo animation frame or loop contract changed")
+        fingerprint = evidence["failure"]["fingerprint_sha256"].encode()
+        if fingerprint not in animation.info.get("comment", b""):
+            raise RuntimeError("demo animation is not bound to current evidence")
+        print(f"verified GIF: {FRAME_COUNT} frames, {SIZE[0]}x{SIZE[1]}, {size} bytes")
 
 
 def main() -> int:
-    if not REPORT.is_file():
-        raise RuntimeError(f"demo report does not exist: {REPORT}")
-    prepare_frame_directory()
-    capture_frames()
-    encode_gif()
-    verify_gif()
+    evidence = load_evidence()
+    encode(evidence)
+    verify(evidence)
     return 0
 
 
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
-        print(f"capture failed: {error}", file=sys.stderr)
+    except (OSError, RuntimeError, ValueError) as error:
+        print(f"render failed: {error}", file=sys.stderr)
         raise SystemExit(1) from error

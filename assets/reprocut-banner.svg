@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="600" viewBox="0 0 1600 600" role="img" aria-labelledby="title desc">
+  <title id="title">ReproCut — same failure, less project</title>
+  <desc id="desc">A forensic reduction record showing eighteen project files cut to three while preserving one failure fingerprint.</desc>
+  <defs>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#c9cfd4" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1600" height="600" fill="#f2efe6"/>
+  <rect width="1600" height="600" fill="url(#grid)"/>
+  <rect x="56" y="52" width="1488" height="496" rx="28" fill="#fffdf8" stroke="#171a1d" stroke-width="4"/>
+  <text x="100" y="184" font-family="Arial,Helvetica,sans-serif" font-size="112" font-weight="800" letter-spacing="-7" fill="#171a1d">REPRO</text>
+  <text x="437" y="184" font-family="Arial,Helvetica,sans-serif" font-size="112" font-weight="800" letter-spacing="-7" fill="#3157d5">/CUT</text>
+  <text x="104" y="228" font-family="Consolas,monospace" font-size="22" font-weight="700" fill="#66717d">SAME FAILURE, LESS PROJECT</text>
+  <path d="M102 278H728" stroke="#171a1d" stroke-width="3"/>
+  <text x="102" y="408" font-family="Consolas,monospace" font-size="110" font-weight="700" fill="#171a1d">18</text>
+  <text x="269" y="400" font-family="Arial,sans-serif" font-size="72" font-weight="700" fill="#bf4e3a">→</text>
+  <text x="362" y="408" font-family="Consolas,monospace" font-size="110" font-weight="700" fill="#3157d5">03</text>
+  <text x="104" y="455" font-family="Consolas,monospace" font-size="20" font-weight="700" fill="#66717d">FILES</text>
+  <text x="367" y="455" font-family="Consolas,monospace" font-size="20" font-weight="700" fill="#66717d">RETAINED</text>
+  <g transform="translate(820 116)">
+    <g fill="#e8ecfb" stroke="#3157d5" stroke-width="4">
+      <rect x="0" y="0" width="122" height="78" rx="10"/><rect x="148" y="0" width="122" height="78" rx="10"/><rect x="296" y="0" width="122" height="78" rx="10"/>
+    </g>
+    <g fill="#eceae4" stroke="#c9cfd4" stroke-width="4" opacity=".8">
+      <rect x="0" y="110" width="122" height="78" rx="10"/><rect x="148" y="110" width="122" height="78" rx="10"/><rect x="296" y="110" width="122" height="78" rx="10"/>
+      <rect x="0" y="220" width="122" height="78" rx="10"/><rect x="148" y="220" width="122" height="78" rx="10"/><rect x="296" y="220" width="122" height="78" rx="10"/>
+    </g>
+    <g stroke="#bf4e3a" stroke-width="5">
+      <path d="M13 122L109 176M161 122L257 176M309 122L405 176M13 232L109 286M161 232L257 286M309 232L405 286"/>
+    </g>
+    <rect x="0" y="338" width="418" height="72" rx="12" fill="#247655"/>
+    <text x="42" y="383" font-family="Arial,sans-serif" font-size="28" font-weight="700" fill="#fffdf8">SAME FAILURE PRESERVED</text>
+  </g>
+  <text x="104" y="514" font-family="Consolas,monospace" font-size="18" fill="#66717d">STRICT 3/3 · JSONL EVIDENCE · SOURCE UNTOUCHED</text>
+</svg>

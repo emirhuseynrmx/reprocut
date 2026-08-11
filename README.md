@@ -1,122 +1,239 @@
+![ReproCut — same failure, less project](assets/reprocut-banner.svg)
+
 # ReproCut
 
-**Turn a failing project into the smallest project that still fails.**
+Turn a failing project into the smallest project ReproCut can find that still
+produces the same stabilized failure.
 
-![ReproCut reducing an 18-file checkout failure to three files](assets/reprocut-demo.gif)
+![Evidence-driven ReproCut reduction from 18 files to 3](assets/reprocut-demo.gif)
 
-Bug reports often arrive as entire repositories. Removing “irrelevant” files by hand is slow, and one careless deletion can replace the original failure with a different one. ReproCut stabilizes the failure first, tests isolated project copies, and accepts a cut only when the same exit state and normalized diagnostic remain.
+ReproCut does not guess from filenames or delete files in your checkout. It
+proves a baseline, evaluates every candidate in a fresh copy, distinguishes a
+preserved failure from a different failure, and publishes only after three
+final verification runs agree.
+
+The checked-in demo is measured, not illustrative: **18 → 3 files**, **24
+candidate evaluations**, **3/3 strict final verification**, and a versioned
+same-failure fingerprint. Inspect the raw [schema-2 evidence](demo/result/reduction.json),
+[attempt ledger](demo/result/attempts.jsonl), or [self-contained report](demo/result/report.html).
+
+> ReproCut 0.1 is in release-candidate development. crates.io and PyPI artifacts
+> are prepared but have not been uploaded.
+
+## Why this is more than a recursive delete loop
+
+- hierarchical directory and subset/complement `ddmin` search to a fixpoint;
+- manifest reduction for `Cargo.toml`, `pyproject.toml`, and `package.json`;
+- Tree-sitter deletion/hoisting passes for Rust, Python, JavaScript, TypeScript,
+  C, C++, Go, and Java, with reparsing before execution;
+- stdout, stderr, or combined normalized failure identity;
+- strict 3/3 mode and configurable flaky supermajority mode;
+- process-tree containment on Unix and Windows with bounded concurrent pipe drains;
+- deterministic parallel frontiers and an append-only SQLite resume journal;
+- one evidence model for JSON, JSONL, HTML, GitHub issue Markdown, Python, and
+  the editor protocol;
+- optional OCI archive export and an opt-in redacted static gallery submission.
+
+ReproCut promises a locally 1-minimal result for the transformations it explores,
+not a global semantic minimum.
+
+## Build the current release candidate
+
+Rust 1.85 or newer is required when building from source.
 
 ```console
-$ reprocut reduce --root ./checkout --output ./minimal -- python bug.py
-reprocut: proving a stable baseline and searching safe cuts...
-reprocut: stable baseline preserved; 18 → 3 files
-Reduced 18 files to 3. Open ./minimal/report.html
-```
-
-The original checkout is never edited. `minimal/` is published only after the reduced command passes three final verification runs.
-
-Regenerate the measured demo with `python scripts/build_demo.py --refresh`, then `python scripts/capture_demo.py`.
-
-## What the output contains
-
-```text
-minimal/
-├── project/          # retained files only
-├── reduction.json   # machine-readable measurements and failure identity
-├── report.html      # portable, self-contained visual report
-├── reproduce.sh
-└── reproduce.ps1
-```
-
-The report has no web dependencies, tracking, fonts, or network requests. Send one file to a maintainer or attach the whole directory to an issue.
-
-## Install from source
-
-ReproCut currently requires Rust 1.85 or newer.
-
-```sh
 git clone https://github.com/emirhuseynrmx/reprocut
 cd reprocut
 cargo install --path crates/reprocut-cli
 ```
 
-Then place the failing command after `--` so ReproCut never interprets its flags:
+After the registries are published, the intended installs are:
 
-```sh
+```console
+cargo install reprocut
+python -m pip install reprocut
+```
+
+## Minimize a failure
+
+For Cargo, Python, or npm projects, start with ecosystem discovery:
+
+```console
+reprocut minimize --root ./failing-project --output ./minimal
+```
+
+Or pass the exact failing command after `--`. ReproCut never interprets the
+command's flags:
+
+```console
 reprocut reduce \
-  --root ./my-project \
-  --output ./reprocut-output \
+  --root ./compiler-bug \
+  --output ./minimal \
+  --jobs 8 \
   --timeout-ms 5000 \
-  --max-output-bytes 1048576 \
+  --oracle-stream auto \
   -- cargo test parser::rejects_split_utf8
 ```
 
-Use `--json` when another tool consumes standard output. Progress and diagnostics stay on standard error.
+Use `--flaky --flaky-runs 11 --flaky-required 9` when the property is genuinely
+nondeterministic. An inconclusive timeout, truncated stream, preparation error,
+or runner failure can never authorize a cut.
+
+## What gets published
+
+```text
+minimal/
+├── project/          verified retained snapshot
+├── reduction.json   complete versioned evidence
+├── attempts.jsonl   append-only candidate observations
+├── report.html      portable report with no network dependency
+├── issue.md         copy/paste GitHub issue body
+├── reproduce.sh
+└── reproduce.ps1
+```
+
+The source checkout remains untouched. Output is assembled in a sibling staging
+directory and published by no-clobber rename; an existing file, directory, or
+symlink is rejected.
 
 ## What “same failure” means
 
-Before minimizing, ReproCut runs the untouched project three times. A baseline is stable only when every run has:
+Before search, ReproCut executes the original property repeatedly. Strict mode
+requires the same termination and stable normalized diagnostic anchors on all
+three runs. Volatile paths, addresses, numeric IDs, whitespace, and line endings
+are normalized, while stdout/stderr channel identity remains explicit.
 
-1. the same exit code or signal;
-2. complete output within the configured time and byte bounds; and
-3. the same diagnostic after volatile paths, addresses, numeric IDs, whitespace, and line endings are normalized.
+Every candidate receives one of three verdicts:
 
-Candidate evaluation is deliberately three-valued:
+- `preserved`: the stabilized failure was observed;
+- `rejected`: the command passed or failed differently;
+- `inconclusive`: the evidence was incomplete or unreliable.
 
-- **preserved** — exact stabilized failure observed;
-- **rejected** — command passed or failed differently;
-- **inconclusive** — timeout, truncated evidence, or execution error.
+Only `preserved` can replace the current winner. The final snapshot is then run
+three more times before publication.
 
-Only `preserved` permits a deletion. Inconclusive evidence never becomes a shortcut to a smaller result.
+## Resume and machine integration
 
-## Safety boundary
+Interrupted searches can continue from a compatibility-checked SQLite journal:
 
-- Every baseline and candidate runs in a fresh disposable directory.
-- Inventory order is deterministic; symbolic links are not followed.
-- Captured stdout and stderr are bounded while pipes are still fully drained.
-- The output path is no-clobber: an existing file, directory, or symlink is rejected.
-- Final artifacts are assembled in a sibling staging directory and renamed into place.
-- Retained paths are validated as project-relative before any copy or removal.
-
-## Current scope
-
-The first release minimizes **regular files for arbitrary commands**. That is useful now, but intentionally narrower than the long-term system.
-
-Not implemented yet:
-
-- syntax-aware statement, function, or module reduction;
-- ecosystem-specific manifest and lockfile rewriting;
-- distributed candidate execution;
-- guaranteed descendant-process cleanup after a timeout (the direct child is killed and reaped);
-- semantic comparison of binary or structured diagnostics.
-
-These limits are failure-safe: they can make a result larger or stop a run, but they must not approve the wrong failure.
-
-## Architecture
-
-```text
-CLI
- ├── engine ── stable oracle + deterministic hierarchical reducer
- ├── runner ── bounded concurrent pipe drains + execution deadline
- ├── workspace ── sorted inventory + isolated candidates + safe publication
- └── report ── escaped, self-contained HTML
+```console
+reprocut resume \
+  --root ./failing-project \
+  --output ./minimal-resumed \
+  --state ./reprocut-state.sqlite3 \
+  -- cargo test parser::case
 ```
 
-The complete product and implementation rationale lives in [the design specification](docs/superpowers/specs/2026-08-11-reprocut-design.md).
+Integrations use a bounded, versioned JSONL protocol instead of scraping terminal
+output:
+
+```console
+reprocut protocol run --request request.json
+```
+
+The [VS Code/Cursor extension](editors/vscode/README.md) is deliberately thin:
+it invokes this protocol, validates event ordering and artifact paths, and never
+downloads a binary or embeds reducer logic.
+
+## Python API
+
+The typed Python client invokes the same Rust protocol engine:
+
+```python
+from pathlib import Path
+
+from reprocut import ReductionRequest, reduce
+
+result = reduce(
+    ReductionRequest(
+        root=Path("compiler-bug"),
+        output=Path("minimal"),
+        command=("cargo", "test", "parser::case"),
+    )
+)
+print(result.fingerprint_sha256, result.report)
+```
+
+The source-checkout fallback implements oracle semantics only. Full reduction
+requires the CLI/native release; Python never silently substitutes a second
+reducer.
+
+## Portable handoff
+
+Export a completed artifact as a validated OCI image archive when Docker Buildx
+or BuildKit is available:
+
+```console
+reprocut export oci --from ./minimal --output minimal.oci.tar
+```
+
+Prepare a redacted, local-only gallery directory:
+
+```console
+reprocut gallery prepare \
+  --from ./minimal \
+  --output ./submission \
+  --title "Parser split UTF-8 failure" \
+  --license "MIT"
+```
+
+No source is included unless `--include-source` is explicit, and nothing is
+uploaded. Gallery pull-request CI validates the closed schema, paths, size,
+license declaration, symlinks, and common credentials without executing a
+submission.
+
+## Evidence before performance claims
+
+The release benchmark generates a deterministic 312-file failure and records
+raw wall time, engine time, exact oracle runs, attempts, cache hits, before/after
+files/bytes/lines, and sampled process-tree RSS:
+
+```console
+python scripts/benchmark_release.py \
+  --reprocut target/release/reprocut \
+  --python python \
+  --output output/release-benchmark \
+  --runs 5 --warmup 1
+```
+
+Hosted-runner timing is uploaded as evidence, not used as a speed claim. ReproCut
+currently claims no measured speedup.
+
+The download-only [upstream corpus](benchmarks/upstream-corpus.json) pins 24 real
+GCC/Clang reduction subjects from Perses. Its GPL-3.0 material is never bundled
+or executed automatically; fetching requires `--accept-gpl-3.0`.
 
 ## Verification
 
-The repository separates example tests from contract tests. Core behavior includes exhaustive small-universe reducer checks, normalization properties, real subprocess fixtures, source-tree immutability checks, a byte-for-byte HTML golden, responsive browser captures, and CI gates for Clippy, rustfmt, tests, Loom, Miri, and Python bindings.
+The repository gates formatting, Clippy, Rust contracts, docs, Python, Loom,
+Miri, AddressSanitizer, dependency policy, native wheels, three operating
+systems, real OCI export, editor protocol tests, gallery secret/path tests,
+release archives, SBOMs, checksums, and provenance.
 
-Local quality commands:
-
-```sh
+```console
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace --all-features
+cargo test --workspace --all-targets
+PYTHONPATH=python python -m pytest python/tests -q
+node --test editors/vscode/test/*.test.js
+node --test gallery/test/*.test.js
 ```
 
-Benchmark claims will be published only with the fixture generator, hardware, compiler version, warm-up policy, sample count, and raw Criterion output. ReproCut does not currently claim a measured speedup.
+The current Windows development host blocks the local Rust executable through
+Application Control. Pure Python/Node contracts run locally; composed Rust
+contracts are compiled with the official Rust Playground, and the complete
+native/toolchain matrix remains the clean GitHub Actions release authority.
+
+## Safety boundary and limits
+
+- Candidate commands run with your user authority; ReproCut is not a hostile-code sandbox.
+- Network-disabled preparation is ecosystem-specific, not a universal guarantee.
+- Grammar transforms are conservative allowlists and can leave a larger result.
+- “Retained” is an observed final snapshot fact, not a root-cause claim.
+- Registry publication and the `v0.1.0` tag remain irreversible user actions.
+
+The product/research rationale and acceptance contract live in the
+[complete 0.1 design](docs/superpowers/specs/2026-08-11-reprocut-complete-0.1-design.md).
 
 ## License
 
