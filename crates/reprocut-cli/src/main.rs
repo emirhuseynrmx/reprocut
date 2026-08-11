@@ -9,6 +9,7 @@ use std::{
 };
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use reprocut_adapters::{Adapter, AdapterError, Ecosystem, EcosystemSelection};
 use reprocut_core::{
     DiagnosticAnchor, DiagnosticChannel, EvaluationPolicy, PolicyError, TerminationReason,
 };
@@ -31,7 +32,7 @@ const DEFAULT_FLAKY_REQUIRED: u16 = 9;
     name = "reprocut",
     version,
     about = "Shrink a failing project without changing its failure",
-    after_help = "Start with: reprocut reduce -- python bug.py"
+    after_help = "Start with: reprocut minimize --root ./failing-project"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -40,6 +41,8 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Action {
+    /// Auto-detect, prove, minimize, and re-verify one failing project.
+    Minimize(ReduceArgs),
     /// Prove, minimize, and re-verify one failing command.
     Reduce(ReduceArgs),
     /// Continue an exactly compatible interrupted reduction.
@@ -55,6 +58,10 @@ struct ReduceArgs {
     /// New directory that receives the reduced reproduction.
     #[arg(short, long, default_value = "reprocut-output")]
     output: PathBuf,
+
+    /// Project adapter used for commands, exclusions, manifests, and syntax.
+    #[arg(long, value_enum, default_value_t = EcosystemArg::Auto)]
+    ecosystem: EcosystemArg,
 
     /// Deadline for each candidate execution.
     #[arg(long, default_value_t = DEFAULT_TIMEOUT_MS)]
@@ -96,9 +103,31 @@ struct ReduceArgs {
     #[arg(long)]
     restart: bool,
 
-    /// Failing command and arguments, placed after `--`.
-    #[arg(last = true, required = true, num_args = 1.., value_name = "COMMAND")]
+    /// Optional failing command after `--`; otherwise the adapter supplies one.
+    #[arg(last = true, num_args = 0.., value_name = "COMMAND")]
     command: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "snake_case")]
+enum EcosystemArg {
+    Auto,
+    Cargo,
+    Python,
+    Npm,
+    None,
+}
+
+impl EcosystemArg {
+    const fn selection(self) -> EcosystemSelection {
+        match self {
+            Self::Auto => EcosystemSelection::Auto,
+            Self::Cargo => EcosystemSelection::Explicit(Ecosystem::Cargo),
+            Self::Python => EcosystemSelection::Explicit(Ecosystem::Python),
+            Self::Npm => EcosystemSelection::Explicit(Ecosystem::Npm),
+            Self::None => EcosystemSelection::Explicit(Ecosystem::None),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -122,6 +151,8 @@ impl From<OracleStreamArg> for DiagnosticChannel {
 
 #[derive(Debug, Error)]
 enum CliError {
+    #[error(transparent)]
+    Adapter(#[from] AdapterError),
     #[error(transparent)]
     Engine(#[from] EngineError),
     #[error(transparent)]
@@ -151,6 +182,7 @@ struct ReductionSummary {
     source_root: String,
     output: String,
     command: Vec<String>,
+    ecosystem: EcosystemArg,
     original_files: usize,
     retained_files: usize,
     attempts: u64,
@@ -197,12 +229,13 @@ fn main() -> ExitCode {
 
 fn execute(cli: Cli) -> Result<(), CliError> {
     match cli.action {
+        Action::Minimize(arguments) => reduce_project(arguments, false),
         Action::Reduce(arguments) => reduce_project(arguments, false),
         Action::Resume(arguments) => reduce_project(arguments, true),
     }
 }
 
-fn reduce_project(arguments: ReduceArgs, resume: bool) -> Result<(), CliError> {
+fn reduce_project(mut arguments: ReduceArgs, resume: bool) -> Result<(), CliError> {
     if resume && arguments.restart {
         return Err(CliError::InvalidArguments(
             "resume and --restart are mutually exclusive",
@@ -210,6 +243,21 @@ fn reduce_project(arguments: ReduceArgs, resume: bool) -> Result<(), CliError> {
     }
     let evaluation_policy = evaluation_policy(&arguments)?;
     ensure_output_absent(&arguments.output)?;
+    let adapter = Adapter::detect(&arguments.root, arguments.ecosystem.selection())?;
+    if arguments.command.is_empty() {
+        let command = adapter.command().ok_or(CliError::InvalidArguments(
+            "the selected ecosystem has no default command; pass one after --",
+        ))?;
+        let mut resolved = Vec::with_capacity(command.arguments().len().saturating_add(1));
+        resolved.push(command.program().to_string_lossy().into_owned());
+        resolved.extend(
+            command
+                .arguments()
+                .iter()
+                .map(|argument| argument.to_string_lossy().into_owned()),
+        );
+        arguments.command = resolved;
+    }
     let (program, child_arguments) = split_command(&arguments.command);
     let request = ReductionRequest::new(
         arguments.root.clone(),
@@ -219,7 +267,8 @@ fn reduce_project(arguments: ReduceArgs, resume: bool) -> Result<(), CliError> {
         arguments.max_output_bytes,
     )
     .with_evaluation(arguments.oracle_stream.into(), evaluation_policy)
-    .with_runtime(arguments.jobs, session_mode(&arguments, resume));
+    .with_runtime(arguments.jobs, session_mode(&arguments, resume))
+    .with_inventory_policy(adapter.inventory_policy().clone());
 
     eprintln!("reprocut: proving a stable baseline and searching safe cuts...");
     let outcome = ReductionEngine::run(&request)?;
@@ -260,6 +309,7 @@ fn build_summary(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> Reductio
         source_root: arguments.root.display().to_string(),
         output: arguments.output.display().to_string(),
         command: arguments.command.clone(),
+        ecosystem: arguments.ecosystem,
         original_files: outcome.original_files(),
         retained_files: outcome.reduction().kept().len(),
         attempts: outcome.reduction().attempts(),

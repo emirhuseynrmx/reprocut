@@ -4,7 +4,7 @@ mod cli_compile_contract {
 
     use clap::CommandFactory as _;
 
-    use super::{Action, Cli, OracleStreamArg, ReduceArgs};
+    use super::{Action, Cli, EcosystemArg, OracleStreamArg, ReduceArgs};
 
     #[test]
     fn help_and_resume_surface_compile_together() {
@@ -22,6 +22,7 @@ mod cli_compile_contract {
         let arguments = ReduceArgs {
             root: PathBuf::from("project"),
             output: PathBuf::from("output"),
+            ecosystem: EcosystemArg::Python,
             timeout_ms: 1_000,
             max_output_bytes: 4_096,
             oracle_stream: OracleStreamArg::Auto,

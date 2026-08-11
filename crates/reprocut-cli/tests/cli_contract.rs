@@ -28,7 +28,7 @@ fn help_leads_with_the_real_user_job() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Shrink a failing project"))
-        .stdout(predicate::str::contains("reprocut reduce"));
+        .stdout(predicate::str::contains("reprocut minimize"));
 }
 
 #[test]
@@ -41,7 +41,8 @@ fn reduce_help_exposes_failure_evidence_controls() {
         .stdout(predicate::str::contains("--oracle-stream"))
         .stdout(predicate::str::contains("--flaky"))
         .stdout(predicate::str::contains("--jobs"))
-        .stdout(predicate::str::contains("--state"));
+        .stdout(predicate::str::contains("--state"))
+        .stdout(predicate::str::contains("--ecosystem"));
 }
 
 #[test]
@@ -64,13 +65,15 @@ fn invalid_flaky_majority_is_rejected_before_execution() {
 }
 
 #[test]
-fn reduce_requires_a_command_after_the_separator() {
+fn unsupported_projects_require_a_command_and_explicit_none_adapter() {
+    let project = tempdir().expect("empty project");
     Command::cargo_bin("reprocut")
         .expect("binary is built")
-        .args(["reduce", "--root", "."])
+        .args(["reduce", "--root"])
+        .arg(project.path())
         .assert()
         .failure()
-        .stderr(predicate::str::contains("COMMAND"));
+        .stderr(predicate::str::contains("no supported ecosystem marker"));
 }
 
 #[test]

@@ -45,15 +45,30 @@ def workspace_source() -> str:
 
 def compose_cli() -> str:
     engine = compose_engine().removesuffix("fn main() {}")
+    discovery = read("crates/reprocut-adapters/src/discovery.rs").replace(
+        "use reprocut_workspace::", "use crate::reprocut_workspace::"
+    )
+    manifests = read("crates/reprocut-adapters/src/manifests.rs").replace(
+        "use crate::AdapterCommand;", "use super::AdapterCommand;"
+    )
+    adapters = (
+        read("crates/reprocut-adapters/src/lib.rs")
+        .replace("mod discovery;", f"mod discovery {{ {discovery} }}")
+        .replace("mod manifests;", f"mod manifests {{ {manifests} }}")
+        .replace("pub use reprocut_workspace::", "pub use crate::reprocut_workspace::")
+    )
     report = read("crates/reprocut-report/src/lib.rs")
     cli = (
         without_inner_attributes(read("crates/reprocut-cli/src/main.rs"))
+        .replace("use reprocut_adapters::", "use crate::reprocut_adapters::")
         .replace("use reprocut_core::", "use crate::reprocut_core::")
         .replace("use reprocut_engine::", "use crate::reprocut_engine::")
         .replace("use reprocut_report::", "use crate::reprocut_report::")
         .replace("use reprocut_workspace::", "use crate::reprocut_workspace::")
     )
-    return "\n".join([engine, wrap("reprocut_report", report), cli])
+    return "\n".join(
+        [engine, wrap("reprocut_adapters", adapters), wrap("reprocut_report", report), cli]
+    )
 
 
 def compose_core() -> str:
