@@ -1,12 +1,28 @@
 from collections.abc import Sequence
-from typing import Literal
+from typing import Literal, Union
 
 Verdict = Literal["preserved", "rejected", "inconclusive"]
+Channel = Literal["auto", "stderr", "stdout", "combined"]
+
+class EvaluationPolicy:
+    @classmethod
+    def strict(cls) -> EvaluationPolicy: ...
+    @classmethod
+    def flaky(cls, runs: int = 11, required: int = 9) -> EvaluationPolicy: ...
+    @property
+    def mode(self) -> Literal["strict", "flaky"]: ...
+    @property
+    def runs(self) -> int: ...
+    @property
+    def required(self) -> int: ...
 
 class FailureOracle:
     @classmethod
     def from_baselines(
-        cls, baselines: Sequence[tuple[int, str]]
+        cls,
+        baselines: Sequence[Union[tuple[int, str], tuple[int, str, str]]],
+        *,
+        channel: Channel = "auto",
     ) -> FailureOracle: ...
 
     def classify(
@@ -14,9 +30,10 @@ class FailureOracle:
         exit_code: int,
         diagnostic: str,
         *,
+        stdout: str = "",
         timed_out: bool = False,
         truncated: bool = False,
     ) -> Verdict: ...
 
     @property
-    def fingerprint(self) -> dict[str, int | str | None]: ...
+    def fingerprint(self) -> dict[str, object]: ...

@@ -19,6 +19,53 @@ _DECIMAL_ID = re.compile(r"[0-9]+")
 _HORIZONTAL_SPACE = re.compile(r"[\t ]+")
 
 
+class EvaluationPolicy:
+    """Immutable strict/flaky execution policy matching the Rust validator."""
+
+    __slots__ = ("_mode", "_required", "_runs")
+
+    def __init__(
+        self, mode: str, runs: int, required: int, *, _factory: bool = False
+    ) -> None:
+        if not _factory:
+            raise TypeError("use EvaluationPolicy.strict() or EvaluationPolicy.flaky()")
+        object.__setattr__(self, "_mode", mode)
+        object.__setattr__(self, "_runs", runs)
+        object.__setattr__(self, "_required", required)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        del name, value
+        raise AttributeError("EvaluationPolicy is immutable")
+
+    @classmethod
+    def strict(cls) -> EvaluationPolicy:
+        return cls("strict", 3, 3, _factory=True)
+
+    @classmethod
+    def flaky(cls, runs: int = 11, required: int = 9) -> EvaluationPolicy:
+        if not 5 <= runs <= 101:
+            raise ValueError("flaky runs must be between 5 and 101")
+        if runs % 2 == 0:
+            raise ValueError("flaky runs must be odd")
+        if not 1 <= required <= runs:
+            raise ValueError("flaky required must be between 1 and runs")
+        if required * 3 < runs * 2:
+            raise ValueError("flaky required must be at least a two-thirds supermajority")
+        return cls("flaky", runs, required, _factory=True)
+
+    @property
+    def mode(self) -> str:
+        return self._mode
+
+    @property
+    def runs(self) -> int:
+        return self._runs
+
+    @property
+    def required(self) -> int:
+        return self._required
+
+
 def _normalize(diagnostic: str) -> str:
     value = diagnostic.replace("\r\n", "\n").replace("\r", "\n")
     value = _WINDOWS_PATH.sub("<path>", value)
@@ -113,6 +160,7 @@ class FailureOracle:
         return {
             "exit_code": self._exit_code,
             "signal": None,
+            "termination": {"kind": "exit_code", "value": self._exit_code},
             "anchor": first_anchor,
             "anchors": [
                 {"channel": channel, "text": text} for channel, text in self._anchors

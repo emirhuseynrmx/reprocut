@@ -8,7 +8,10 @@ use std::{
     time::Duration,
 };
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
+use reprocut_core::{
+    DiagnosticAnchor, DiagnosticChannel, EvaluationPolicy, PolicyError, TerminationReason,
+};
 use reprocut_engine::{EngineError, ReductionEngine, ReductionOutcome, ReductionRequest};
 use reprocut_report::{render_report, ReportModel};
 use reprocut_workspace::{ProjectInventory, WorkspaceError};
@@ -18,6 +21,8 @@ use thiserror::Error;
 
 const DEFAULT_TIMEOUT_MS: u64 = 5_000;
 const DEFAULT_CAPTURE_BYTES: usize = 1_048_576;
+const DEFAULT_FLAKY_RUNS: u16 = 11;
+const DEFAULT_FLAKY_REQUIRED: u16 = 9;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -55,6 +60,22 @@ struct ReduceArgs {
     #[arg(long, default_value_t = DEFAULT_CAPTURE_BYTES)]
     max_output_bytes: usize,
 
+    /// Process stream used to identify the stabilized failure.
+    #[arg(long, value_enum, default_value_t = OracleStreamArg::Auto)]
+    oracle_stream: OracleStreamArg,
+
+    /// Evaluate each failure using a validated repeated-run supermajority.
+    #[arg(long)]
+    flaky: bool,
+
+    /// Maximum observations used in flaky mode (odd, 5..=101).
+    #[arg(long, requires = "flaky")]
+    flaky_runs: Option<u16>,
+
+    /// Preserved observations required in flaky mode (at least two thirds).
+    #[arg(long, requires = "flaky")]
+    flaky_required: Option<u16>,
+
     /// Emit one machine-readable JSON value on standard output.
     #[arg(long)]
     json: bool,
@@ -62,6 +83,25 @@ struct ReduceArgs {
     /// Failing command and arguments, placed after `--`.
     #[arg(last = true, required = true, num_args = 1.., value_name = "COMMAND")]
     command: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum OracleStreamArg {
+    Auto,
+    Stderr,
+    Stdout,
+    Combined,
+}
+
+impl From<OracleStreamArg> for DiagnosticChannel {
+    fn from(value: OracleStreamArg) -> Self {
+        match value {
+            OracleStreamArg::Auto => Self::Auto,
+            OracleStreamArg::Stderr => Self::Stderr,
+            OracleStreamArg::Stdout => Self::Stdout,
+            OracleStreamArg::Combined => Self::Combined,
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -83,6 +123,8 @@ enum CliError {
     },
     #[error("serialize reduction state: {0}")]
     Serialize(#[from] serde_json::Error),
+    #[error(transparent)]
+    Policy(#[from] PolicyError),
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -98,6 +140,8 @@ struct ReductionSummary {
     final_verifications: u16,
     inconclusive_attempts: u64,
     cache_hits: u64,
+    oracle_stream: DiagnosticChannel,
+    evaluation_policy: PolicySummary,
     kept_files: Vec<String>,
     fingerprint: FingerprintSummary,
 }
@@ -106,7 +150,17 @@ struct ReductionSummary {
 struct FingerprintSummary {
     exit_code: Option<i32>,
     signal: Option<i32>,
+    termination: TerminationReason,
     anchor: String,
+    anchors: Vec<DiagnosticAnchor>,
+    normalization_schema: u16,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct PolicySummary {
+    mode: &'static str,
+    runs: u16,
+    required: u16,
 }
 
 fn main() -> ExitCode {
@@ -127,6 +181,7 @@ fn execute(cli: Cli) -> Result<(), CliError> {
 }
 
 fn reduce_project(arguments: ReduceArgs) -> Result<(), CliError> {
+    let evaluation_policy = evaluation_policy(&arguments)?;
     ensure_output_absent(&arguments.output)?;
     let (program, child_arguments) = split_command(&arguments.command);
     let request = ReductionRequest::new(
@@ -135,7 +190,8 @@ fn reduce_project(arguments: ReduceArgs) -> Result<(), CliError> {
         child_arguments.iter().map(OsString::from).collect(),
         Duration::from_millis(arguments.timeout_ms),
         arguments.max_output_bytes,
-    );
+    )
+    .with_evaluation(arguments.oracle_stream.into(), evaluation_policy);
 
     eprintln!("reprocut: proving a stable baseline and searching safe cuts...");
     let outcome = ReductionEngine::run(&request)?;
@@ -183,6 +239,8 @@ fn build_summary(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> Reductio
         final_verifications: outcome.final_verifications(),
         inconclusive_attempts: outcome.inconclusive_attempts(),
         cache_hits: outcome.cache_hits(),
+        oracle_stream: arguments.oracle_stream.into(),
+        evaluation_policy: policy_summary(arguments),
         kept_files: outcome
             .reduction()
             .kept()
@@ -192,8 +250,38 @@ fn build_summary(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> Reductio
         fingerprint: FingerprintSummary {
             exit_code: fingerprint.exit_code(),
             signal: fingerprint.signal(),
+            termination: fingerprint.termination(),
             anchor: fingerprint.anchor().to_owned(),
+            anchors: fingerprint.anchors().to_vec(),
+            normalization_schema: fingerprint.normalization_schema(),
         },
+    }
+}
+
+fn evaluation_policy(arguments: &ReduceArgs) -> Result<EvaluationPolicy, PolicyError> {
+    if arguments.flaky {
+        EvaluationPolicy::flaky(
+            arguments.flaky_runs.unwrap_or(DEFAULT_FLAKY_RUNS),
+            arguments.flaky_required.unwrap_or(DEFAULT_FLAKY_REQUIRED),
+        )
+    } else {
+        Ok(EvaluationPolicy::strict())
+    }
+}
+
+fn policy_summary(arguments: &ReduceArgs) -> PolicySummary {
+    if arguments.flaky {
+        PolicySummary {
+            mode: "flaky",
+            runs: arguments.flaky_runs.unwrap_or(DEFAULT_FLAKY_RUNS),
+            required: arguments.flaky_required.unwrap_or(DEFAULT_FLAKY_REQUIRED),
+        }
+    } else {
+        PolicySummary {
+            mode: "strict",
+            runs: 3,
+            required: 3,
+        }
     }
 }
 
@@ -250,10 +338,11 @@ fn report_model(
 }
 
 fn format_fingerprint(summary: &ReductionSummary) -> String {
-    let termination = match (summary.fingerprint.exit_code, summary.fingerprint.signal) {
-        (Some(exit), _) => format!("exit {exit}"),
-        (_, Some(signal)) => format!("signal {signal}"),
-        (None, None) => "unknown termination".to_owned(),
+    let termination = match summary.fingerprint.termination {
+        TerminationReason::ExitCode(exit) => format!("exit {exit}"),
+        TerminationReason::UnixSignal(signal) => format!("signal {signal}"),
+        TerminationReason::TimedOut => "timed out".to_owned(),
+        TerminationReason::RunnerFailure => "runner failure".to_owned(),
     };
     format!("{termination} · {}", summary.fingerprint.anchor)
 }

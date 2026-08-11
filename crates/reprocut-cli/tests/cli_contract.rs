@@ -32,6 +32,36 @@ fn help_leads_with_the_real_user_job() {
 }
 
 #[test]
+fn reduce_help_exposes_failure_evidence_controls() {
+    Command::cargo_bin("reprocut")
+        .expect("binary is built")
+        .args(["reduce", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--oracle-stream"))
+        .stdout(predicate::str::contains("--flaky"));
+}
+
+#[test]
+fn invalid_flaky_majority_is_rejected_before_execution() {
+    Command::cargo_bin("reprocut")
+        .expect("binary is built")
+        .args([
+            "reduce",
+            "--flaky",
+            "--flaky-runs",
+            "11",
+            "--flaky-required",
+            "6",
+            "--",
+            "never-executed",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("supermajority"));
+}
+
+#[test]
 fn reduce_requires_a_command_after_the_separator() {
     Command::cargo_bin("reprocut")
         .expect("binary is built")

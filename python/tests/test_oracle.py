@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from reprocut import FailureOracle
+from reprocut import EvaluationPolicy, FailureOracle
 
 
 def stable_oracle() -> FailureOracle:
@@ -40,6 +40,7 @@ def test_fingerprint_is_an_immutable_plain_value() -> None:
     assert oracle.fingerprint == {
         "exit_code": 1,
         "signal": None,
+        "termination": {"kind": "exit_code", "value": 1},
         "anchor": "TypeError: currency",
         "anchors": [{"channel": "stderr", "text": "TypeError: currency"}],
         "normalization_schema": 1,
@@ -77,3 +78,19 @@ def test_explicit_stderr_ignores_unstable_stdout_baselines() -> None:
         channel="stderr",
     )
     assert oracle.classify(1, "stable stderr", stdout="anything") == "preserved"
+
+
+def test_python_policy_validates_the_same_supermajority_contract() -> None:
+    policy = EvaluationPolicy.flaky(11, 9)
+    assert policy.mode == "flaky"
+    assert policy.runs == 11
+    assert policy.required == 9
+    with pytest.raises(ValueError, match="supermajority"):
+        EvaluationPolicy.flaky(11, 6)
+
+
+def test_strict_python_policy_is_immutable() -> None:
+    policy = EvaluationPolicy.strict()
+    assert (policy.mode, policy.runs, policy.required) == ("strict", 3, 3)
+    with pytest.raises(AttributeError):
+        policy.runs = 9  # type: ignore[misc]
