@@ -217,7 +217,7 @@ impl FailureFingerprint {
             termination: TerminationReason::from_legacy(exit_code, signal, false),
             anchor,
             anchors,
-            normalization_schema: 1,
+            normalization_schema: crate::NORMALIZATION_SCHEMA,
         }
     }
 
@@ -243,7 +243,7 @@ impl FailureFingerprint {
             termination,
             anchor,
             anchors,
-            normalization_schema: 1,
+            normalization_schema: crate::NORMALIZATION_SCHEMA,
         }
     }
 

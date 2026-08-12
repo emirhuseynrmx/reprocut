@@ -73,15 +73,18 @@ fn auto_requires_every_stable_non_empty_channel() {
     let oracle = FailureOracle::from_baselines_with_channel(
         DiagnosticChannel::Auto,
         &[
-            observed("stable stdout", "stable stderr"),
-            observed("stable stdout", "stable stderr"),
+            observed("FAILED tests/a.py::test_total", "TypeError: invoice"),
+            observed("FAILED tests/a.py::test_total", "TypeError: invoice"),
         ],
     )
     .expect("both streams are stable");
 
     assert_eq!(oracle.fingerprint().anchors().len(), 2);
     assert_eq!(
-        oracle.classify(&observed("changed stdout", "stable stderr")),
+        oracle.classify(&observed(
+            "FAILED tests/b.py::test_login",
+            "TypeError: invoice",
+        )),
         CandidateVerdict::Rejected
     );
 }

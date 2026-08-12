@@ -9,20 +9,28 @@ mod oracle_v2_contract {
         let oracle = FailureOracle::from_baselines_with_channel(
             DiagnosticChannel::Auto,
             &[
-                observation(1, "stable stdout", "stable stderr"),
-                observation(1, "stable stdout", "stable stderr"),
-                observation(1, "stable stdout", "stable stderr"),
+                observation(1, "FAILED tests/a.py::test_total", "TypeError: invoice"),
+                observation(1, "FAILED tests/a.py::test_total", "TypeError: invoice"),
+                observation(1, "FAILED tests/a.py::test_total", "TypeError: invoice"),
             ],
         )
         .expect("both channels are stable");
 
         assert_eq!(oracle.fingerprint().anchors().len(), 2);
         assert_eq!(
-            oracle.classify(&observation(1, "changed stdout", "stable stderr")),
+            oracle.classify(&observation(
+                1,
+                "FAILED tests/b.py::test_login",
+                "TypeError: invoice",
+            )),
             CandidateVerdict::Rejected
         );
         assert_eq!(
-            oracle.classify(&observation(1, "stable stdout", "stable stderr")),
+            oracle.classify(&observation(
+                1,
+                "FAILED tests/a.py::test_total",
+                "TypeError: invoice",
+            )),
             CandidateVerdict::Preserved
         );
     }

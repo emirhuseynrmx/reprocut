@@ -98,8 +98,17 @@ def compose_oci() -> str:
 
 
 def compose_core() -> str:
-    model = read("crates/reprocut-core/src/model.rs")
-    oracle = read("crates/reprocut-core/src/oracle.rs").replace("use crate::{", "use super::{", 1)
+    diagnostic = read("crates/reprocut-core/src/diagnostic.rs").replace(
+        "use crate::{", "use super::{", 1
+    )
+    model = read("crates/reprocut-core/src/model.rs").replace(
+        "crate::NORMALIZATION_SCHEMA", "super::NORMALIZATION_SCHEMA"
+    )
+    oracle = (
+        read("crates/reprocut-core/src/oracle.rs")
+        .replace("use crate::{", "use super::{", 1)
+        .replace("crate::NORMALIZATION_SCHEMA", "super::NORMALIZATION_SCHEMA")
+    )
     policy = read("crates/reprocut-core/src/policy.rs").replace(
         "use crate::CandidateVerdict;", "use super::CandidateVerdict;"
     )
@@ -118,6 +127,7 @@ def compose_core() -> str:
     )
     return f"""#![forbid(unsafe_code)]
 mod reprocut_core {{
+mod diagnostic {{ {diagnostic} }}
 mod model {{ {model} }}
 mod oracle {{ {oracle} }}
 mod policy {{ {policy} }}
@@ -126,6 +136,7 @@ mod reducer {{ {reducer} }}
 mod winner {{ {winner} }}
 {transformation}
 pub use model::*;
+pub use diagnostic::*;
 pub use oracle::*;
 pub use policy::*;
 pub use protocol::*;

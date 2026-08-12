@@ -58,7 +58,7 @@
 - Produces internally: `stable_discriminators(channel: DiagnosticChannel, streams: &[&[u8]]) -> Result<Vec<DiagnosticAnchor>, OracleError>`.
 - Consumes: existing `DiagnosticAnchor`, `DiagnosticChannel`, and `OracleError`.
 
-- [ ] **Step 1: Add adversarial RED fixtures for false-positive prevention**
+- [x] **Step 1: Add adversarial RED fixtures for false-positive prevention**
 
 ```rust
 #[test]
@@ -83,33 +83,33 @@ fn semantic_assertion_numbers_are_not_normalized() {
 
 Also add literal cases for changed pytest node ID, changed Rust compiler code, punctuation-only baselines, stable root with shorter stack, and contextual PID/temp path/port/duration/location changes.
 
-- [ ] **Step 2: Run the focused RED contract through the existing Rust verification path**
+- [x] **Step 2: Run the focused RED contract through the existing Rust verification path**
 
-Run: `python scripts/playground_workspace_verify.py --test oracle-adversarial`
+Run: `python scripts/playground_workspace_verify.py --scope core --append scripts/verification/oracle_adversarial_contract.rs`
 
 Expected: FAIL because `diagnostic.rs`, schema 2, and discriminator intersection do not exist.
 
-- [ ] **Step 3: Implement context-qualified normalization in `diagnostic.rs`**
+- [x] **Step 3: Implement context-qualified normalization in `diagnostic.rs`**
 
 Use compiled `OnceLock<Regex>` rules for newline/space canonicalization, candidate and conventional temporary roots, UUID/ISO timestamp, contextual pointer/PID/thread/port/duration/location tokens. Preserve unqualified decimals, semantic short hex, relative paths, test names, status codes, shapes, amounts, and versions. Export `normalize_diagnostic` from `lib.rs` and remove the blanket `[0-9]+` and all-absolute-path replacement logic from `oracle.rs`.
 
-- [ ] **Step 4: Implement deterministic boilerplate filtering and categories**
+- [x] **Step 4: Implement deterministic boilerplate filtering and categories**
 
 Define private `DiscriminatorKind::{FailingTest, CompilerDiagnostic, RootFailure, Assertion, Message}` and an `EligibleLine { channel, text, kind, score, baseline_position }`. Reject punctuation-only separators, summary-only pass/fail counts, heading-only traceback/backtrace text, location-only frames, and generic lifecycle exits. Sort by kind priority, descending score, baseline position, then lexical text; retain at most four lines while taking each available category before a duplicate category.
 
-- [ ] **Step 5: Replace whole-stream stability with exact eligible-line intersection**
+- [x] **Step 5: Replace whole-stream stability with exact eligible-line intersection**
 
 For every selected stream, normalize each baseline independently, build eligible-line sets, intersect exact lines across all baselines, and produce anchors from that intersection. `Auto` includes only streams containing recognized error-bearing lines; `Combined` requires both streams; explicit stdout/stderr requires its selected stream. Return `EmptyAnchor` if no eligible stable discriminator exists.
 
-- [ ] **Step 6: Run the focused contract and core property suite GREEN**
+- [x] **Step 6: Run the focused contract and core property suite GREEN**
 
-Run: `python scripts/playground_workspace_verify.py --test oracle-adversarial`
+Run: `python scripts/playground_workspace_verify.py --scope core --append scripts/verification/oracle_adversarial_contract.rs`
 
-Run: `python scripts/playground_workspace_verify.py --test oracle-v2`
+Run: `python scripts/playground_workspace_verify.py --scope core --append scripts/verification/oracle_v2_contract.rs`
 
 Expected: PASS with changed semantic failures rejected and contextual volatility preserved.
 
-- [ ] **Step 7: Commit the normalization/discriminator unit**
+- [x] **Step 7: Commit the normalization/discriminator unit**
 
 ```powershell
 git add crates/reprocut-core scripts/verification/oracle_v2_contract.rs
@@ -156,7 +156,7 @@ Add tests for invalid regex, empty regex mode, patterns in exit-zero mode, 17 pa
 
 - [ ] **Step 2: Run the oracle-mode RED suite**
 
-Run: `python scripts/playground_workspace_verify.py --test oracle-modes`
+Run: `python scripts/playground_workspace_verify.py --scope core --append scripts/verification/oracle_modes_contract.rs`
 
 Expected: FAIL because `OracleMode`, `OracleSpec`, and mode-aware fingerprint fields are absent.
 
@@ -174,11 +174,11 @@ Encode every fingerprint field using fixed tags plus length-delimited bytes unde
 
 - [ ] **Step 6: Run oracle, model, docs, and format verification GREEN**
 
-Run: `python scripts/playground_workspace_verify.py --test oracle-modes`
+Run: `python scripts/playground_workspace_verify.py --scope core --append scripts/verification/oracle_modes_contract.rs`
 
-Run: `python scripts/playground_workspace_verify.py --test final-rust`
+Run: `python scripts/playground_workspace_verify.py --scope core --append scripts/verification/final_rust_contract.rs`
 
-Run: `python scripts/playground_rustfmt.py --check`
+Run: `python scripts/playground_rustfmt.py`
 
 Expected: PASS, including deterministic digest tests.
 
@@ -271,7 +271,7 @@ On Unix add exact `0o100`, `0o010`, and `0o001` cases proving distinct snapshot 
 
 - [ ] **Step 2: Run snapshot RED verification**
 
-Run: `python scripts/playground_workspace_verify.py --test snapshot-integrity`
+Run: `python scripts/playground_workspace_verify.py --scope workspace --append scripts/verification/snapshot_integrity_contract.rs`
 
 Expected: FAIL because capture rereads live bytes, transformations discard metadata, and digest omits execute masks.
 
@@ -293,9 +293,9 @@ At engine entry perform inventory scan followed immediately by `ProjectSnapshot:
 
 - [ ] **Step 7: Run snapshot/workspace/engine GREEN verification**
 
-Run: `python scripts/playground_workspace_verify.py --test snapshot-integrity`
+Run: `python scripts/playground_workspace_verify.py --scope workspace --append scripts/verification/snapshot_integrity_contract.rs`
 
-Run: `python scripts/playground_workspace_verify.py --test workspace`
+Run: `python scripts/playground_workspace_verify.py --scope workspace --append scripts/verification/snapshot_contract.rs`
 
 Expected: PASS with no live source reads after capture.
 
@@ -324,7 +324,7 @@ Run a child helper that prints selected variables. Assert removed `PYTHONPATH`/`
 
 - [ ] **Step 2: Run runner RED verification**
 
-Run: `python scripts/playground_workspace_verify.py --test runner-environment`
+Run: `python scripts/playground_workspace_verify.py --scope engine --append scripts/verification/runner_environment_contract.rs`
 
 Expected: FAIL because `CommandSpec` cannot describe environment removal.
 
@@ -334,9 +334,9 @@ Apply `env_clear` only when requested; otherwise call `env_remove` for every rem
 
 - [ ] **Step 4: Run runner contracts GREEN**
 
-Run: `python scripts/playground_workspace_verify.py --test runner-environment`
+Run: `python scripts/playground_workspace_verify.py --scope engine --append scripts/verification/runner_environment_contract.rs`
 
-Run: `python scripts/playground_workspace_verify.py --test process-group`
+Run: `python scripts/playground_workspace_verify.py --scope engine --append scripts/verification/process_group_contract.rs`
 
 Expected: PASS without regressing descendant teardown.
 
@@ -377,7 +377,7 @@ Assert: host-only modules are invisible; every baseline/candidate/final run has 
 
 - [ ] **Step 3: Run Python isolation RED tests**
 
-Run: `python scripts/playground_workspace_verify.py --test python-isolation`
+Run: `python scripts/playground_workspace_verify.py --scope engine --append scripts/verification/python_isolation_contract.rs`
 
 Expected: FAIL because `IsolatedPython` currently trusts the caller environment and has no preparation contract.
 
@@ -403,7 +403,7 @@ Hash canonical interpreter path/identity, frozen wheelhouse digest, sorted extra
 
 - [ ] **Step 9: Run isolation integration GREEN**
 
-Run: `python scripts/playground_workspace_verify.py --test python-isolation`
+Run: `python scripts/playground_workspace_verify.py --scope engine --append scripts/verification/python_isolation_contract.rs`
 
 Expected: PASS entirely offline on Windows/Unix path-layout fixtures.
 
@@ -438,7 +438,7 @@ Create two otherwise identical contracts that differ in each of: source execute 
 
 - [ ] **Step 2: Run session RED verification**
 
-Run: `python scripts/playground_workspace_verify.py --test session-integrity`
+Run: `python scripts/playground_workspace_verify.py --scope engine --append scripts/verification/session_integrity_contract.rs`
 
 Expected: FAIL because current session identity omits most fields and uses normalization schema 1.
 
@@ -460,11 +460,11 @@ Use candidate snapshot + oracle spec + preparation digest, not transformation de
 
 - [ ] **Step 7: Run state, pipeline, and engine GREEN verification**
 
-Run: `python scripts/playground_workspace_verify.py --test session-integrity`
+Run: `python scripts/playground_workspace_verify.py --scope engine --append scripts/verification/session_integrity_contract.rs`
 
-Run: `python scripts/playground_workspace_verify.py --test pipeline`
+Run: `python scripts/playground_workspace_verify.py --scope pipeline --append scripts/verification/pipeline_contract.rs`
 
-Run: `python scripts/playground_workspace_verify.py --test engine`
+Run: `python scripts/playground_workspace_verify.py --scope engine --append scripts/verification/engine_compile_contract.rs`
 
 Expected: PASS with exact resume refusal and phase parity.
 
@@ -498,7 +498,7 @@ Assert `--oracle-mode exit-zero -- <command>` parses; regex requires at least on
 
 - [ ] **Step 2: Run CLI and Python client RED tests**
 
-Run: `python scripts/playground_workspace_verify.py --test cli`
+Run: `python scripts/playground_workspace_verify.py --scope full --append scripts/verification/cli_contract.rs`
 
 Run: `$env:PYTHONPATH='.test-deps;python'; & 'C:\Users\emirh\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' -m pytest python/tests/test_client.py -q --basetemp .tmp/pytest-client-red`
 
@@ -514,7 +514,7 @@ Default omitted `oracle_mode` to `automatic`, pattern arrays to empty, and isola
 
 - [ ] **Step 5: Run CLI/client/protocol GREEN verification**
 
-Run: `python scripts/playground_workspace_verify.py --test cli`
+Run: `python scripts/playground_workspace_verify.py --scope full --append scripts/verification/cli_contract.rs`
 
 Run: `$env:PYTHONPATH='.test-deps;python'; & 'C:\Users\emirh\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' -m pytest python/tests/test_client.py -q --basetemp .tmp/pytest-client-green`
 
@@ -554,7 +554,7 @@ Assert schema 3 rejects missing/invalid 64-character lowercase digests, exit-zer
 
 - [ ] **Step 2: Run report RED verification**
 
-Run: `python scripts/playground_workspace_verify.py --test report`
+Run: `python scripts/playground_workspace_verify.py --scope report --append scripts/verification/report_contract.rs`
 
 Expected: FAIL because evidence is schema 2 and reports assume one textual anchor.
 
@@ -568,7 +568,7 @@ Display “Automatic discriminators”, “Required/reject regex”, or “Exit-
 
 - [ ] **Step 5: Regenerate and verify deterministic goldens**
 
-Run: `python scripts/playground_workspace_verify.py --test report-golden`
+Run: `python scripts/playground_workspace_verify.py --scope report --append scripts/verification/report_golden_contract.rs`
 
 Run: `& 'C:\Users\emirh\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' scripts/verification/report_browser.cjs`
 
@@ -658,7 +658,7 @@ git commit -m "test(release): require 0.1 integrity evidence"
 
 - [ ] **Step 1: Run formatting and complete remote Rust workspace verification**
 
-Run: `python scripts/playground_rustfmt.py --check`
+Run: `python scripts/playground_rustfmt.py`
 
 Run: `python scripts/playground_workspace_verify.py`
 

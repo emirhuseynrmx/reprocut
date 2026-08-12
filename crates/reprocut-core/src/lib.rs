@@ -1,5 +1,6 @@
 //! Correctness primitives for ReproCut.
 
+mod diagnostic;
 mod model;
 mod oracle;
 mod policy;
@@ -12,7 +13,8 @@ pub use model::{
     CandidateVerdict, ContainmentMechanism, DiagnosticAnchor, DiagnosticChannel,
     ExecutionObservation, FailureFingerprint, TerminationReason,
 };
-pub use oracle::{normalize_diagnostic, FailureOracle, OracleError};
+pub use diagnostic::{normalize_diagnostic, NORMALIZATION_SCHEMA};
+pub use oracle::{FailureOracle, OracleError};
 pub use policy::{
     wilson_interval, AggregateDecision, AggregateEvidence, ConfidenceInterval, EvaluationPolicy,
     PolicyError,

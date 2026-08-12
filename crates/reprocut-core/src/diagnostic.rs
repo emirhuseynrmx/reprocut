@@ -1,0 +1,347 @@
+use std::{
+    cmp::Reverse,
+    collections::{BTreeSet, HashSet},
+    sync::OnceLock,
+};
+
+use regex::Regex;
+
+use crate::{DiagnosticAnchor, DiagnosticChannel, ExecutionObservation};
+
+pub const NORMALIZATION_SCHEMA: u16 = 2;
+const MAX_ANCHORS: usize = 4;
+
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+enum DiscriminatorKind {
+    FailingTest,
+    CompilerDiagnostic,
+    RootFailure,
+    Assertion,
+    Message,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct EligibleLine {
+    channel: DiagnosticChannel,
+    text: String,
+    kind: DiscriminatorKind,
+    score: usize,
+    position: usize,
+}
+
+pub(crate) fn stable_discriminators(
+    channel: DiagnosticChannel,
+    baselines: &[ExecutionObservation],
+) -> Vec<DiagnosticAnchor> {
+    let stdout = stream_discriminators(channel, DiagnosticChannel::Stdout, baselines);
+    let stderr = stream_discriminators(channel, DiagnosticChannel::Stderr, baselines);
+    match channel {
+        DiagnosticChannel::Auto => select_anchors(stdout.into_iter().chain(stderr), false),
+        DiagnosticChannel::Stdout => select_anchors(stdout, true),
+        DiagnosticChannel::Stderr => select_anchors(stderr, true),
+        DiagnosticChannel::Combined => {
+            if stdout.is_empty() || stderr.is_empty() {
+                Vec::new()
+            } else {
+                select_anchors(stdout.into_iter().chain(stderr), true)
+            }
+        }
+    }
+}
+
+fn stream_discriminators(
+    requested: DiagnosticChannel,
+    stream: DiagnosticChannel,
+    baselines: &[ExecutionObservation],
+) -> Vec<EligibleLine> {
+    if !matches!(
+        requested,
+        DiagnosticChannel::Auto | DiagnosticChannel::Combined
+    ) && requested != stream
+    {
+        return Vec::new();
+    }
+    let first = eligible_lines(
+        stream,
+        &normalize_bytes(selected_bytes(&baselines[0], stream)),
+    );
+    if first.is_empty() {
+        return Vec::new();
+    }
+    let intersections = baselines
+        .iter()
+        .skip(1)
+        .map(|observation| {
+            eligible_lines(
+                stream,
+                &normalize_bytes(selected_bytes(observation, stream)),
+            )
+            .into_iter()
+            .map(|line| line.text)
+            .collect::<HashSet<_>>()
+        })
+        .collect::<Vec<_>>();
+    first
+        .into_iter()
+        .filter(|line| intersections.iter().all(|lines| lines.contains(&line.text)))
+        .collect()
+}
+
+fn selected_bytes(observation: &ExecutionObservation, stream: DiagnosticChannel) -> &[u8] {
+    match stream {
+        DiagnosticChannel::Stdout => observation.stdout(),
+        DiagnosticChannel::Stderr => observation.stderr(),
+        DiagnosticChannel::Auto | DiagnosticChannel::Combined => &[],
+    }
+}
+
+fn select_anchors(
+    lines: impl IntoIterator<Item = EligibleLine>,
+    allow_generic: bool,
+) -> Vec<DiagnosticAnchor> {
+    let mut lines = lines
+        .into_iter()
+        .filter(|line| allow_generic || line.kind != DiscriminatorKind::Message)
+        .collect::<Vec<_>>();
+    lines.sort_unstable_by(|left, right| {
+        (left.kind, Reverse(left.score), left.position, &left.text).cmp(&(
+            right.kind,
+            Reverse(right.score),
+            right.position,
+            &right.text,
+        ))
+    });
+    let mut selected = Vec::with_capacity(MAX_ANCHORS);
+    let mut categories = BTreeSet::new();
+    for line in &lines {
+        if categories.insert(line.kind) {
+            selected.push(line.clone());
+            if selected.len() == MAX_ANCHORS {
+                break;
+            }
+        }
+    }
+    if selected.len() < MAX_ANCHORS {
+        for line in lines {
+            if selected
+                .iter()
+                .any(|item| item.channel == line.channel && item.text == line.text)
+            {
+                continue;
+            }
+            selected.push(line);
+            if selected.len() == MAX_ANCHORS {
+                break;
+            }
+        }
+    }
+    selected
+        .into_iter()
+        .map(|line| DiagnosticAnchor::new(line.channel, line.text))
+        .collect()
+}
+
+fn eligible_lines(channel: DiagnosticChannel, diagnostic: &str) -> Vec<EligibleLine> {
+    diagnostic
+        .lines()
+        .enumerate()
+        .filter_map(|(position, text)| {
+            discriminator_kind(text).map(|kind| EligibleLine {
+                channel,
+                text: text.to_owned(),
+                kind,
+                score: discriminator_score(text),
+                position,
+            })
+        })
+        .collect()
+}
+
+fn discriminator_kind(line: &str) -> Option<DiscriminatorKind> {
+    static PYTEST: OnceLock<Regex> = OnceLock::new();
+    static COMPILER: OnceLock<Regex> = OnceLock::new();
+    static ROOT: OnceLock<Regex> = OnceLock::new();
+    static ASSERTION: OnceLock<Regex> = OnceLock::new();
+    static MESSAGE: OnceLock<Regex> = OnceLock::new();
+    if is_boilerplate(line) {
+        return None;
+    }
+    let pytest = PYTEST.get_or_init(|| {
+        Regex::new(r"^(?:failed|error)[ \t]+[^ \t\r\n]+(?:::[^ \t\r\n]+)+")
+            .expect("pytest discriminator regex is valid")
+    });
+    let lowercase = line.to_ascii_lowercase();
+    if pytest.is_match(&lowercase) {
+        return Some(DiscriminatorKind::FailingTest);
+    }
+    let compiler = COMPILER.get_or_init(|| {
+        Regex::new(r"(?:error\[[a-z][0-9]{2,}\]|(?:fatal )?error[ \t]+[a-z]{1,5}[0-9]{2,})")
+            .expect("compiler discriminator regex is valid")
+    });
+    if compiler.is_match(&lowercase) {
+        return Some(DiscriminatorKind::CompilerDiagnostic);
+    }
+    let root = ROOT.get_or_init(|| {
+        Regex::new(r"(?:[a-z_][a-z0-9_.]*(?:error|exception)|panicked at|^panic:|^fatal:)")
+            .expect("root failure regex is valid")
+    });
+    if root.is_match(&lowercase) {
+        return Some(DiscriminatorKind::RootFailure);
+    }
+    let assertion = ASSERTION.get_or_init(|| {
+        Regex::new(r"(?:assert(?:ion)?|expected|actual|left.*right)")
+            .expect("assertion discriminator regex is valid")
+    });
+    if assertion.is_match(&lowercase) {
+        return Some(DiscriminatorKind::Assertion);
+    }
+    let message = MESSAGE.get_or_init(|| {
+        Regex::new(r"(?:error|failed|failure|panic|exception|fatal)")
+            .expect("generic failure regex is valid")
+    });
+    message
+        .is_match(&lowercase)
+        .then_some(DiscriminatorKind::Message)
+}
+
+fn discriminator_score(line: &str) -> usize {
+    let distinct = line
+        .split(|character: char| !character.is_alphanumeric() && character != '_')
+        .filter(|token| token.chars().any(char::is_alphabetic))
+        .map(str::to_ascii_lowercase)
+        .collect::<BTreeSet<_>>()
+        .len();
+    distinct.saturating_mul(16).saturating_add(
+        line.chars()
+            .filter(|character| character.is_alphabetic())
+            .count(),
+    )
+}
+
+fn is_boilerplate(line: &str) -> bool {
+    static SUMMARY: OnceLock<Regex> = OnceLock::new();
+    static LOCATION: OnceLock<Regex> = OnceLock::new();
+    static LIFECYCLE: OnceLock<Regex> = OnceLock::new();
+    let trimmed = line.trim();
+    if trimmed.is_empty() || !trimmed.chars().any(char::is_alphanumeric) {
+        return true;
+    }
+    let lowercase = trimmed.to_ascii_lowercase();
+    if matches!(
+        lowercase.as_str(),
+        "traceback (most recent call last):"
+            | "stack backtrace:"
+            | "backtrace:"
+            | "short test summary info"
+            | "failures"
+    ) {
+        return true;
+    }
+    let summary = SUMMARY.get_or_init(|| {
+        Regex::new(r"^[^A-Za-z0-9_]*(?:[0-9]+[ \t]+(?:failed|passed|skipped|error)s?)(?:[^A-Za-z0-9_]|$).*(?:(?:ms|s|sec|seconds?))?[^A-Za-z0-9_]*$")
+            .expect("summary regex is valid")
+    });
+    if summary.is_match(&lowercase) {
+        return true;
+    }
+    let location = LOCATION.get_or_init(|| {
+        Regex::new(r#"^(?:at[ \t]+[^ \t\r\n]+|file[ \t]+\"[^\"]+\",[ \t]+line[ \t]+<location>|[ \t]*-->[ \t]+[^ \t\r\n]+)(?::?[0-9<>]+)*[ \t]*$"#)
+            .expect("location regex is valid")
+    });
+    if location.is_match(&lowercase) {
+        return true;
+    }
+    let lifecycle = LIFECYCLE.get_or_init(|| {
+        Regex::new(r"^(?:process|command|child)[ \t]+(?:exited|failed)[ \t]+with[ \t]+(?:code|status)[ \t]+[-0-9]+[^A-Za-z0-9_]*$")
+            .expect("lifecycle regex is valid")
+    });
+    lifecycle.is_match(&lowercase)
+}
+
+/// Removes only context-qualified volatile fragments from diagnostic text.
+pub fn normalize_diagnostic(input: &str) -> String {
+    static UUID: OnceLock<Regex> = OnceLock::new();
+    static ISO_TIMESTAMP: OnceLock<Regex> = OnceLock::new();
+    static UNIX_TEMP: OnceLock<Regex> = OnceLock::new();
+    static WINDOWS_TEMP: OnceLock<Regex> = OnceLock::new();
+    static ADDRESS: OnceLock<Regex> = OnceLock::new();
+    static PROCESS_ID: OnceLock<Regex> = OnceLock::new();
+    static LOOPBACK_PORT: OnceLock<Regex> = OnceLock::new();
+    static NAMED_PORT: OnceLock<Regex> = OnceLock::new();
+    static DURATION: OnceLock<Regex> = OnceLock::new();
+    static PATH_LOCATION: OnceLock<Regex> = OnceLock::new();
+    static NAMED_LOCATION: OnceLock<Regex> = OnceLock::new();
+    static HORIZONTAL_SPACE: OnceLock<Regex> = OnceLock::new();
+
+    let uuid = UUID.get_or_init(|| {
+        Regex::new(r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[1-5][0-9A-Fa-f]{3}-[89ABab][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}")
+            .expect("UUID regex is valid")
+    });
+    let timestamp = ISO_TIMESTAMP.get_or_init(|| {
+        Regex::new(r"[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})?")
+            .expect("timestamp regex is valid")
+    });
+    let unix_temp = UNIX_TEMP.get_or_init(|| {
+        Regex::new(r"/(?:tmp|var/tmp)(?:/[^ \t\r\n:]+)*")
+            .expect("Unix temporary path regex is valid")
+    });
+    let windows_temp = WINDOWS_TEMP.get_or_init(|| {
+        Regex::new(r"[A-Za-z]:\\(?:[Tt][Mm][Pp]|[Tt][Ee][Mm][Pp]|[Uu]sers\\[^\\ \t\r\n:]+\\[Aa]pp[Dd]ata\\[Ll]ocal\\[Tt]emp)(?:\\[^ \t\r\n:]+)*")
+            .expect("Windows temporary path regex is valid")
+    });
+    let address = ADDRESS.get_or_init(|| {
+        Regex::new(
+            r"(?:address|addr|pointer|ptr|Address|Pointer)[ \t]*[:=]?[ \t]*0x[0-9A-Fa-f]{7,}",
+        )
+        .expect("contextual address regex is valid")
+    });
+    let process_id = PROCESS_ID.get_or_init(|| {
+        Regex::new(r"(pid|PID|process[ \t]+[Ii][Dd]|thread[ \t]+[Ii][Dd]|thread|Thread)[ \t]*[:=#]?[ \t]*[0-9]+")
+            .expect("process identifier regex is valid")
+    });
+    let loopback_port = LOOPBACK_PORT.get_or_init(|| {
+        Regex::new(r"(localhost|LOCALHOST|127\.0\.0\.1|\[::1\]):[0-9]{1,5}")
+            .expect("loopback port regex is valid")
+    });
+    let named_port = NAMED_PORT.get_or_init(|| {
+        Regex::new(r"(?:port|Port|PORT)[ \t]*[:=]?[ \t]*[0-9]{1,5}").expect("port regex is valid")
+    });
+    let duration = DURATION.get_or_init(|| {
+        Regex::new(r"[0-9]+(?:\.[0-9]+)?[ \t]*(?:ns|us|ms|s|sec|secs|second|seconds|m|min|mins|minute|minutes)")
+            .expect("duration regex is valid")
+    });
+    let path_location = PATH_LOCATION.get_or_init(|| {
+        Regex::new(r"(?m)([^ \t\r\n:]+):[0-9]+(?::[0-9]+)?").expect("path location regex is valid")
+    });
+    let named_location = NAMED_LOCATION.get_or_init(|| {
+        Regex::new(r"([Ll]ine|[Cc]olumn)[ \t]+[0-9]+").expect("named location regex is valid")
+    });
+    let horizontal_space = HORIZONTAL_SPACE
+        .get_or_init(|| Regex::new(r"[\t ]+").expect("horizontal whitespace regex is valid"));
+
+    let mut text = input.replace("\r\n", "\n").replace('\r', "\n");
+    text = uuid.replace_all(&text, "<uuid>").into_owned();
+    text = timestamp.replace_all(&text, "<timestamp>").into_owned();
+    text = windows_temp.replace_all(&text, "<temp>").into_owned();
+    text = unix_temp.replace_all(&text, "<temp>").into_owned();
+    text = address.replace_all(&text, "address <address>").into_owned();
+    text = process_id.replace_all(&text, "$1 <id>").into_owned();
+    text = loopback_port.replace_all(&text, "$1:<port>").into_owned();
+    text = named_port.replace_all(&text, "port <port>").into_owned();
+    text = duration.replace_all(&text, "<duration>").into_owned();
+    text = path_location
+        .replace_all(&text, "$1:<location>")
+        .into_owned();
+    text = named_location
+        .replace_all(&text, "$1 <location>")
+        .into_owned();
+    text.lines()
+        .map(|line| horizontal_space.replace_all(line.trim(), " "))
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub(crate) fn normalize_bytes(bytes: &[u8]) -> String {
+    normalize_diagnostic(&String::from_utf8_lossy(bytes))
+}
