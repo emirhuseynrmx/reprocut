@@ -55,7 +55,7 @@ def test_banner_is_static_accessible_and_evidence_bound() -> None:
     assert states.count("retained") == evidence["measurements"]["retained"]["files"] == 3
     assert states.count("rejected") == 15
     assert len([node for node in root.iter() if node.attrib.get("data-role") == "cut-trace"]) == 1
-    assert str(len(evidence["attempts"])) in text
+    assert str(evidence["search"]["attempts"]) in text
     assert "STRICT 3 / 3" in text
     assert evidence["failure"]["fingerprint_sha256"][:16] in text
     assert all(path in text for path in ("bug.py", "checkout.py", "fixtures/order.json"))

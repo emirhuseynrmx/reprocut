@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from PIL import Image
@@ -14,7 +15,9 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def tree_digest(root: Path) -> str:
     digest = hashlib.sha256()
-    for path in sorted(candidate for candidate in root.rglob("*") if candidate.is_file()):
+    for path in sorted(
+        candidate for candidate in root.rglob("*") if candidate.is_file()
+    ):
         if "__pycache__" in path.parts or path.suffix in {".pyc", ".pyo"}:
             continue
         digest.update(path.relative_to(root).as_posix().encode("utf-8"))
@@ -83,7 +86,57 @@ def test_demo_gif_contract() -> None:
         assert animation.size == (1200, 675)
         assert animation.n_frames == 24
         assert animation.info.get("loop") == 0
-        assert evidence["failure"]["fingerprint_sha256"].encode() in animation.info["comment"]
+        assert (
+            evidence["failure"]["fingerprint_sha256"].encode()
+            in animation.info["comment"]
+        )
+
+
+def test_banner_is_static_accessible_and_evidence_bound() -> None:
+    banner = ROOT / "assets" / "reprocut-banner.svg"
+    evidence = json.loads(
+        (ROOT / "demo" / "result" / "reduction.json").read_text(encoding="utf-8")
+    )
+    source = banner.read_text(encoding="utf-8")
+    root = ET.fromstring(source)
+    namespace = {"svg": "http://www.w3.org/2000/svg"}
+    text = " ".join("".join(root.itertext()).split())
+    states = [
+        node.attrib["data-file-state"]
+        for node in root.iter()
+        if "data-file-state" in node.attrib
+    ]
+
+    assert root.attrib["viewBox"] == "0 0 1600 600"
+    assert root.find("svg:title", namespace) is not None
+    assert root.find("svg:desc", namespace) is not None
+    assert len(states) == evidence["measurements"]["original"]["files"] == 18
+    assert (
+        states.count("retained") == evidence["measurements"]["retained"]["files"] == 3
+    )
+    assert states.count("rejected") == 15
+    assert (
+        len(
+            [
+                node
+                for node in root.iter()
+                if node.attrib.get("data-role") == "cut-trace"
+            ]
+        )
+        == 1
+    )
+    assert str(evidence["search"]["attempts"]) in text
+    assert "STRICT 3 / 3" in text
+    assert evidence["failure"]["fingerprint_sha256"][:16] in text
+    assert all(
+        path in text for path in ("bug.py", "checkout.py", "fixtures/order.json")
+    )
+    assert "<script" not in source.lower()
+    assert "<filter" not in source.lower()
+    assert "<animate" not in source.lower()
+    assert "http://" not in source.replace("http://www.w3.org/2000/svg", "")
+    assert "https://" not in source
+    assert "href=" not in source.lower()
 
 
 def test_reduced_demo_preserves_the_stabilized_source_failure() -> None:
@@ -93,9 +146,14 @@ def test_reduced_demo_preserves_the_stabilized_source_failure() -> None:
     reduced = ROOT / "demo" / "result" / "project"
     before = tree_digest(source)
     source_runs = [execute_demo(source) for _ in range(3)]
-    oracle = FailureOracle.from_baselines([(run.returncode, run.stderr) for run in source_runs])
+    oracle = FailureOracle.from_baselines(
+        [(run.returncode, run.stderr) for run in source_runs]
+    )
     reduced_runs = [execute_demo(reduced) for _ in range(3)]
 
     assert all(run.returncode != 0 for run in source_runs)
-    assert all(oracle.classify(run.returncode, run.stderr) == "preserved" for run in reduced_runs)
+    assert all(
+        oracle.classify(run.returncode, run.stderr) == "preserved"
+        for run in reduced_runs
+    )
     assert tree_digest(source) == before
