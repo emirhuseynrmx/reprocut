@@ -6,9 +6,9 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Optional
 
 try:
     import tomllib
@@ -71,7 +71,7 @@ def static_checks(root: Path) -> list[Check]:
     demo_ok = (
         evidence.get("schema_version") == 3
         and evidence["failure"]["same_failure"] is True
-        and evidence["failure"].get("normalization_schema") == 2
+        and evidence["failure"].get("normalization_schema") == 3
         and evidence["failure"].get("oracle_mode") in {"automatic", "regex", "exit_zero"}
         and evidence["search"]["final_verifications"] == 3
         and evidence["measurements"]["original"]["files"] == 18
@@ -130,6 +130,21 @@ def static_checks(root: Path) -> list[Check]:
         )
     )
 
+    ci_workflow = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    oracle_job = workflow_job(ci_workflow, "oracle-adversarial")
+    oracle_targets = {
+        "--test oracle_contract",
+        "--test oracle_properties",
+        "--test oracle_adversarial",
+    }
+    checks.append(
+        check(
+            "oracle-ci-coverage",
+            oracle_job is not None and all(target in oracle_job for target in oracle_targets),
+            "oracle contract, property, and adversarial Cargo targets are explicit",
+        )
+    )
+
     release_workflow = (root / ".github/workflows/release.yml").read_text(
         encoding="utf-8"
     )
@@ -171,6 +186,14 @@ def static_checks(root: Path) -> list[Check]:
         )
     )
     return checks
+
+
+def workflow_job(workflow: str, name: str) -> Optional[str]:
+    match = re.search(
+        rf"(?ms)^  {re.escape(name)}:\r?\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:\r?\n|\Z)",
+        workflow,
+    )
+    return None if match is None else match.group("body")
 
 
 def versions_are_consistent(root: Path) -> bool:

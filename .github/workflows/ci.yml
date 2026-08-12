@@ -146,6 +146,7 @@ jobs:
           cargo test -p reprocut-core
           --test oracle_contract
           --test oracle_properties
+          --test oracle_adversarial
 
   python-isolation:
     name: Frozen offline Python candidate isolation

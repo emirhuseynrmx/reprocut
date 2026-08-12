@@ -137,7 +137,7 @@
     <text x="668" y="507" class="mono" font-size="16" font-weight="700" letter-spacing="0.8" fill="#171A1D">SAME FAILURE</text>
     <text x="846" y="507" class="mono" font-size="15" font-weight="700" fill="#66717D">STRICT 3 / 3</text>
     <text x="1003" y="507" class="mono" font-size="15" font-weight="700" fill="#66717D">24 CANDIDATES</text>
-    <text x="1222" y="507" class="mono" font-size="14" fill="#66717D">sha256:3a19748e9e2191ac…</text>
+    <text x="1222" y="507" class="mono" font-size="14" fill="#66717D">sha256:48ebabae825720ad…</text>
     <text x="632" y="542" class="mono" font-size="15" fill="#171A1D">bug.py</text>
     <text x="697" y="542" class="mono" font-size="15" fill="#BF4E3A">·</text>
     <text x="719" y="542" class="mono" font-size="15" fill="#171A1D">checkout.py</text>

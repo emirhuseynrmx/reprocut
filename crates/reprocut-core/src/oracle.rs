@@ -113,7 +113,7 @@ impl OracleSpec {
         })
     }
 
-    /// Returns automatic schema-2 inference for one stream policy.
+    /// Returns automatic schema-3 inference for one stream policy.
     pub fn automatic(channel: DiagnosticChannel) -> Self {
         Self::new(OracleMode::Automatic, channel, Vec::new(), Vec::new())
             .expect("the built-in automatic oracle spec is valid")

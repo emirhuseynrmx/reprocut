@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import sys
 import json
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -15,6 +15,7 @@ def test_static_release_contract_is_fully_encoded_and_current() -> None:
     checks = static_checks(ROOT)
 
     assert len(checks) >= 8
+    assert "oracle-ci-coverage" in {item.name for item in checks}
     assert all(item.passed for item in checks), [
         item for item in checks if not item.passed
     ]

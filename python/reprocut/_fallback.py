@@ -15,7 +15,7 @@ LegacyBaseline = tuple[int, str]
 StreamBaseline = tuple[int, str, str]
 Baseline = Union[LegacyBaseline, StreamBaseline]
 
-NORMALIZATION_SCHEMA = 2
+NORMALIZATION_SCHEMA = 3
 MAX_PATTERNS = 16
 MAX_PATTERN_BYTES = 4096
 COMBINED_DELIMITER = "\n--- REPROCUT STREAM ---\n"
@@ -50,7 +50,15 @@ _DURATION = re.compile(
     r"[0-9]+(?:\.[0-9]+)?[ \t]*(?:seconds|second|minutes|minute|secs|sec|"
     r"mins|min|ms|ns|us|s|m)"
 )
-_PATH_LOCATION = re.compile(r"([^ \t\r\n:]+):[0-9]+(?::[0-9]+)?")
+_PATH_LOCATION = re.compile(r"(?P<token>[^ \t\r\n:]+):[0-9]+(?::[0-9]+)?")
+_SOURCE_EXTENSIONS = frozenset(
+    {
+        "bash", "c", "cc", "cjs", "cpp", "cs", "cts", "cxx", "fish", "go",
+        "h", "hh", "hpp", "hxx", "java", "js", "json", "jsx", "kt", "kts",
+        "mjs", "mts", "php", "py", "pyi", "rb", "rs", "scala", "sh", "swift",
+        "toml", "ts", "tsx", "yaml", "yml", "zsh",
+    }
+)
 _NAMED_LOCATION = re.compile(r"([Ll]ine|[Cc]olumn)[ \t]+[0-9]+")
 _HORIZONTAL_SPACE = re.compile(r"[\t ]+")
 _PYTEST = re.compile(r"^(?:failed|error)[ \t]+[^ \t\r\n]+(?:::[^ \t\r\n]+)+")
@@ -329,10 +337,23 @@ def _normalize(diagnostic: str) -> str:
     value = _LOOPBACK_PORT.sub(r"\1:<port>", value)
     value = _NAMED_PORT.sub("port <port>", value)
     value = _DURATION.sub("<duration>", value)
-    value = _PATH_LOCATION.sub(r"\1:<location>", value)
+    value = _PATH_LOCATION.sub(_normalize_source_location, value)
     value = _NAMED_LOCATION.sub(r"\1 <location>", value)
     lines = (_HORIZONTAL_SPACE.sub(" ", line.strip()) for line in value.splitlines())
     return "\n".join(line for line in lines if line)
+
+
+def _normalize_source_location(match: re.Match[str]) -> str:
+    token = match.group("token")
+    extension = token.rpartition(".")[2].lower()
+    if (
+        token == "<temp>"
+        or "/" in token
+        or "\\" in token
+        or extension in _SOURCE_EXTENSIONS
+    ):
+        return f"{token}:<location>"
+    return match.group(0)
 
 
 def _stable_discriminators(
@@ -359,6 +380,17 @@ def _stable_discriminators(
         candidates = [candidate for candidate in candidates if candidate[0] < 4]
     candidates.sort(key=lambda line: (line[0], -line[1], line[2], line[4]))
     selected: list[tuple[int, int, int, str, str]] = []
+    if channel == "combined":
+        selected.extend(
+            next(candidate for candidate in candidates if candidate[3] == stream)
+            for stream in ("stdout", "stderr")
+        )
+        for candidate in candidates:
+            if len(selected) == 4:
+                break
+            if candidate not in selected:
+                selected.append(candidate)
+        return tuple((line[3], line[4]) for line in selected)
     categories: set[int] = set()
     for candidate in candidates:
         if candidate[0] not in categories:

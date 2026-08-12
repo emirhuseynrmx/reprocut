@@ -22,10 +22,11 @@ proptest! {
 
     #[test]
     fn an_identical_non_empty_failure_is_preserved(anchor in "[a-zA-Z][a-zA-Z0-9 :_-]{0,128}") {
-        let observation = failed(&anchor);
+        let diagnostic = format!("ValueError: {anchor}");
+        let observation = failed(&diagnostic);
         let oracle = FailureOracle::from_baselines(&[
             observation.clone(), observation.clone(), observation.clone(),
-        ]).expect("generated anchor is non-empty and stable");
+        ]).expect("generated diagnostic is failure-bearing and stable");
 
         prop_assert_eq!(oracle.classify(&observation), CandidateVerdict::Preserved);
     }

@@ -8,7 +8,7 @@ use regex::Regex;
 
 use crate::{DiagnosticAnchor, DiagnosticChannel, ExecutionObservation};
 
-pub const NORMALIZATION_SCHEMA: u16 = 2;
+pub const NORMALIZATION_SCHEMA: u16 = 3;
 const MAX_ANCHORS: usize = 4;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -43,7 +43,7 @@ pub(crate) fn stable_discriminators(
             if stdout.is_empty() || stderr.is_empty() {
                 Vec::new()
             } else {
-                select_anchors(stdout.into_iter().chain(stderr), true)
+                select_combined_anchors(stdout, stderr)
             }
         }
     }
@@ -99,6 +99,39 @@ fn select_anchors(
     lines: impl IntoIterator<Item = EligibleLine>,
     allow_generic: bool,
 ) -> Vec<DiagnosticAnchor> {
+    let lines = rank_lines(lines, allow_generic);
+    let mut selected = Vec::with_capacity(MAX_ANCHORS);
+    let mut categories = BTreeSet::new();
+    for line in &lines {
+        if categories.insert(line.kind) {
+            selected.push(line.clone());
+            if selected.len() == MAX_ANCHORS {
+                break;
+            }
+        }
+    }
+    fill_ranked(&mut selected, lines);
+    into_anchors(selected)
+}
+
+fn select_combined_anchors(
+    stdout: Vec<EligibleLine>,
+    stderr: Vec<EligibleLine>,
+) -> Vec<DiagnosticAnchor> {
+    let stdout = rank_lines(stdout, true);
+    let stderr = rank_lines(stderr, true);
+    let mut selected = Vec::with_capacity(MAX_ANCHORS);
+    selected.push(stdout[0].clone());
+    selected.push(stderr[0].clone());
+    let globally_ranked = rank_lines(stdout.into_iter().chain(stderr), true);
+    fill_ranked(&mut selected, globally_ranked);
+    into_anchors(selected)
+}
+
+fn rank_lines(
+    lines: impl IntoIterator<Item = EligibleLine>,
+    allow_generic: bool,
+) -> Vec<EligibleLine> {
     let mut lines = lines
         .into_iter()
         .filter(|line| allow_generic || line.kind != DiscriminatorKind::Message)
@@ -111,30 +144,25 @@ fn select_anchors(
             &right.text,
         ))
     });
-    let mut selected = Vec::with_capacity(MAX_ANCHORS);
-    let mut categories = BTreeSet::new();
-    for line in &lines {
-        if categories.insert(line.kind) {
-            selected.push(line.clone());
-            if selected.len() == MAX_ANCHORS {
-                break;
-            }
+    lines
+}
+
+fn fill_ranked(selected: &mut Vec<EligibleLine>, lines: Vec<EligibleLine>) {
+    for line in lines {
+        if selected
+            .iter()
+            .any(|item| item.channel == line.channel && item.text == line.text)
+        {
+            continue;
+        }
+        selected.push(line);
+        if selected.len() == MAX_ANCHORS {
+            break;
         }
     }
-    if selected.len() < MAX_ANCHORS {
-        for line in lines {
-            if selected
-                .iter()
-                .any(|item| item.channel == line.channel && item.text == line.text)
-            {
-                continue;
-            }
-            selected.push(line);
-            if selected.len() == MAX_ANCHORS {
-                break;
-            }
-        }
-    }
+}
+
+fn into_anchors(selected: Vec<EligibleLine>) -> Vec<DiagnosticAnchor> {
     selected
         .into_iter()
         .map(|line| DiagnosticAnchor::new(line.channel, line.text))
@@ -311,7 +339,8 @@ pub fn normalize_diagnostic(input: &str) -> String {
             .expect("duration regex is valid")
     });
     let path_location = PATH_LOCATION.get_or_init(|| {
-        Regex::new(r"(?m)([^ \t\r\n:]+):[0-9]+(?::[0-9]+)?").expect("path location regex is valid")
+        Regex::new(r"(?m)(?P<token>[^ \t\r\n:]+):[0-9]+(?::[0-9]+)?")
+            .expect("path location candidate regex is valid")
     });
     let named_location = NAMED_LOCATION.get_or_init(|| {
         Regex::new(r"([Ll]ine|[Cc]olumn)[ \t]+[0-9]+").expect("named location regex is valid")
@@ -330,7 +359,14 @@ pub fn normalize_diagnostic(input: &str) -> String {
     text = named_port.replace_all(&text, "port <port>").into_owned();
     text = duration.replace_all(&text, "<duration>").into_owned();
     text = path_location
-        .replace_all(&text, "$1:<location>")
+        .replace_all(&text, |captures: &regex::Captures<'_>| {
+            let token = &captures["token"];
+            if is_source_location_token(token) {
+                format!("{token}:<location>")
+            } else {
+                captures[0].to_owned()
+            }
+        })
         .into_owned();
     text = named_location
         .replace_all(&text, "$1 <location>")
@@ -340,6 +376,22 @@ pub fn normalize_diagnostic(input: &str) -> String {
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn is_source_location_token(token: &str) -> bool {
+    const SOURCE_EXTENSIONS: &[&str] = &[
+        "bash", "c", "cc", "cjs", "cpp", "cs", "cts", "cxx", "fish", "go", "h", "hh", "hpp", "hxx",
+        "java", "js", "json", "jsx", "kt", "kts", "mjs", "mts", "php", "py", "pyi", "rb", "rs",
+        "scala", "sh", "swift", "toml", "ts", "tsx", "yaml", "yml", "zsh",
+    ];
+    token == "<temp>"
+        || token.contains('/')
+        || token.contains('\\')
+        || token.rsplit_once('.').is_some_and(|(_, extension)| {
+            SOURCE_EXTENSIONS
+                .iter()
+                .any(|known| extension.eq_ignore_ascii_case(known))
+        })
 }
 
 pub(crate) fn normalize_bytes(bytes: &[u8]) -> String {

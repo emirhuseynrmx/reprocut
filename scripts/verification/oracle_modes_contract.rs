@@ -251,6 +251,6 @@ mod oracle_modes_contract {
         let second =
             FailureOracle::from_spec_and_baselines(regex, &baselines).expect("regex baseline");
         assert_ne!(first.fingerprint().digest(), second.fingerprint().digest());
-        assert_eq!(first.fingerprint().normalization_schema(), 2);
+        assert_eq!(first.fingerprint().normalization_schema(), 3);
     }
 }

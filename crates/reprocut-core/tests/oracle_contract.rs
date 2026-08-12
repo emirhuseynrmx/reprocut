@@ -65,7 +65,7 @@ fn unstable_baselines_are_refused() {
     ])
     .expect_err("different diagnostics must not form one oracle");
 
-    assert_eq!(error, OracleError::UnstableDiagnostic);
+    assert_eq!(error, OracleError::EmptyAnchor);
 }
 
 #[test]
@@ -94,8 +94,8 @@ fn auto_can_stabilize_a_stdout_only_failure() {
     let oracle = FailureOracle::from_baselines_with_channel(
         DiagnosticChannel::Auto,
         &[
-            observed("panic on stdout", ""),
-            observed("panic on stdout", ""),
+            observed("panic: stdout failure", ""),
+            observed("panic: stdout failure", ""),
         ],
     )
     .expect("stdout is eligible");

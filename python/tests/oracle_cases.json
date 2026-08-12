@@ -27,9 +27,9 @@
       ],
       "failure_patterns": [],
       "reject_patterns": [],
-      "normalization_schema": 2,
+      "normalization_schema": 3,
       "oracle_spec_sha256": "3015cdd3dcd09acb2c9e17736d828908ee6ccab62db68928f1de9e2c1468d142",
-      "fingerprint_sha256": "c5174c7e6af66d3d5c1845371e6d3717051623e4614ce1873731d205fc864ac5"
+      "fingerprint_sha256": "877b37dab524c774f922dc7b158d3a349fc87e6a2ad6efe1a33cf3e478b8789c"
     }
   },
   {
@@ -50,9 +50,9 @@
       "anchors": [{"channel": "stderr", "text": "TypeError: invoice 41"}],
       "failure_patterns": [],
       "reject_patterns": [],
-      "normalization_schema": 2,
+      "normalization_schema": 3,
       "oracle_spec_sha256": "1c82610274183be423701b7037ec7605f66e3589b10ca57e49a663b53e0d9738",
-      "fingerprint_sha256": "c5712100feef81d5476b8bfcc61f99f25aca08b4bdc03c7026b6451d666014d4"
+      "fingerprint_sha256": "e2af67cde5128a0d8d9ca60bbef4faa602d16b932807692fc16f22c0eb1d5b6e"
     }
   },
   {
@@ -73,9 +73,9 @@
       "anchors": [],
       "failure_patterns": ["TypeError: invoice [0-9]+", "currency"],
       "reject_patterns": ["PermissionError"],
-      "normalization_schema": 2,
+      "normalization_schema": 3,
       "oracle_spec_sha256": "099cb6301757af57a751e13f73ad8e048d406ee7b10cc377a234441cda9d3f64",
-      "fingerprint_sha256": "b049c6c2366bd7fe88f9e4f01e85572cba45c8bd4da776ec30dfd64fda93b235"
+      "fingerprint_sha256": "5934048f25cb318e0db90101f027b65e4ee5af4bb666aa20e799444b41775dd6"
     }
   },
   {
@@ -107,9 +107,9 @@
       "anchors": [],
       "failure_patterns": [],
       "reject_patterns": [],
-      "normalization_schema": 2,
+      "normalization_schema": 3,
       "oracle_spec_sha256": "1ca9f6c384604e2e220eca1cc799b1f2c075943406d18a6a6476001187356643",
-      "fingerprint_sha256": "dd70526132aef0c726925d97be202ce36381893d331440e64b13bb4650529fb5"
+      "fingerprint_sha256": "bcc29a5b378e51c8e7190ea8b34b3cfe55eb7c138ab89996a863dad884800e31"
     }
   }
 ]

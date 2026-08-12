@@ -90,7 +90,7 @@ reprocut reduce --oracle-mode regex \
 reprocut reduce --oracle-mode exit-zero -- cargo test generated_property
 ```
 
-`automatic` is the default and intersects exact schema-2 normalized,
+`automatic` is the default and intersects exact schema-3 normalized,
 stream-qualified discriminators across repeated baselines. Regex mode requires
 every failure expression and lets any reject expression veto a candidate.
 Exit-zero mode ignores text and preserves only a successful exit.
@@ -132,8 +132,11 @@ symlink is rejected.
 
 Before search, ReproCut executes the original property repeatedly. Strict mode
 requires the same termination and stable normalized diagnostic anchors on all
-three runs. Volatile paths, addresses, numeric IDs, whitespace, and line endings
-are normalized, while stdout/stderr channel identity remains explicit.
+three runs. Only context-qualified volatility is normalized: a `token:number`
+is a source location only when the token is path-like or has a recognized source
+extension. Semantic values such as `status:404`, `expected:123`, and `shard:12`
+remain part of the failure identity. In `combined` mode at least one selected
+anchor from stdout and one from stderr are mandatory.
 
 Every candidate receives one of three verdicts:
 

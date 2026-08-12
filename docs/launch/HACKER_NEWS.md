@@ -9,10 +9,10 @@ Show HN: ReproCut – shrink a failing repository without changing the failure
 I built ReproCut, a local-first reducer for bug reproductions.
 
 You give it a failing project and command. It runs the untouched project three
-times to stabilize an exit state plus schema-2 normalized stdout/stderr
-discriminators, then
-searches isolated copies using directory-aware ddmin, manifest edits, and
-Tree-sitter transforms. A deletion is accepted only when the same fingerprint
+times to stabilize an exit state plus schema-3 normalized stdout/stderr
+discriminators, then searches isolated copies using directory-aware ddmin,
+manifest edits, and Tree-sitter transforms. A deletion is accepted only when
+the same fingerprint
 survives; timeout/truncation/runner errors are inconclusive. The final project
 must pass the oracle three more times before it is published.
 

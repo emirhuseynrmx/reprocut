@@ -3,7 +3,7 @@
   "attempts": [
     {
       "candidate_sha256": "8b60432055e44afe029e625e8bb76e2cae1c4edde4d4e0f963fe6b49d2eec04b",
-      "completed_at_unix": 1786549429,
+      "completed_at_unix": 1786555358,
       "event_id": 1,
       "evidence": {
         "decision": "preserved",
@@ -22,7 +22,7 @@
     },
     {
       "candidate_sha256": "86a8cb2fad1dafc159dadba5442e95a9961bc6d7172e928b084f7d953722349a",
-      "completed_at_unix": 1786549429,
+      "completed_at_unix": 1786555358,
       "event_id": 2,
       "evidence": {
         "decision": "preserved",
@@ -41,7 +41,7 @@
     },
     {
       "candidate_sha256": "a5e9a4511fe82d0a7f2412e586395baeea0ab3c119b2aeaf4fb361cd0192e112",
-      "completed_at_unix": 1786549429,
+      "completed_at_unix": 1786555358,
       "event_id": 3,
       "evidence": {
         "decision": "rejected",
@@ -60,7 +60,7 @@
     },
     {
       "candidate_sha256": "f79a799d91e5be958ba6de68eb0697002a9d36132511acbe0402a8dd2d18b404",
-      "completed_at_unix": 1786549429,
+      "completed_at_unix": 1786555358,
       "event_id": 4,
       "evidence": {
         "decision": "preserved",
@@ -79,7 +79,7 @@
     },
     {
       "candidate_sha256": "e252eaa75c3a619700276a6fb778a46c0d0dc8d3215d5231f875ae38fbd97665",
-      "completed_at_unix": 1786549429,
+      "completed_at_unix": 1786555358,
       "event_id": 5,
       "evidence": {
         "decision": "preserved",
@@ -98,7 +98,7 @@
     },
     {
       "candidate_sha256": "ad7f2c855491cbe2f13df3cb5a402c77b9b048a8f36f2b834a8680e691f39c69",
-      "completed_at_unix": 1786549429,
+      "completed_at_unix": 1786555358,
       "event_id": 6,
       "evidence": {
         "decision": "preserved",
@@ -117,7 +117,7 @@
     },
     {
       "candidate_sha256": "f068168b4f9d45fe6bef78413ff6a42b54022a72371ece1086bfa6d83ffaad1a",
-      "completed_at_unix": 1786549429,
+      "completed_at_unix": 1786555358,
       "event_id": 7,
       "evidence": {
         "decision": "rejected",
@@ -136,7 +136,7 @@
     },
     {
       "candidate_sha256": "7b3529ace3528fd28b87ec6a26502b08e19d87d56e85f0f00d52a5742ff263de",
-      "completed_at_unix": 1786549429,
+      "completed_at_unix": 1786555358,
       "event_id": 8,
       "evidence": {
         "decision": "rejected",
@@ -155,7 +155,7 @@
     },
     {
       "candidate_sha256": "2104139cce8d84eb3c0775492a99671faa44bcfb600c59217dfeb943fcecddaa",
-      "completed_at_unix": 1786549429,
+      "completed_at_unix": 1786555358,
       "event_id": 9,
       "evidence": {
         "decision": "rejected",
@@ -174,7 +174,7 @@
     },
     {
       "candidate_sha256": "3bc175c7d6ee59875700e39f948111c25b4e5c6b7729ce1e4d55cf1e730e71be",
-      "completed_at_unix": 1786549429,
+      "completed_at_unix": 1786555358,
       "event_id": 10,
       "evidence": {
         "decision": "rejected",
@@ -193,7 +193,7 @@
     },
     {
       "candidate_sha256": "50fdc49db73d037aaf7ae01a07ba72cbbe760d67a17d0b2b2bd285e285d35e23",
-      "completed_at_unix": 1786549429,
+      "completed_at_unix": 1786555358,
       "event_id": 11,
       "evidence": {
         "decision": "rejected",
@@ -212,7 +212,7 @@
     },
     {
       "candidate_sha256": "a8600a5aa5d5bef7133a1ed416cd3841c3fca875c4c7c618ca2620ad73cc1761",
-      "completed_at_unix": 1786549429,
+      "completed_at_unix": 1786555358,
       "event_id": 12,
       "evidence": {
         "decision": "rejected",
@@ -231,7 +231,7 @@
     },
     {
       "candidate_sha256": "d4153178b1cc1ff9e8a48a919df3fdb427ea0ffa80e6296b4b95eaa4bae99f7f",
-      "completed_at_unix": 1786549429,
+      "completed_at_unix": 1786555358,
       "event_id": 13,
       "evidence": {
         "decision": "preserved",
@@ -250,7 +250,7 @@
     },
     {
       "candidate_sha256": "e119a53e443791c20838521ab7d094ca9e7d2567453a10394490d1a4aa2eeb22",
-      "completed_at_unix": 1786549429,
+      "completed_at_unix": 1786555358,
       "event_id": 14,
       "evidence": {
         "decision": "rejected",
@@ -269,7 +269,7 @@
     },
     {
       "candidate_sha256": "5207bfaaad6eed097d01ea0fcd9d0b9391f572431d31c74a4c41c8516270446d",
-      "completed_at_unix": 1786549429,
+      "completed_at_unix": 1786555358,
       "event_id": 15,
       "evidence": {
         "decision": "rejected",
@@ -302,8 +302,8 @@
     ],
     "exit_code": 1,
     "failure_patterns": [],
-    "fingerprint_sha256": "3a19748e9e2191ac0c0080a6648cdebe1d74e683132d9be85b4ccb17554d9e1c",
-    "normalization_schema": 2,
+    "fingerprint_sha256": "48ebabae825720ad781c82ce1da9dbf43f33aceac71b34d140c9a7fc40562b00",
+    "normalization_schema": 3,
     "oracle_mode": "automatic",
     "oracle_spec_sha256": "3015cdd3dcd09acb2c9e17736d828908ee6ccab62db68928f1de9e2c1468d142",
     "oracle_stream": "auto",
@@ -333,7 +333,7 @@
     "The official Playground host has no Python executable, so search used a content-equivalent shell oracle; the source and final project are independently executed three times by this builder's local Python runtime."
   ],
   "measurements": {
-    "elapsed_ms": 313,
+    "elapsed_ms": 300,
     "original": {
       "bytes": 1669,
       "files": 18,

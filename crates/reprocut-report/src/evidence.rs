@@ -227,17 +227,17 @@ impl ReductionEvidence {
             "automatic"
                 if self.failure.failure_patterns.is_empty()
                     && !self.failure.anchors.is_empty()
-                    && self.failure.normalization_schema == 2 => {}
+                    && self.failure.normalization_schema == 3 => {}
             "regex"
                 if !self.failure.failure_patterns.is_empty()
                     && self.failure.anchors.is_empty()
-                    && self.failure.normalization_schema == 2 => {}
+                    && self.failure.normalization_schema == 3 => {}
             "exit_zero"
                 if self.failure.failure_patterns.is_empty()
                     && self.failure.reject_patterns.is_empty()
                     && self.failure.anchors.is_empty()
                     && self.failure.anchor.is_empty()
-                    && self.failure.normalization_schema == 2 => {}
+                    && self.failure.normalization_schema == 3 => {}
             "automatic" | "regex" | "exit_zero" => {
                 return Err("oracle evidence violates its mode contract")
             }

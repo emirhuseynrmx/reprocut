@@ -50,7 +50,7 @@ def test_fingerprint_is_an_immutable_plain_value() -> None:
         "anchors": [{"channel": "stderr", "text": "TypeError: currency"}],
         "failure_patterns": [],
         "reject_patterns": [],
-        "normalization_schema": 2,
+        "normalization_schema": 3,
         "oracle_spec_sha256": "<digest>",
         "fingerprint_sha256": "<digest>",
     }
@@ -73,6 +73,53 @@ def test_volatile_paths_and_ids_do_not_change_failure_identity() -> None:
             "PID 30 TypeError: request at /tmp/gamma.py:30:8 port 5003 after 30ms",
         )
         == "preserved"
+    )
+
+
+@pytest.mark.parametrize(
+    ("baseline", "candidate"),
+    [
+        ("HTTPError: status:404", "HTTPError: status:500"),
+        (
+            "AssertionError: expected:123 actual:456",
+            "AssertionError: expected:999 actual:777",
+        ),
+        ("RuntimeError: shard:12", "RuntimeError: shard:99"),
+    ],
+)
+def test_semantic_colon_numbers_are_not_source_locations(
+    baseline: str, candidate: str
+) -> None:
+    oracle = FailureOracle.from_baselines([(1, baseline), (1, baseline)])
+
+    assert oracle.classify(1, candidate) == "rejected"
+
+
+def test_recognized_source_line_numbers_remain_volatile() -> None:
+    baseline = "TypeError: failed at src/main.rs:12"
+    oracle = FailureOracle.from_baselines([(1, baseline), (1, baseline)])
+
+    assert oracle.classify(1, "TypeError: failed at src/main.rs:99") == "preserved"
+
+
+def test_combined_reserves_an_anchor_for_each_stream() -> None:
+    stdout = "\n".join(
+        [
+            "FAILED tests/a.py::test_x",
+            "error[E0425]: missing value",
+            "ValueError: invoice failed",
+            "expected 12 actual 13",
+        ]
+    )
+    stderr = "fatal: disk exploded"
+    oracle = FailureOracle.from_baselines(
+        [(1, stdout, stderr), (1, stdout, stderr)], channel="combined"
+    )
+
+    channels = {anchor["channel"] for anchor in oracle.fingerprint["anchors"]}
+    assert {"stdout", "stderr"} <= channels
+    assert (
+        oracle.classify(1, "fatal: totally unrelated", stdout=stdout) == "rejected"
     )
 
 

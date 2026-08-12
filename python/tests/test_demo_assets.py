@@ -44,7 +44,7 @@ def test_checked_in_demo_is_measured_and_reproducible() -> None:
     metadata = json.loads((result / "reduction.json").read_text(encoding="utf-8"))
 
     assert metadata["schema_version"] == 3
-    assert metadata["failure"]["normalization_schema"] == 2
+    assert metadata["failure"]["normalization_schema"] == 3
     assert metadata["failure"]["oracle_mode"] == "automatic"
     assert len(metadata["source_snapshot_sha256"]) == 64
     assert len(metadata["failure"]["oracle_spec_sha256"]) == 64

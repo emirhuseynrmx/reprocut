@@ -6,6 +6,13 @@
 
 **Architecture:** `reprocut-core` owns the validated oracle contract and mode-aware fingerprint; `reprocut-workspace` captures a single immutable source truth including executable metadata; `reprocut-runner` owns explicit child environments; and `reprocut-engine` binds all three plus a frozen Python preparation contract into session/cache identity. CLI, protocol, Python, reports, demos, and release gates serialize the same canonical model without reimplementing verdict logic.
 
+**0.1 release correction:** normalization schema 3 supersedes the original
+schema-2 plan. Source-location normalization now requires a path-qualified
+token; `combined` reserves at least one anchor per stream; and the adversarial
+suite lives at `crates/reprocut-core/tests/oracle_adversarial.rs` as a named
+Cargo/CI target. Earlier RED/GREEN commands below are retained as execution
+history rather than current file locations.
+
 **Tech Stack:** Rust 1.85, `regex`, `serde`, `sha2`, `tempfile`, `rusqlite`, PyO3 0.29, Python 3.9-3.13, pytest, offline pip/venv, GitHub Actions, Loom, Miri, sanitizers.
 
 ## Global Constraints
@@ -611,7 +618,7 @@ git commit -m "feat(report): publish integrity evidence schema 3"
 
 - [x] **Step 1: Add RED release-audit and demo assertions**
 
-Require schema 3, normalization schema 2, valid source snapshot digest, mode-aware fingerprint, preparation digest or explicit limitation, final verification `3`, and all three new CI gate names. Reject stale schema-2 demo artifacts and any README/release claim based on them.
+Require evidence schema 3, normalization schema 3, valid source snapshot digest, mode-aware fingerprint, preparation digest or explicit limitation, final verification `3`, and all three new CI gate names. Reject stale demo artifacts and any README/release claim based on them.
 
 - [x] **Step 2: Run Python release RED suite**
 

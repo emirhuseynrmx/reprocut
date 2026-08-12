@@ -66,7 +66,7 @@ mod gallery_contract {
                     channel: "stderr".to_owned(),
                     text: "private diagnostic".to_owned(),
                 }],
-                normalization_schema: 2,
+                normalization_schema: 3,
                 failure_patterns: Vec::new(),
                 reject_patterns: Vec::new(),
                 oracle_spec_sha256: "b".repeat(64),

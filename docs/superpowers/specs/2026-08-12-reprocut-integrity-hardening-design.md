@@ -89,10 +89,12 @@ CLI surface:
 The versioned JSON protocol and typed Python request expose the same fields.
 Invalid combinations fail before baseline execution.
 
-### 1.2 Normalization schema 2
+### 1.2 Normalization schema 3
 
-Schema 2 performs only context-qualified volatile replacement. It never
-replaces an unqualified decimal or short hexadecimal value.
+Schema 3 performs only context-qualified volatile replacement. It never
+replaces an unqualified decimal, short hexadecimal value, or semantic
+`word:number` pair. Schema 3 supersedes schema 2 because schema 2 could mistake
+values such as `status:404`, `expected:123`, and `shard:12` for source locations.
 
 Normalize:
 
@@ -104,7 +106,9 @@ Normalize:
 - PID, process ID, and thread ID only next to their identifying keyword;
 - localhost/loopback ports and values following the word `port`;
 - durations with an explicit time unit;
-- conventional `path:line:column`, `line N`, and `column N` locations.
+- `path:line:column` only when the token contains `/` or `\`, ends with a
+  recognized source/manifest extension, or is an internal normalized temporary
+  path; plus explicit `line N` and `column N` locations.
 
 Preserve:
 
@@ -114,8 +118,8 @@ Preserve:
   short hexadecimal domain values;
 - relative source paths and failing test names.
 
-`normalize_diagnostic` remains public but returns schema-2 text. The legacy
-schema number changes from `1` to `2`; resume contracts containing schema 1 are
+`normalize_diagnostic` remains public and returns schema-3 text. Fingerprints
+and resume/cache identities containing an older normalization schema are
 incompatible and fail closed.
 
 ### 1.3 Boilerplate rejection
