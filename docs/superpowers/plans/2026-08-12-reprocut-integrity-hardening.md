@@ -254,7 +254,7 @@ git commit -m "feat(python): mirror oracle v2 contract"
 - Produces: `SnapshotFile::executable_mask() -> u8` and `ProjectSnapshot::measurements()`.
 - Produces: `WorkspaceError::SourceDrift { path, reason }` and `WorkspaceError::PermissionRestore { path, source }`.
 
-- [ ] **Step 1: Add RED snapshot integrity tests**
+- [x] **Step 1: Add RED snapshot integrity tests**
 
 ```rust
 #[test]
@@ -269,29 +269,29 @@ fn live_source_changes_do_not_change_a_snapshot_subset() {
 
 On Unix add exact `0o100`, `0o010`, and `0o001` cases proving distinct snapshot digests and preservation through subset, `with_file_contents`, structured transformation, prepared capture, materialization, and final publication. Add deterministic zero-mask assertions on non-Unix.
 
-- [ ] **Step 2: Run snapshot RED verification**
+- [x] **Step 2: Run snapshot RED verification**
 
 Run: `python scripts/playground_workspace_verify.py --scope workspace --append scripts/verification/snapshot_integrity_contract.rs`
 
 Expected: FAIL because capture rereads live bytes, transformations discard metadata, and digest omits execute masks.
 
-- [ ] **Step 3: Implement drift-checked full capture**
+- [x] **Step 3: Implement drift-checked full capture**
 
 For each inventory unit, capture file type, length, modification time, and three-bit execute mask before read; read bytes once; capture metadata again; reject any difference. After all reads, rescan with the same inventory policy and require the same sorted paths. Build source digest and measurements exclusively from captured files.
 
-- [ ] **Step 4: Move all snapshot transformations to metadata-preserving constructors**
+- [x] **Step 4: Move all snapshot transformations to metadata-preserving constructors**
 
 `SnapshotFile::with_contents` must preserve `executable_mask`; new prepared files capture their mask; replacements and subsets share unchanged `Arc<[u8]>` values. Hash domain `REPROCUT-SNAPSHOT-V2\0`, path, byte length, bytes/content digest, and execute mask.
 
-- [ ] **Step 5: Restore exact execute bits after writing bytes**
+- [x] **Step 5: Restore exact execute bits after writing bytes**
 
 On Unix read the materialized file mode, replace only `0o111` with the stored three-bit mask, and propagate `set_permissions` errors. On non-Unix require mask zero and perform no permission mutation.
 
-- [ ] **Step 6: Remove engine live-source digest and file materialization paths**
+- [x] **Step 6: Remove engine live-source digest and file materialization paths**
 
 At engine entry perform inventory scan followed immediately by `ProjectSnapshot::capture`; use snapshot digest/measurements for session identity; form every file-level candidate via `source_snapshot.subset(kept)` and `CandidateWorkspace::materialize_snapshot`; never call `CandidateWorkspace::materialize` or `inventory_digest` during a reduction; publish only the final verified snapshot.
 
-- [ ] **Step 7: Run snapshot/workspace/engine GREEN verification**
+- [x] **Step 7: Run snapshot/workspace/engine GREEN verification**
 
 Run: `python scripts/playground_workspace_verify.py --scope workspace --append scripts/verification/snapshot_integrity_contract.rs`
 
@@ -299,7 +299,7 @@ Run: `python scripts/playground_workspace_verify.py --scope workspace --append s
 
 Expected: PASS with no live source reads after capture.
 
-- [ ] **Step 8: Commit immutable snapshots**
+- [x] **Step 8: Commit immutable snapshots**
 
 ```powershell
 git add crates/reprocut-workspace crates/reprocut-engine scripts/verification/snapshot_integrity_contract.rs

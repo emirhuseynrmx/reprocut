@@ -1,6 +1,7 @@
 //! Disposable filesystem workspaces for ReproCut candidates.
 
 mod hierarchy;
+mod snapshot;
 
 use std::{
     collections::BTreeSet,
@@ -13,6 +14,8 @@ use reprocut_core::{ContentDigest, Operation, ReductionUnit, Transformation};
 use tempfile::TempDir;
 use thiserror::Error;
 use walkdir::WalkDir;
+
+use snapshot::{regular_file_stamp, restore_executable_mask};
 
 pub use hierarchy::{DirectoryHierarchy, HierarchyGroup, HierarchyGroupKind};
 
@@ -100,6 +103,23 @@ pub enum WorkspaceError {
         /// Project-relative target with invalid offsets.
         path: String,
     },
+    /// Source bytes or metadata changed while the immutable capture was in progress.
+    #[error("source changed during snapshot capture: {path} ({reason})")]
+    SourceDrift {
+        /// Project-relative path, or `.` when the inventory membership changed.
+        path: String,
+        /// Stable diagnostic reason.
+        reason: &'static str,
+    },
+    /// Exact executable permissions could not be restored after materialization.
+    #[error("restore executable permissions failed for {path}: {source}")]
+    PermissionRestore {
+        /// Materialized file path.
+        path: PathBuf,
+        /// Operating-system error.
+        #[source]
+        source: io::Error,
+    },
 }
 
 /// A sorted, immutable view of removable project files.
@@ -115,6 +135,7 @@ pub struct SnapshotFile {
     path: String,
     contents: Arc<[u8]>,
     digest: ContentDigest,
+    executable_mask: u8,
 }
 
 impl SnapshotFile {
@@ -132,6 +153,40 @@ impl SnapshotFile {
     pub const fn digest(&self) -> ContentDigest {
         self.digest
     }
+
+    /// Returns owner/group/other executable state as a portable three-bit mask.
+    pub const fn executable_mask(&self) -> u8 {
+        self.executable_mask
+    }
+
+    fn with_contents(&self, contents: Vec<u8>) -> Self {
+        snapshot_file(self.path.clone(), contents, self.executable_mask)
+    }
+}
+
+/// Stable source measurements computed only from frozen snapshot bytes.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct SnapshotMeasurements {
+    files: usize,
+    bytes: u64,
+    lines: u64,
+}
+
+impl SnapshotMeasurements {
+    /// Returns the regular-file count.
+    pub const fn files(self) -> usize {
+        self.files
+    }
+
+    /// Returns the saturating byte count.
+    pub const fn bytes(self) -> u64 {
+        self.bytes
+    }
+
+    /// Returns newline-delimited source records, counting a final partial line.
+    pub const fn lines(self) -> u64 {
+        self.lines
+    }
 }
 
 /// Sorted immutable project contents with copy-on-write file sharing.
@@ -139,9 +194,35 @@ impl SnapshotFile {
 pub struct ProjectSnapshot {
     files: Vec<SnapshotFile>,
     digest: ContentDigest,
+    measurements: SnapshotMeasurements,
 }
 
 impl ProjectSnapshot {
+    /// Captures every inventory member once and rejects concurrent source drift.
+    pub fn capture(
+        inventory: &ProjectInventory,
+        policy: &InventoryPolicy,
+    ) -> Result<Self, WorkspaceError> {
+        let files = inventory
+            .units()
+            .iter()
+            .map(|unit| capture_inventory_file(inventory, unit))
+            .collect::<Result<Vec<_>, _>>()?;
+        let rescanned = ProjectInventory::scan_with_policy(inventory.root(), policy)?;
+        if inventory
+            .units()
+            .iter()
+            .map(ReductionUnit::path)
+            .ne(rescanned.units().iter().map(ReductionUnit::path))
+        {
+            return Err(WorkspaceError::SourceDrift {
+                path: ".".to_owned(),
+                reason: "regular-file membership changed",
+            });
+        }
+        Ok(Self::from_files(files))
+    }
+
     /// Reads selected immutable inventory units into one sorted snapshot.
     pub fn from_inventory<'unit>(
         inventory: &ProjectInventory,
@@ -149,17 +230,25 @@ impl ProjectSnapshot {
     ) -> Result<Self, WorkspaceError> {
         let mut files = units
             .into_iter()
-            .map(|unit| {
-                let relative = safe_relative(unit.path())?;
-                let path = inventory.root.join(relative);
-                let contents = fs::read(&path).map_err(|source| WorkspaceError::Io {
-                    operation: "read snapshot file",
-                    path,
-                    source,
-                })?;
-                Ok(snapshot_file(unit.path().to_owned(), contents))
-            })
+            .map(|unit| capture_inventory_file(inventory, unit))
             .collect::<Result<Vec<_>, WorkspaceError>>()?;
+        files.sort_unstable_by(|left, right| left.path.cmp(&right.path));
+        files.dedup_by(|left, right| left.path == right.path);
+        Ok(Self::from_files(files))
+    }
+
+    /// Selects files from frozen bytes without consulting the live source tree.
+    pub fn subset<'unit>(
+        &self,
+        units: impl IntoIterator<Item = &'unit ReductionUnit>,
+    ) -> Result<Self, WorkspaceError> {
+        let mut files = units
+            .into_iter()
+            .map(|unit| {
+                self.file_index(unit.path())
+                    .map(|index| self.files[index].clone())
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         files.sort_unstable_by(|left, right| left.path.cmp(&right.path));
         files.dedup_by(|left, right| left.path == right.path);
         Ok(Self::from_files(files))
@@ -180,6 +269,11 @@ impl ProjectSnapshot {
     /// Returns a digest over paths and cached content digests.
     pub const fn digest(&self) -> ContentDigest {
         self.digest
+    }
+
+    /// Returns measurements derived from the same immutable bytes as the digest.
+    pub const fn measurements(&self) -> SnapshotMeasurements {
+        self.measurements
     }
 
     /// Returns the saturating sum of immutable file byte lengths.
@@ -218,7 +312,7 @@ impl ProjectSnapshot {
                         &operations[start..end],
                         target,
                     )?;
-                    files[index] = snapshot_file(target.to_owned(), contents);
+                    files[index] = files[index].with_contents(contents);
                 }
             }
             start = end;
@@ -234,7 +328,7 @@ impl ProjectSnapshot {
     ) -> Result<Self, WorkspaceError> {
         let index = self.file_index(path)?;
         let mut files = self.files.clone();
-        files[index] = snapshot_file(path.to_owned(), contents);
+        files[index] = files[index].with_contents(contents);
         Ok(Self::from_files(files))
     }
 
@@ -246,13 +340,14 @@ impl ProjectSnapshot {
     ) -> Result<Self, WorkspaceError> {
         let mut files = Vec::with_capacity(self.files.len().saturating_add(additional_paths.len()));
         for file in &self.files {
-            let contents = read_prepared_regular_file(prepared_root, &file.path, true)?
-                .expect("required prepared files return bytes");
+            let (contents, executable_mask) =
+                read_prepared_regular_file(prepared_root, &file.path, true)?
+                    .expect("required prepared files return bytes");
             let digest = ContentDigest::of(&contents);
-            if digest == file.digest {
+            if digest == file.digest && executable_mask == file.executable_mask {
                 files.push(file.clone());
             } else {
-                files.push(snapshot_file(file.path.clone(), contents));
+                files.push(snapshot_file(file.path.clone(), contents, executable_mask));
             }
         }
         for &path in additional_paths {
@@ -260,8 +355,10 @@ impl ProjectSnapshot {
             if files.iter().any(|file| file.path == path) {
                 continue;
             }
-            if let Some(contents) = read_prepared_regular_file(prepared_root, path, false)? {
-                files.push(snapshot_file(path.to_owned(), contents));
+            if let Some((contents, executable_mask)) =
+                read_prepared_regular_file(prepared_root, path, false)?
+            {
+                files.push(snapshot_file(path.to_owned(), contents, executable_mask));
             }
         }
         files.sort_unstable_by(|left, right| left.path.cmp(&right.path));
@@ -277,7 +374,14 @@ impl ProjectSnapshot {
         })?;
         for file in &self.files {
             let relative = safe_relative(&file.path)?;
-            write_regular_file(&destination_root.join(relative), file.contents())?;
+            let destination = destination_root.join(relative);
+            write_regular_file(&destination, file.contents())?;
+            restore_executable_mask(&destination, file.executable_mask).map_err(|source| {
+                WorkspaceError::PermissionRestore {
+                    path: destination,
+                    source,
+                }
+            })?;
         }
         Ok(())
     }
@@ -292,7 +396,12 @@ impl ProjectSnapshot {
 
     fn from_files(files: Vec<SnapshotFile>) -> Self {
         let digest = snapshot_digest(&files);
-        Self { files, digest }
+        let measurements = snapshot_measurements(&files);
+        Self {
+            files,
+            digest,
+            measurements,
+        }
     }
 }
 
@@ -573,19 +682,63 @@ fn apply_replacements_to_bytes(
     Ok(transformed)
 }
 
-fn snapshot_file(path: String, contents: Vec<u8>) -> SnapshotFile {
+fn capture_inventory_file(
+    inventory: &ProjectInventory,
+    unit: &ReductionUnit,
+) -> Result<SnapshotFile, WorkspaceError> {
+    let relative = safe_relative(unit.path())?;
+    let path = inventory.root.join(relative);
+    let before = regular_file_stamp(&path)
+        .map_err(|source| WorkspaceError::Io {
+            operation: "inspect source before snapshot read",
+            path: path.clone(),
+            source,
+        })?
+        .ok_or_else(|| WorkspaceError::SourceDrift {
+            path: unit.path().to_owned(),
+            reason: "inventory member is no longer a regular file",
+        })?;
+    let contents = fs::read(&path).map_err(|source| WorkspaceError::Io {
+        operation: "read snapshot file",
+        path: path.clone(),
+        source,
+    })?;
+    let after = regular_file_stamp(&path)
+        .map_err(|source| WorkspaceError::Io {
+            operation: "inspect source after snapshot read",
+            path,
+            source,
+        })?
+        .ok_or_else(|| WorkspaceError::SourceDrift {
+            path: unit.path().to_owned(),
+            reason: "source stopped being a regular file",
+        })?;
+    if before != after || before.length != u64::try_from(contents.len()).unwrap_or(u64::MAX) {
+        return Err(WorkspaceError::SourceDrift {
+            path: unit.path().to_owned(),
+            reason: "bytes or metadata changed while reading",
+        });
+    }
+    Ok(snapshot_file(
+        unit.path().to_owned(),
+        contents,
+        before.executable_mask,
+    ))
+}
+
+fn snapshot_file(path: String, contents: Vec<u8>, executable_mask: u8) -> SnapshotFile {
     let digest = ContentDigest::of(&contents);
     SnapshotFile {
         path,
         contents: Arc::from(contents),
         digest,
+        executable_mask,
     }
 }
 
 fn snapshot_digest(files: &[SnapshotFile]) -> ContentDigest {
     let mut encoded = Vec::with_capacity(files.len().saturating_mul(48).saturating_add(24));
-    encoded.extend_from_slice(b"REPROCUT-SNAPSHOT\0");
-    encoded.extend_from_slice(&1_u16.to_le_bytes());
+    encoded.extend_from_slice(b"REPROCUT-SNAPSHOT-V2\0");
     encoded.extend_from_slice(&u64::try_from(files.len()).unwrap_or(u64::MAX).to_le_bytes());
     for file in files {
         encoded.extend_from_slice(
@@ -594,19 +747,45 @@ fn snapshot_digest(files: &[SnapshotFile]) -> ContentDigest {
                 .to_le_bytes(),
         );
         encoded.extend_from_slice(file.path.as_bytes());
+        encoded.extend_from_slice(
+            &u64::try_from(file.contents.len())
+                .unwrap_or(u64::MAX)
+                .to_le_bytes(),
+        );
         encoded.extend_from_slice(file.digest.as_bytes());
+        encoded.push(file.executable_mask);
     }
     ContentDigest::of(&encoded)
+}
+
+fn snapshot_measurements(files: &[SnapshotFile]) -> SnapshotMeasurements {
+    let mut measurements = SnapshotMeasurements {
+        files: files.len(),
+        ..SnapshotMeasurements::default()
+    };
+    for file in files {
+        measurements.bytes = measurements
+            .bytes
+            .saturating_add(u64::try_from(file.contents.len()).unwrap_or(u64::MAX));
+        measurements.lines = measurements.lines.saturating_add(
+            u64::try_from(file.contents.iter().filter(|&&byte| byte == b'\n').count())
+                .unwrap_or(u64::MAX),
+        );
+        if !file.contents.is_empty() && file.contents.last() != Some(&b'\n') {
+            measurements.lines = measurements.lines.saturating_add(1);
+        }
+    }
+    measurements
 }
 
 fn read_prepared_regular_file(
     root: &Path,
     relative: &str,
     required: bool,
-) -> Result<Option<Vec<u8>>, WorkspaceError> {
+) -> Result<Option<(Vec<u8>, u8)>, WorkspaceError> {
     let path = root.join(safe_relative(relative)?);
-    let metadata = match fs::symlink_metadata(&path) {
-        Ok(metadata) => metadata,
+    let before = match regular_file_stamp(&path) {
+        Ok(stamp) => stamp,
         Err(error) if !required && error.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(source) => {
             return Err(WorkspaceError::Io {
@@ -616,18 +795,33 @@ fn read_prepared_regular_file(
             });
         }
     };
-    if !metadata.file_type().is_file() {
+    let Some(before) = before else {
         return Err(WorkspaceError::MissingTransformationTarget {
             path: relative.to_owned(),
         });
-    }
-    fs::read(&path)
-        .map(Some)
+    };
+    let contents = fs::read(&path).map_err(|source| WorkspaceError::Io {
+        operation: "read prepared snapshot file",
+        path: path.clone(),
+        source,
+    })?;
+    let after = regular_file_stamp(&path)
         .map_err(|source| WorkspaceError::Io {
-            operation: "read prepared snapshot file",
+            operation: "inspect prepared snapshot after read",
             path,
             source,
-        })
+        })?
+        .ok_or_else(|| WorkspaceError::SourceDrift {
+            path: relative.to_owned(),
+            reason: "prepared file stopped being regular",
+        })?;
+    if before != after || before.length != u64::try_from(contents.len()).unwrap_or(u64::MAX) {
+        return Err(WorkspaceError::SourceDrift {
+            path: relative.to_owned(),
+            reason: "prepared bytes or metadata changed while reading",
+        });
+    }
+    Ok(Some((contents, before.executable_mask)))
 }
 
 fn copy_regular_file(source_path: &Path, destination: &Path) -> Result<(), WorkspaceError> {

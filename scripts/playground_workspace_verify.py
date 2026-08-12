@@ -38,8 +38,11 @@ def wrap(name: str, source: str) -> str:
 
 def workspace_source() -> str:
     hierarchy = read("crates/reprocut-workspace/src/hierarchy.rs")
-    return read("crates/reprocut-workspace/src/lib.rs").replace(
-        "mod hierarchy;", f"mod hierarchy {{ {hierarchy} }}"
+    snapshot = read("crates/reprocut-workspace/src/snapshot.rs")
+    return (
+        read("crates/reprocut-workspace/src/lib.rs")
+        .replace("mod hierarchy;", f"mod hierarchy {{ {hierarchy} }}")
+        .replace("mod snapshot;", f"mod snapshot {{ {snapshot} }}")
     )
 
 

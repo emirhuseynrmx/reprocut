@@ -12,8 +12,6 @@ use pipeline::{
 use std::{
     collections::HashMap,
     ffi::OsString,
-    fs,
-    io::{self, Read as _},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -25,9 +23,8 @@ use std::{
 use reprocut_adapters::{Ecosystem, NpmManifest, PreparationPlan};
 use reprocut_core::{
     reduce_hierarchical_frontiers, AggregateDecision, AggregateEvidence, CandidateRank,
-    CandidateVerdict, ContentDigest, ContentHasher, DiagnosticChannel, EvaluationPolicy,
-    ExecutionObservation, FailureFingerprint, FailureOracle, FrontierClass, OracleError,
-    ReductionResult, ReductionUnit,
+    CandidateVerdict, ContentDigest, DiagnosticChannel, EvaluationPolicy, ExecutionObservation,
+    FailureFingerprint, FailureOracle, FrontierClass, OracleError, ReductionResult, ReductionUnit,
 };
 use reprocut_runner::{CommandSpec, ProcessRunner, RunnerError};
 use reprocut_state::{
@@ -371,7 +368,9 @@ impl ReductionEngine {
         if inventory.units().is_empty() {
             return Err(EngineError::EmptyProject);
         }
-        let (source_digest, original_measurements) = inventory_digest(&inventory)?;
+        let source_snapshot = ProjectSnapshot::capture(&inventory, request.inventory_policy())?;
+        let source_digest = source_snapshot.digest();
+        let original_measurements = source_snapshot.measurements();
         let contract = session_contract(request, source_digest);
         let (state, resumed) = open_state(request.session_mode(), contract)?;
         let state_path = state.as_ref().map(|store| store.path().to_path_buf());
@@ -381,7 +380,7 @@ impl ReductionEngine {
         let mut baselines = Vec::with_capacity(usize::from(policy.runs()));
 
         for _ in 0..policy.runs() {
-            let observation = match run_candidate(request, &inventory, &all_units)? {
+            let observation = match run_candidate(request, &source_snapshot, &all_units)? {
                 CandidateExecution::Observed(observation) => observation,
                 CandidateExecution::PreparationRejected => {
                     return Err(EngineError::BaselinePreparationFailed);
@@ -449,6 +448,7 @@ impl ReductionEngine {
                 let evaluation = FrontierEvaluationContext {
                     request,
                     inventory: &inventory,
+                    source_snapshot: &source_snapshot,
                     oracle: &oracle,
                     policy,
                     writer: writer.as_ref(),
@@ -505,7 +505,7 @@ impl ReductionEngine {
             return Err(error);
         }
 
-        let snapshot = ProjectSnapshot::from_inventory(&inventory, reduction.kept())?;
+        let snapshot = source_snapshot.subset(reduction.kept())?;
         from_digest = snapshot.digest();
         let structured = StructuredReductionContext {
             request,
@@ -553,8 +553,8 @@ impl ReductionEngine {
 
         Ok(ReductionOutcome {
             original_files: inventory.units().len(),
-            original_bytes: original_measurements.bytes,
-            original_lines: original_measurements.lines,
+            original_bytes: original_measurements.bytes(),
+            original_lines: original_measurements.lines(),
             reduction,
             fingerprint: oracle.fingerprint().clone(),
             baseline_runs: u16::try_from(baselines.len())
@@ -638,21 +638,11 @@ const fn aggregate_verdict(decision: AggregateDecision) -> CandidateVerdict {
 
 fn run_candidate(
     request: &ReductionRequest,
-    inventory: &ProjectInventory,
+    source_snapshot: &ProjectSnapshot,
     kept: &[&ReductionUnit],
 ) -> Result<CandidateExecution, EngineError> {
-    let candidate = CandidateWorkspace::materialize(inventory, kept)?;
-    if !prepare_candidate(request, candidate.root())? {
-        return Ok(CandidateExecution::PreparationRejected);
-    }
-    let command = CommandSpec::new(
-        request.program.clone(),
-        request.arguments.clone(),
-        candidate.root().to_path_buf(),
-        request.timeout,
-        request.max_output_bytes,
-    );
-    Ok(CandidateExecution::Observed(ProcessRunner::run(&command)?))
+    let snapshot = source_snapshot.subset(kept.iter().copied())?;
+    run_snapshot_candidate(request, &snapshot)
 }
 
 fn run_snapshot_candidate(
@@ -1077,6 +1067,7 @@ struct CandidatePayload {
 struct FrontierEvaluationContext<'a> {
     request: &'a ReductionRequest,
     inventory: &'a ProjectInventory,
+    source_snapshot: &'a ProjectSnapshot,
     oracle: &'a FailureOracle,
     policy: EvaluationPolicy,
     writer: Option<&'a WriterHandle>,
@@ -1143,14 +1134,18 @@ impl FrontierEvaluationContext<'_> {
             if has_error(&local_error) {
                 return None;
             }
-            Some(match run_candidate(self.request, self.inventory, &kept) {
-                Ok(CandidateExecution::Observed(observation)) => self.oracle.classify(&observation),
-                Ok(CandidateExecution::PreparationRejected) => CandidateVerdict::Rejected,
-                Err(error) => {
-                    set_error(&local_error, error);
-                    CandidateVerdict::Inconclusive
-                }
-            })
+            Some(
+                match run_candidate(self.request, self.source_snapshot, &kept) {
+                    Ok(CandidateExecution::Observed(observation)) => {
+                        self.oracle.classify(&observation)
+                    }
+                    Ok(CandidateExecution::PreparationRejected) => CandidateVerdict::Rejected,
+                    Err(error) => {
+                        set_error(&local_error, error);
+                        CandidateVerdict::Inconclusive
+                    }
+                },
+            )
         }));
         if let Some(error) = take_error(&local_error) {
             set_error(self.first_error, error);
@@ -1272,84 +1267,6 @@ fn session_contract(request: &ReductionRequest, source: ContentDigest) -> Sessio
     )
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-struct MaterialMeasurements {
-    bytes: u64,
-    lines: u64,
-}
-
-fn inventory_digest(
-    inventory: &ProjectInventory,
-) -> Result<(ContentDigest, MaterialMeasurements), EngineError> {
-    const BUFFER_BYTES: usize = 64 * 1_024;
-
-    let mut hasher = ContentHasher::new();
-    let mut measurements = MaterialMeasurements::default();
-    let mut buffer = [0_u8; BUFFER_BYTES];
-    hasher.update(b"REPROCUT-SOURCE\0");
-    for unit in inventory.units() {
-        hash_field_header(&mut hasher, unit.path().len());
-        hasher.update(unit.path().as_bytes());
-        let path = inventory.root().join(unit.path());
-        let mut file = fs::File::open(&path).map_err(|source| WorkspaceError::Io {
-            operation: "open source file for hashing",
-            path: path.clone(),
-            source,
-        })?;
-        let expected = file
-            .metadata()
-            .map_err(|source| WorkspaceError::Io {
-                operation: "read source file metadata",
-                path: path.clone(),
-                source,
-            })?
-            .len();
-        hasher.update(&expected.to_le_bytes());
-        let mut observed = 0_u64;
-        let mut last = None;
-        loop {
-            let read = file
-                .read(&mut buffer)
-                .map_err(|source| WorkspaceError::Io {
-                    operation: "stream source file into hash",
-                    path: path.clone(),
-                    source,
-                })?;
-            if read == 0 {
-                break;
-            }
-            let chunk = &buffer[..read];
-            hasher.update(chunk);
-            observed = observed.saturating_add(u64::try_from(read).unwrap_or(u64::MAX));
-            measurements.lines = measurements.lines.saturating_add(
-                u64::try_from(chunk.iter().filter(|&&byte| byte == b'\n').count())
-                    .unwrap_or(u64::MAX),
-            );
-            last = chunk.last().copied();
-        }
-        if observed != expected {
-            return Err(WorkspaceError::Io {
-                operation: "verify stable source length while hashing",
-                path,
-                source: io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "source file changed while its session identity was measured",
-                ),
-            }
-            .into());
-        }
-        measurements.bytes = measurements.bytes.saturating_add(observed);
-        if observed != 0 && last != Some(b'\n') {
-            measurements.lines = measurements.lines.saturating_add(1);
-        }
-    }
-    Ok((hasher.finalize(), measurements))
-}
-
-fn hash_field_header(hasher: &mut ContentHasher, length: usize) {
-    hasher.update(&u64::try_from(length).unwrap_or(u64::MAX).to_le_bytes());
-}
-
 fn candidate_digest(ids: &[u32]) -> ContentDigest {
     let mut encoded = Vec::with_capacity(20_usize.saturating_add(ids.len().saturating_mul(4)));
     encoded.extend_from_slice(b"REPROCUT-CANDIDATE\0");
@@ -1398,31 +1315,21 @@ fn take_error(slot: &Mutex<Option<EngineError>>) -> Option<EngineError> {
 
 #[cfg(test)]
 mod measurement_tests {
-    use super::{encode_field, inventory_digest};
-    use reprocut_core::ContentDigest;
-    use reprocut_workspace::ProjectInventory;
+    use reprocut_workspace::{InventoryPolicy, ProjectInventory, ProjectSnapshot};
     use std::fs;
 
     #[test]
-    fn source_identity_streams_the_legacy_encoding_and_measures_once() {
+    fn source_identity_and_measurements_share_one_snapshot() {
         let root = tempfile::tempdir().expect("temporary project");
         fs::write(root.path().join("a.txt"), b"one\ntwo").expect("text fixture");
         fs::write(root.path().join("b.bin"), b"\0\n").expect("binary fixture");
-        let inventory = ProjectInventory::scan(root.path()).expect("inventory");
+        let policy = InventoryPolicy::source_only();
+        let inventory =
+            ProjectInventory::scan_with_policy(root.path(), &policy).expect("inventory");
+        let snapshot = ProjectSnapshot::capture(&inventory, &policy).expect("snapshot");
 
-        let (actual, measurements) = inventory_digest(&inventory).expect("streamed digest");
-        let mut legacy = Vec::new();
-        legacy.extend_from_slice(b"REPROCUT-SOURCE\0");
-        for unit in inventory.units() {
-            encode_field(&mut legacy, unit.path().as_bytes());
-            encode_field(
-                &mut legacy,
-                &fs::read(inventory.root().join(unit.path())).expect("fixture bytes"),
-            );
-        }
-
-        assert_eq!(actual, ContentDigest::of(&legacy));
-        assert_eq!(measurements.bytes, 9);
-        assert_eq!(measurements.lines, 3);
+        assert_eq!(snapshot.measurements().files(), 2);
+        assert_eq!(snapshot.measurements().bytes(), 9);
+        assert_eq!(snapshot.measurements().lines(), 3);
     }
 }
