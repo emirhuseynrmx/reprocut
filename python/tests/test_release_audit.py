@@ -11,6 +11,7 @@ from audit import REQUIRED_CI_GATES, ci_checks, static_checks
 
 
 def test_static_release_contract_is_fully_encoded_and_current() -> None:
+    assert {"oracle-adversarial", "python-isolation", "snapshot-integrity"} <= REQUIRED_CI_GATES
     checks = static_checks(ROOT)
 
     assert len(checks) >= 8

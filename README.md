@@ -14,7 +14,7 @@ final verification runs agree.
 
 The checked-in demo is measured, not illustrative: **18 → 3 files**, **24
 candidate evaluations**, **3/3 strict final verification**, and a versioned
-same-failure fingerprint. Inspect the raw [schema-2 evidence](demo/result/reduction.json),
+same-failure fingerprint. Inspect the raw [schema-3 evidence](demo/result/reduction.json),
 [attempt ledger](demo/result/attempts.jsonl), or [self-contained report](demo/result/report.html).
 
 > ReproCut 0.1 is in release-candidate development. crates.io and PyPI artifacts
@@ -79,6 +79,38 @@ Use `--flaky --flaky-runs 11 --flaky-required 9` when the property is genuinely
 nondeterministic. An inconclusive timeout, truncated stream, preparation error,
 or runner failure can never authorize a cut.
 
+Choose the interestingness contract explicitly when automatic discriminators
+are not the right tool:
+
+```console
+reprocut reduce --oracle-mode regex \
+  --failure-regex 'TypeError' --failure-regex 'currency' \
+  --reject-regex 'secondary failure' -- python bug.py
+
+reprocut reduce --oracle-mode exit-zero -- cargo test generated_property
+```
+
+`automatic` is the default and intersects exact schema-2 normalized,
+stream-qualified discriminators across repeated baselines. Regex mode requires
+every failure expression and lets any reject expression veto a candidate.
+Exit-zero mode ignores text and preserves only a successful exit.
+
+For dependency-sensitive Python projects, isolated mode requires all inputs up
+front and creates a fresh virtual environment for every candidate:
+
+```console
+python -m pip download --only-binary=:all: --dest ./wheelhouse .
+reprocut minimize --root . --prepare isolated-python \
+  --python-executable /usr/bin/python3 \
+  --python-wheelhouse ./wheelhouse \
+  --python-extra test -- python -m pytest -q
+```
+
+Pip runs with `--isolated --no-index`; user-site, indexes, Python path, and
+virtual-environment variables are scrubbed. Interpreter identity, wheel bytes,
+normalized extras, optional argv-only `--prepare-spec`, environment policy,
+timeout, and capture budget are frozen into the preparation hash.
+
 ## What gets published
 
 ```text
@@ -130,6 +162,11 @@ output:
 ```console
 reprocut protocol run --request request.json
 ```
+
+0.1 integrity journals use contract schema 2. Older journals and any change to
+source bytes, executable masks, argv boundaries, oracle, evaluation policy,
+preparation inputs, inventory exclusions, adapter, or engine identity fail
+closed; start again only with an explicit `--restart`.
 
 The [VS Code/Cursor extension](editors/vscode/README.md) is deliberately thin:
 it invokes this protocol, validates event ordering and artifact paths, and never
@@ -228,6 +265,7 @@ native/toolchain matrix remains the clean GitHub Actions release authority.
 
 - Candidate commands run with your user authority; ReproCut is not a hostile-code sandbox.
 - Network-disabled preparation is ecosystem-specific, not a universal guarantee.
+- `isolated-python` provides offline dependency isolation, not a hostile-code sandbox.
 - Grammar transforms are conservative allowlists and can leave a larger result.
 - “Retained” is an observed final snapshot fact, not a root-cause claim.
 - Registry publication and the `v0.1.0` tag remain irreversible user actions.

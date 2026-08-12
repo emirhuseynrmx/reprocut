@@ -58,8 +58,15 @@ def report_source() -> str:
     )
 
 
-def compose_cli(*, runner_override: str | None = None) -> str:
-    engine = compose_engine(runner_override=runner_override).removesuffix("fn main() {}")
+def compose_cli(
+    *,
+    runner_override: str | None = None,
+    python_isolation_override: str | None = None,
+) -> str:
+    engine = compose_engine(
+        runner_override=runner_override,
+        python_isolation_override=python_isolation_override,
+    ).removesuffix("fn main() {}")
     report = report_source()
     oci = read("crates/reprocut-oci/src/lib.rs")
     completion_stub = r'''
@@ -203,7 +210,11 @@ impl GroupChild {
     )
 
 
-def compose_engine(*, runner_override: str | None = None) -> str:
+def compose_engine(
+    *,
+    runner_override: str | None = None,
+    python_isolation_override: str | None = None,
+) -> str:
     core = compose_core().replace("fn main() {}\n", "")
     workspace = workspace_source().replace(
         "use reprocut_core::", "use crate::reprocut_core::"
@@ -217,7 +228,7 @@ def compose_engine(*, runner_override: str | None = None) -> str:
     scheduler = read("crates/reprocut-engine/src/scheduler.rs").replace(
         "use reprocut_core::", "use crate::reprocut_core::"
     )
-    python_isolation = (
+    python_isolation = python_isolation_override or (
         read("crates/reprocut-engine/src/python_isolation.rs")
         .replace("use reprocut_core::", "use crate::reprocut_core::")
         .replace("use reprocut_runner::", "use crate::reprocut_runner::")

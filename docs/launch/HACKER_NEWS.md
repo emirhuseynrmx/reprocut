@@ -9,7 +9,8 @@ Show HN: ReproCut – shrink a failing repository without changing the failure
 I built ReproCut, a local-first reducer for bug reproductions.
 
 You give it a failing project and command. It runs the untouched project three
-times to stabilize an exit state plus normalized stdout/stderr anchors, then
+times to stabilize an exit state plus schema-2 normalized stdout/stderr
+discriminators, then
 searches isolated copies using directory-aware ddmin, manifest edits, and
 Tree-sitter transforms. A deletion is accepted only when the same fingerprint
 survives; timeout/truncation/runner errors are inconclusive. The final project
@@ -44,7 +45,12 @@ Two implementation details that may save readers a click:
    A timeout cannot authorize deletion.
 2. Parallel workers may finish out of order, but only the earliest valid result
    in canonical rank order can commit. The accepted chain is intended to be
-   identical for `--jobs 1` and `--jobs N`.
+identical for `--jobs 1` and `--jobs N`.
+
+Automatic discriminators are only one mode: callers can instead require an AND
+set of regexes with reject vetoes, or use exit-zero interestingness. Python
+dependency reduction can use a frozen wheelhouse and a fresh, index-disabled
+venv for every baseline, candidate, structured edit, and final verification.
 
 I also pinned a download-only 24-case GCC/Clang corpus from Perses for regression
 work. GPL material is not bundled and is never fetched or executed implicitly.

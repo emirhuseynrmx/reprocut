@@ -43,6 +43,9 @@ REQUIRED_CI_GATES = {
     "release-packages",
     "editor",
     "gallery",
+    "oracle-adversarial",
+    "python-isolation",
+    "snapshot-integrity",
     *(f"archive-{target}" for target in REQUIRED_TARGETS),
 }
 
@@ -66,15 +69,23 @@ def static_checks(root: Path) -> list[Check]:
         (root / "demo/result/reduction.json").read_text(encoding="utf-8")
     )
     demo_ok = (
-        evidence.get("schema_version") == 2
+        evidence.get("schema_version") == 3
         and evidence["failure"]["same_failure"] is True
+        and evidence["failure"].get("normalization_schema") == 2
+        and evidence["failure"].get("oracle_mode") in {"automatic", "regex", "exit_zero"}
         and evidence["search"]["final_verifications"] == 3
         and evidence["measurements"]["original"]["files"] == 18
         and evidence["measurements"]["retained"]["files"] == 3
         and len(evidence["failure"]["fingerprint_sha256"]) == 64
+        and len(evidence["failure"].get("oracle_spec_sha256", "")) == 64
+        and len(evidence.get("source_snapshot_sha256", "")) == 64
+        and (
+            len(evidence.get("preparation", {}).get("contract_sha256") or "") == 64
+            or bool(evidence.get("preparation", {}).get("limitations"))
+        )
     )
     checks.append(
-        check("demo-evidence", demo_ok, "schema 2, 18->3, same failure, final 3/3")
+        check("demo-evidence", demo_ok, "schema 3, bound digests, 18->3, same failure, final 3/3")
     )
     attempts = (
         (root / "demo/result/attempts.jsonl").read_text(encoding="utf-8").splitlines()

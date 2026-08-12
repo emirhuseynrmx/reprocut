@@ -132,6 +132,52 @@ jobs:
       - name: Build and structurally validate an OCI archive
         run: cargo test -p reprocut-oci --test oci_builder -- --ignored --nocapture
 
+  oracle-adversarial:
+    name: Adversarial failure-oracle contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal
+          rustup default 1.85.0
+      - name: Exercise automatic, regex, exit-zero, truncation, and collision cases
+        run: >-
+          cargo test -p reprocut-core
+          --test oracle_contract
+          --test oracle_properties
+
+  python-isolation:
+    name: Frozen offline Python candidate isolation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal
+          rustup default 1.85.0
+      - name: Disable package indexes and run committed-wheel isolation contracts
+        run: cargo test -p reprocut-engine --test python_isolation_contract
+        env:
+          TEST_PYTHON: python
+          PIP_NO_INDEX: "1"
+          PIP_CONFIG_FILE: /dev/null
+
+  snapshot-integrity:
+    name: Immutable snapshot bytes and Unix execute masks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal
+          rustup default 1.85.0
+      - name: Prove mutation detection and executable-bit preservation
+        run: cargo test -p reprocut-workspace --test snapshot_integrity
+
   python-wheel:
     name: Native wheel / Python ${{ matrix.python }}
     runs-on: ubuntu-latest

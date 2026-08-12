@@ -185,10 +185,10 @@ def run_once(
             raise BenchmarkError("protocol did not emit a completed terminal event")
         evidence = json.loads((output / "reduction.json").read_text(encoding="utf-8"))
         if (
-            evidence.get("schema_version") != 2
+            evidence.get("schema_version") != 3
             or evidence["failure"].get("same_failure") is not True
         ):
-            raise BenchmarkError("run did not publish schema-v2 same-failure evidence")
+            raise BenchmarkError("run did not publish schema-v3 same-failure evidence")
         measurements = evidence["measurements"]
         search = evidence["search"]
         return {

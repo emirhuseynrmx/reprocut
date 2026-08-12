@@ -15,7 +15,7 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
-from playground_workspace_verify import ROOT, compose_cli
+from playground_workspace_verify import ROOT, compose_engine, report_source, wrap
 
 SOURCE = ROOT / "demo" / "source"
 RESULT = ROOT / "demo" / "result"
@@ -52,6 +52,16 @@ pub struct CommandSpec {
     max_output_bytes: usize,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ChildEnvironment;
+
+impl ChildEnvironment {
+    pub const fn inherit() -> Self { Self }
+    pub fn set(self, _name: impl Into<OsString>, _value: impl Into<OsString>) -> Self { self }
+    pub fn remove(self, _name: impl Into<OsString>) -> Self { self }
+    pub fn prepend_path(self, _directory: impl Into<PathBuf>) -> Self { self }
+}
+
 impl CommandSpec {
     pub fn new(
         program: PathBuf,
@@ -62,6 +72,8 @@ impl CommandSpec {
     ) -> Self {
         Self { program, arguments, working_directory, timeout, max_output_bytes }
     }
+
+    pub fn with_environment(self, _environment: ChildEnvironment) -> Self { self }
 }
 
 #[derive(Debug, Error)]
@@ -106,6 +118,41 @@ fn bounded(mut value: Vec<u8>, limit: usize) -> (Vec<u8>, bool) {
 
 pub const fn containment_mechanism() -> ContainmentMechanism {
     ContainmentMechanism::DirectChild
+}
+'''
+
+# The checked-in demo never selects isolated Python. Keeping this API-compatible
+# fail-closed stub out of the remote code avoids making Playground compile an
+# unreachable virtual-environment implementation under its tight memory limit.
+DEMO_PYTHON_ISOLATION = r'''
+use std::{ffi::OsString, path::{Path, PathBuf}, time::Duration};
+use crate::reprocut_core::ContentDigest;
+use crate::reprocut_runner::CommandSpec;
+use thiserror::Error;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PythonIsolationRequest;
+impl PythonIsolationRequest {
+    pub fn new(_: PathBuf, _: PathBuf) -> Self { Self }
+    pub fn with_extras(self, _: impl IntoIterator<Item=String>) -> Result<Self, PythonPreparationError> { Ok(self) }
+    pub fn with_prepare_spec(self, _: PathBuf) -> Self { self }
+}
+
+#[derive(Debug, Error)]
+#[error("isolated Python is unavailable in the Playground demo runner")]
+pub struct PythonPreparationError;
+
+pub(crate) struct FrozenPythonPreparation;
+impl FrozenPythonPreparation {
+    pub(crate) fn capture(_: &PythonIsolationRequest, _: Duration, _: usize) -> Result<Self, PythonPreparationError> { Err(PythonPreparationError) }
+    pub(crate) fn digest(&self) -> ContentDigest { ContentDigest::of(b"unavailable") }
+    pub(crate) fn validate_original_program(&self, _: &Path) -> Result<(), PythonPreparationError> { Err(PythonPreparationError) }
+    pub(crate) fn prepare(&self, _: &Path, _: Duration, _: usize) -> Result<Option<PreparedPythonCandidate>, PythonPreparationError> { Err(PythonPreparationError) }
+}
+
+pub(crate) struct PreparedPythonCandidate;
+impl PreparedPythonCandidate {
+    pub(crate) fn command_for(&self, _: &Path, _: &[OsString], _: Duration, _: usize) -> Result<CommandSpec, PythonPreparationError> { Err(PythonPreparationError) }
 }
 '''
 
@@ -180,12 +227,122 @@ def remote_program() -> str:
     )
     fixture_writes = "\n    ".join(writes)
     harness = f"""
+use std::{{ffi::OsString, fs, path::{{Path, PathBuf}}, time::Duration}};
+use crate::reprocut_engine::{{PreparationMode, ReductionEngine, ReductionOutcome, ReductionRequest, SessionMode}};
+
 fn write_demo_file(root: &Path, relative: &str, contents: &str) {{
     let path = root.join(relative);
     if let Some(parent) = path.parent() {{
         fs::create_dir_all(parent).expect("create demo parent");
     }}
     fs::write(path, contents).expect("write embedded demo file");
+}}
+
+fn demo_evidence(outcome: &ReductionOutcome) -> serde_json::Value {{
+    let fingerprint = outcome.fingerprint();
+    let termination = match fingerprint.termination() {{
+        crate::reprocut_core::TerminationReason::ExitCode(code) => format!("exit {{code}}"),
+        crate::reprocut_core::TerminationReason::UnixSignal(signal) => format!("signal {{signal}}"),
+        crate::reprocut_core::TerminationReason::TimedOut => "timed out".to_owned(),
+        crate::reprocut_core::TerminationReason::RunnerFailure => "runner failure".to_owned(),
+    }};
+    let oracle_mode = match fingerprint.mode() {{
+        crate::reprocut_core::OracleMode::Automatic => "automatic",
+        crate::reprocut_core::OracleMode::Regex => "regex",
+        crate::reprocut_core::OracleMode::ExitZero => "exit_zero",
+    }};
+    let anchors = fingerprint.anchors().iter().map(|anchor| serde_json::json!({{
+        "channel": match anchor.channel() {{
+            crate::reprocut_core::DiagnosticChannel::Stdout => "stdout",
+            crate::reprocut_core::DiagnosticChannel::Stderr => "stderr",
+            crate::reprocut_core::DiagnosticChannel::Auto => "auto",
+            crate::reprocut_core::DiagnosticChannel::Combined => "combined",
+        }},
+        "text": anchor.text(),
+    }})).collect::<Vec<_>>();
+    let kept_files = outcome.snapshot().files().iter().map(|file| serde_json::json!({{
+        "path": file.path(),
+        "observation": "Present in the final repeatedly verified snapshot; no semantic-causality claim is inferred.",
+    }})).collect::<Vec<_>>();
+    let retained_lines = outcome.snapshot().files().iter().fold(0_u64, |total, file| {{
+        let bytes = file.contents();
+        let lines = bytes.iter().filter(|&&byte| byte == b'\\n').count() as u64
+            + u64::from(!bytes.is_empty() && bytes.last() != Some(&b'\\n'));
+        total.saturating_add(lines)
+    }});
+    let attempts = outcome.attempt_events().iter().map(|event| serde_json::json!({{
+        "event_id": event.id(),
+        "candidate_sha256": event.candidate().to_hex(),
+        "verdict": match event.verdict() {{
+            crate::reprocut_core::CandidateVerdict::Preserved => "preserved",
+            crate::reprocut_core::CandidateVerdict::Rejected => "rejected",
+            crate::reprocut_core::CandidateVerdict::Inconclusive => "inconclusive",
+        }},
+        "observed_runs": event.observed_runs(),
+        "inconclusive_runs": event.inconclusive_runs(),
+        "completed_at_unix": event.completed_at(),
+        "evidence": serde_json::from_str::<serde_json::Value>(event.evidence_json())
+            .unwrap_or_else(|_| serde_json::Value::String(event.evidence_json().to_owned())),
+    }})).collect::<Vec<_>>();
+    let accepted_sizes = std::iter::once(outcome.original_files())
+        .chain(outcome.reduction().accepted_sizes().iter().copied())
+        .collect::<Vec<_>>();
+    serde_json::json!({{
+        "schema_version": 3,
+        "source_root": "demo/source",
+        "source_snapshot_sha256": outcome.source_snapshot_digest().to_hex(),
+        "output": "demo/result",
+        "command": ["python", "bug.py"],
+        "ecosystem": "python",
+        "preparation": {{
+            "mode": "none",
+            "contract_sha256": outcome.preparation_digest().to_hex(),
+            "limitations": [],
+        }},
+        "measurements": {{
+            "original": {{"files": outcome.original_files(), "bytes": outcome.original_bytes(), "lines": outcome.original_lines(), "syntax_nodes": null}},
+            "retained": {{"files": outcome.snapshot().files().len(), "bytes": outcome.snapshot().total_bytes(), "lines": retained_lines, "syntax_nodes": null}},
+            "elapsed_ms": outcome.elapsed().as_millis() as u64,
+        }},
+        "search": {{
+            "attempts": outcome.reduction().attempts().saturating_add(outcome.structured_attempts()),
+            "file_attempts": outcome.reduction().attempts(),
+            "structured_attempts": outcome.structured_attempts(),
+            "inconclusive_attempts": outcome.inconclusive_attempts(),
+            "cache_hits": outcome.cache_hits(),
+            "baseline_runs": outcome.baseline_runs(),
+            "final_verifications": outcome.final_verifications(),
+            "jobs": 1,
+            "state": null,
+            "resumed": outcome.resumed(),
+            "accepted_file_sizes": accepted_sizes,
+            "evaluation_policy": {{"mode": "strict", "runs": 3, "required": 3}},
+        }},
+        "failure": {{
+            "same_failure": true,
+            "fingerprint_sha256": fingerprint.digest().to_hex(),
+            "exit_code": fingerprint.exit_code(),
+            "signal": fingerprint.signal(),
+            "termination": termination,
+            "oracle_stream": "auto",
+            "oracle_mode": oracle_mode,
+            "anchor": fingerprint.anchor(),
+            "anchors": anchors,
+            "normalization_schema": fingerprint.normalization_schema(),
+            "failure_patterns": fingerprint.failure_patterns(),
+            "reject_patterns": fingerprint.reject_patterns(),
+            "oracle_spec_sha256": fingerprint.oracle_spec_digest().to_hex(),
+        }},
+        "kept_files": kept_files,
+        "accepted_structured_edits": outcome.accepted_structured_edits(),
+        "attempts": attempts,
+        "limitations": [
+            "Elapsed time is one wall-clock observation, not a benchmark.",
+            "Retained paths are observations from the verified final snapshot, not claims of semantic necessity.",
+            "Syntax-node counts are omitted until a grammar-valid cross-language counter is available.",
+            "The official Playground host has no Python executable, so search used a content-equivalent shell oracle; the source and final project are independently executed three times by this builder's local Python runtime.",
+        ],
+    }})
 }}
 
 fn main() {{
@@ -201,7 +358,8 @@ fn main() {{
         Duration::from_secs(3),
         64 * 1024,
     )
-    .with_runtime(1, SessionMode::Create(sandbox.path().join("state.sqlite3")));
+    .with_runtime(1, SessionMode::Create(sandbox.path().join("state.sqlite3")))
+    .with_ecosystem(crate::reprocut_adapters::Ecosystem::Python, PreparationMode::None);
     let outcome = ReductionEngine::run(&request).expect("remote reduction succeeds");
     let kept = outcome
         .reduction()
@@ -211,55 +369,17 @@ fn main() {{
         .collect::<Vec<_>>();
     assert_eq!(kept, vec!["bug.py", "checkout.py", "fixtures/order.json"]);
 
-    let arguments = ReduceArgs {{
-        root: PathBuf::from("demo/source"),
-        output: PathBuf::from("demo/result"),
-        ecosystem: EcosystemArg::Python,
-        prepare: PrepareArg::None,
-        timeout_ms: 3_000,
-        max_output_bytes: 64 * 1_024,
-        oracle_stream: OracleStreamArg::Auto,
-        flaky: false,
-        flaky_runs: None,
-        flaky_required: None,
-        json: true,
-        jobs: 1,
-        state: None,
-        restart: false,
-        command: vec!["python".to_owned(), "bug.py".to_owned()],
-    }};
-    let mut evidence = build_evidence(&arguments, &outcome);
-    evidence.source_root = "demo/source".to_owned();
-    evidence.output = "demo/result".to_owned();
-    evidence.search.state = None;
-    evidence.limitations.push(
-        "The official Playground host has no Python executable, so search used a content-equivalent shell oracle; the source and final project are independently executed three times by this builder's local Python runtime."
-            .to_owned(),
-    );
-    let report = render_report(&ReportModel::from(&evidence));
-    let issue = render_issue(&evidence);
-    let metadata = serde_json::to_string(&evidence).expect("serialize evidence");
-    let mut attempts = Vec::new();
-    write_attempts_jsonl(&evidence.attempts, &mut attempts).expect("serialize attempts");
-    let attempts = String::from_utf8(attempts).expect("attempts are UTF-8");
+    let metadata = serde_json::to_string(&demo_evidence(&outcome)).expect("serialize evidence");
 
     println!("{META_BEGIN}");
     println!("{{}}", metadata);
     println!("{META_END}");
-    println!("{HTML_BEGIN}");
-    print!("{{report}}");
-    println!("{HTML_END}");
-    println!("{ISSUE_BEGIN}");
-    print!("{{issue}}");
-    println!("{ISSUE_END}");
-    println!("{ATTEMPTS_BEGIN}");
-    print!("{{attempts}}");
-    println!("{ATTEMPTS_END}");
 }}
 """
-    code = compose_cli(runner_override=DEMO_RUNNER).replace(
-        "fn main() -> ExitCode {", "fn cli_entry() -> ExitCode {", 1
-    )
+    code = compose_engine(
+        runner_override=DEMO_RUNNER,
+        python_isolation_override=DEMO_PYTHON_ISOLATION,
+    ).removesuffix("fn main() {}")
     return code + "\n" + harness
 
 
@@ -285,6 +405,30 @@ def execute_remote_rust(code: str) -> str:
     if not result.get("success"):
         raise RuntimeError(result.get("stderr", "remote Rust execution failed"))
     return str(result.get("stdout", ""))
+
+
+def render_remote_evidence(metadata: dict[str, object]) -> tuple[str, str]:
+    document = json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
+    harness = f'''
+fn main() {{
+    let evidence: reprocut_report::ReductionEvidence = serde_json::from_str({raw_string(document)})
+        .expect("schema-3 demo evidence");
+    evidence.validate().expect("valid schema-3 demo evidence");
+    let report = reprocut_report::render_report(&reprocut_report::ReportModel::from(&evidence));
+    let issue = reprocut_report::render_issue(&evidence);
+    println!("{HTML_BEGIN}");
+    print!("{{report}}");
+    println!("{HTML_END}");
+    println!("{ISSUE_BEGIN}");
+    print!("{{issue}}");
+    println!("{ISSUE_END}");
+}}
+'''
+    output = execute_remote_rust("\n".join([wrap("reprocut_report", report_source()), harness]))
+    return (
+        between(output, HTML_BEGIN, HTML_END),
+        between(output, ISSUE_BEGIN, ISSUE_END),
+    )
 
 
 def between(output: str, start: str, end: str) -> str:
@@ -341,9 +485,18 @@ def publish_demo(artifact: Path, *, refresh: bool) -> None:
 
 
 def fingerprint_matches(remote: dict[str, object], local: dict[str, object]) -> bool:
-    return all(
+    return remote.get("oracle_mode") == local.get("mode") and all(
         remote[key] == local[key]
-        for key in ("exit_code", "signal", "anchor", "anchors")
+        for key in (
+            "exit_code",
+            "signal",
+            "anchor",
+            "anchors",
+            "normalization_schema",
+            "failure_patterns",
+            "reject_patterns",
+            "oracle_spec_sha256",
+        )
     )
 
 
@@ -358,9 +511,11 @@ def main(*, refresh: bool = False) -> int:
     oracle = stable_python_failure(SOURCE)
     remote_output = execute_remote_rust(remote_program())
     metadata = json.loads(between(remote_output, META_BEGIN, META_END))
-    report = between(remote_output, HTML_BEGIN, HTML_END)
-    issue = between(remote_output, ISSUE_BEGIN, ISSUE_END)
-    attempts = between(remote_output, ATTEMPTS_BEGIN, ATTEMPTS_END)
+    report, issue = render_remote_evidence(metadata)
+    attempts = "\n".join(
+        json.dumps(attempt, ensure_ascii=False, separators=(",", ":"))
+        for attempt in metadata["attempts"]
+    )
 
     kept = [entry["path"] for entry in metadata["kept_files"]]
     if metadata["measurements"]["original"]["files"] != 18 or kept != EXPECTED_KEPT:

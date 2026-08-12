@@ -52,6 +52,9 @@ const viewports = [
         return { style: style.outlineStyle, width: style.outlineWidth };
       });
       await page.locator(".copy-command").click();
+      await page.waitForFunction(
+        () => (document.querySelector("#copy-status")?.textContent ?? "").trim().length > 0,
+      );
       const copyStatus = await page.locator("#copy-status").textContent();
       const downloadPromise = page.waitForEvent("download");
       await page.locator(".download-issue").click();

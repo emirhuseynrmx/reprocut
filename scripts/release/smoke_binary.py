@@ -76,7 +76,7 @@ def smoke(
             raise RuntimeError(f"release reduction smoke failed: {result.stderr}")
         evidence = json.loads((output / "reduction.json").read_text(encoding="utf-8"))
         if (
-            evidence["schema_version"] != 2
+            evidence["schema_version"] != 3
             or evidence["failure"]["same_failure"] is not True
         ):
             raise RuntimeError("release smoke produced invalid same-failure evidence")

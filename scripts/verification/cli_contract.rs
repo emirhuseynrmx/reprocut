@@ -89,7 +89,7 @@ mod cli_remote_contract {
         assert!(output.join("reproduce.sh").is_file());
         assert!(output.join("reproduce.ps1").is_file());
         let state = fs::read_to_string(output.join("reduction.json")).expect("state readable");
-        assert!(state.contains("\"schema_version\": 2"));
+        assert!(state.contains("\"schema_version\": 3"));
         assert!(state.contains("\"same_failure\": true"));
 
         fs::remove_dir_all(sandbox).expect("sandbox removed");

@@ -566,7 +566,7 @@ Populate all fields from `ReductionOutcome`/`FailureFingerprint`/frozen preparat
 
 Display “Automatic discriminators”, “Required/reject regex”, or “Exit-zero interestingness” according to mode. Show source snapshot and preparation contract hashes, normalization schema, phase limitations, before/after measurements, and final verification count. Do not claim fuzzy similarity or Python isolation when unavailable.
 
-- [ ] **Step 5: Regenerate and verify deterministic goldens**
+- [x] **Step 5: Regenerate and verify deterministic goldens**
 
 Run: `python scripts/playground_workspace_verify.py --scope report --append scripts/verification/report_golden_contract.rs`
 
@@ -609,29 +609,29 @@ git commit -m "feat(report): publish integrity evidence schema 3"
 - Produces release-audit gates named exactly `oracle-adversarial`, `python-isolation`, and `snapshot-integrity`.
 - Produces demo evidence schema 3 generated from the same core/fallback fixtures.
 
-- [ ] **Step 1: Add RED release-audit and demo assertions**
+- [x] **Step 1: Add RED release-audit and demo assertions**
 
 Require schema 3, normalization schema 2, valid source snapshot digest, mode-aware fingerprint, preparation digest or explicit limitation, final verification `3`, and all three new CI gate names. Reject stale schema-2 demo artifacts and any README/release claim based on them.
 
-- [ ] **Step 2: Run Python release RED suite**
+- [x] **Step 2: Run Python release RED suite**
 
 Run: `$env:PYTHONPATH='.test-deps;python'; & 'C:\Users\emirh\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' -m pytest python/tests/test_demo_builder.py python/tests/test_demo_assets.py python/tests/test_release_audit.py python/tests/test_benchmark_release.py -q --basetemp .tmp/pytest-release-red`
 
 Expected: FAIL because checked-in proof uses evidence schema 2 and the new gates are absent.
 
-- [ ] **Step 3: Add CI jobs and release evidence requirements**
+- [x] **Step 3: Add CI jobs and release evidence requirements**
 
 Add cross-platform adversarial oracle tests, isolated-Python tests using committed wheels with network/index disabled, and snapshot-integrity tests including Unix execute masks. Add their stable gate names to `REQUIRED_CI_GATES`; require the exact release commit in audit evidence.
 
-- [ ] **Step 4: Regenerate demo/report/issue/animation proof under schema 3**
+- [x] **Step 4: Regenerate demo/report/issue/animation proof under schema 3**
 
 Update `build_demo.py` to use OracleSpec semantics and schema-3 evidence; run the builder; rebuild report/issue/attempts and asset fingerprint metadata; run `capture_demo.py` validation. Preserve the honest Playground limitation if the remote host lacks Python, while local final verification still executes the fixture three times.
 
-- [ ] **Step 5: Update user documentation with exact modes and isolation contract**
+- [x] **Step 5: Update user documentation with exact modes and isolation contract**
 
 Document automatic, regex, and exit-zero examples; isolated Python wheelhouse workflow; fail-closed limitations; schema incompatibility requiring explicit restart; Unix execute preservation; crates.io/PyPI commands as user-run steps only; and the absence of a measured performance claim.
 
-- [ ] **Step 6: Run release Python suite GREEN**
+- [x] **Step 6: Run release Python suite GREEN**
 
 Run: `$env:PYTHONPATH='.test-deps;python'; & 'C:\Users\emirh\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' -m pytest python/tests -q --basetemp .tmp/pytest-release-green`
 
@@ -639,7 +639,7 @@ Run: `& 'C:\Users\emirh\.cache\codex-runtimes\codex-primary-runtime\dependencies
 
 Expected: all Python tests pass except the documented local native-wheel skip; every static release check passes.
 
-- [ ] **Step 7: Commit release proof and documentation**
+- [x] **Step 7: Commit release proof and documentation**
 
 ```powershell
 git add .github README.md docs scripts python/tests demo

@@ -5,9 +5,16 @@
 3. While search runs, explain only the three verdicts: preserved, rejected,
    inconclusive.
 4. Open `minimal/report.html`; point to 18→3, strict 3/3, and the fingerprint.
-5. Run `minimal/reproduce.sh` and show the same diagnostic.
+5. Point out the oracle mode, source snapshot hash, preparation hash, and the
+   failure fingerprint; then run `minimal/reproduce.sh` and show the diagnostic.
 6. Open `attempts.jsonl` for one preserved and one rejected candidate.
 7. End on the source tree digest/clean Git state: the original was not edited.
+
+If asked about alternative oracles, show `--oracle-mode regex` for an exact
+required/reject pattern contract and `--oracle-mode exit-zero` for an
+interesting successful transformation. For Python dependencies, show the
+explicit interpreter plus frozen wheelhouse; do not call ordinary offline
+preparation isolated Python.
 
 Do not speed up footage in a way that implies benchmark performance. If the
 recording is cut, label the elapsed section as edited.

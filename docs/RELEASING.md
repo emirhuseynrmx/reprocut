@@ -34,6 +34,12 @@ packaging, SPDX SBOMs, SHA-256 aggregation, and GitHub provenance. Publishing
 the GitHub Release additionally requires manual approval of the protected
 `release` environment. Never move or recreate the tag after any upload.
 
+The audited commit must also have successful `oracle-adversarial`,
+`python-isolation`, and `snapshot-integrity` gates. These prove all oracle modes
+against hostile diagnostics, install committed wheels with indexes disabled
+into fresh candidate venvs, and preserve immutable source bytes plus Unix
+execute masks. A missing gate is not waivable release evidence.
+
 ## 3. Publish crates.io manually
 
 Run **Publish registries (manual)** with:

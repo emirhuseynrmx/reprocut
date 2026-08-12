@@ -217,7 +217,7 @@ fn reduces_a_real_failure_and_publishes_a_complete_artifact() {
         .clone();
 
     let summary: Value = serde_json::from_slice(&result.stdout).expect("stdout is one JSON value");
-    assert_eq!(summary["schema_version"], 2);
+    assert_eq!(summary["schema_version"], 3);
     assert_eq!(summary["measurements"]["original"]["files"], 3);
     assert_eq!(summary["measurements"]["retained"]["files"], 1);
     assert_eq!(summary["search"]["final_verifications"], 3);
