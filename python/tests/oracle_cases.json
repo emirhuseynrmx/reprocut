@@ -56,6 +56,37 @@
     }
   },
   {
+    "name": "automatic_long_duration_parity",
+    "mode": "automatic",
+    "channel": "stderr",
+    "failure_patterns": [],
+    "reject_patterns": [],
+    "baselines": [
+      [1, "", "RuntimeError: failed after 10 seconds"],
+      [1, "", "RuntimeError: failed after 20 seconds"]
+    ],
+    "candidate": {
+      "exit_code": 1,
+      "diagnostic": "RuntimeError: failed after 30 seconds"
+    },
+    "expected": "preserved",
+    "fingerprint": {
+      "mode": "automatic",
+      "exit_code": 1,
+      "signal": null,
+      "termination": {"kind": "exit_code", "value": 1},
+      "anchor": "RuntimeError: failed after <duration>",
+      "anchors": [
+        {"channel": "stderr", "text": "RuntimeError: failed after <duration>"}
+      ],
+      "failure_patterns": [],
+      "reject_patterns": [],
+      "normalization_schema": 3,
+      "oracle_spec_sha256": "1c82610274183be423701b7037ec7605f66e3589b10ca57e49a663b53e0d9738",
+      "fingerprint_sha256": "5796f57214f687364738aae3803368a22ed4cb9701c1ade49fed2549257c46a6"
+    }
+  },
+  {
     "name": "regex_required_preserved",
     "mode": "regex",
     "channel": "combined",

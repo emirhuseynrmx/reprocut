@@ -32,7 +32,9 @@ def test_unstable_or_too_small_baseline_is_a_value_error() -> None:
     with pytest.raises(ValueError, match="at least two"):
         FailureOracle.from_baselines([(1, "TypeError: currency")])
     with pytest.raises(ValueError, match="unstable"):
-        FailureOracle.from_baselines([(1, "TypeError: currency"), (2, "TypeError: currency")])
+        FailureOracle.from_baselines(
+            [(1, "TypeError: currency"), (2, "TypeError: currency")]
+        )
 
 
 def test_fingerprint_is_an_immutable_plain_value() -> None:
@@ -64,7 +66,10 @@ def test_volatile_paths_and_ids_do_not_change_failure_identity() -> None:
     oracle = FailureOracle.from_baselines(
         [
             (1, "PID 10 TypeError: request at /tmp/alpha.py:10:2 port 5001 after 10ms"),
-            (1, "PID 20 TypeError: request at /var/tmp/beta.py:20:4 port 5002 after 20ms"),
+            (
+                1,
+                "PID 20 TypeError: request at /var/tmp/beta.py:20:4 port 5002 after 20ms",
+            ),
         ]
     )
     assert (
@@ -117,10 +122,80 @@ def test_combined_reserves_an_anchor_for_each_stream() -> None:
     )
 
     channels = {anchor["channel"] for anchor in oracle.fingerprint["anchors"]}
+    assert len(oracle.fingerprint["anchors"]) == 4
     assert {"stdout", "stderr"} <= channels
-    assert (
-        oracle.classify(1, "fatal: totally unrelated", stdout=stdout) == "rejected"
+    assert oracle.classify(1, "fatal: totally unrelated", stdout=stdout) == "rejected"
+
+
+def test_auto_reserves_each_error_bearing_stream_under_anchor_pressure() -> None:
+    stdout = "\n".join(
+        [
+            "FAILED tests/a.py::test_x",
+            "error[E0425]: missing value",
+            "ValueError: invoice processing failed with detailed context",
+            "expected twelve actual thirteen",
+        ]
     )
+    stderr = "fatal: disk exploded"
+    oracle = FailureOracle.from_baselines(
+        [(1, stdout, stderr), (1, stdout, stderr)], channel="auto"
+    )
+
+    channels = {anchor["channel"] for anchor in oracle.fingerprint["anchors"]}
+    assert len(oracle.fingerprint["anchors"]) == 4
+    assert {"stdout", "stderr"} <= channels
+    assert oracle.classify(1, "fatal: totally unrelated", stdout=stdout) == "rejected"
+
+
+@pytest.mark.parametrize(
+    ("baseline", "candidate"),
+    [
+        ("HTTPError: GET /api/v1:404", "HTTPError: GET /api/v1:500"),
+        (
+            "HTTPError: https://example.com/v1:404",
+            "HTTPError: https://example.com/v1:500",
+        ),
+    ],
+)
+def test_api_routes_and_urls_retain_semantic_status_values(
+    baseline: str, candidate: str
+) -> None:
+    oracle = FailureOracle.from_baselines([(1, baseline), (1, baseline)])
+
+    assert oracle.classify(1, candidate) == "rejected"
+
+
+@pytest.mark.parametrize(
+    ("baseline", "candidate"),
+    [
+        (
+            "RuntimeError: failed at src/module:12",
+            "RuntimeError: failed at src/module:99",
+        ),
+        (
+            "RuntimeError: failed at Makefile:12",
+            "RuntimeError: failed at Makefile:99",
+        ),
+    ],
+)
+def test_explicit_extensionless_source_locations_remain_volatile(
+    baseline: str, candidate: str
+) -> None:
+    oracle = FailureOracle.from_baselines([(1, baseline), (1, baseline)])
+
+    assert oracle.classify(1, candidate) == "preserved"
+
+
+def test_equal_cross_stream_anchors_use_explicit_channel_order() -> None:
+    diagnostic = "ValueError: shared failure"
+    oracle = FailureOracle.from_baselines(
+        [(1, diagnostic, diagnostic), (1, diagnostic, diagnostic)], channel="auto"
+    )
+
+    assert [anchor["channel"] for anchor in oracle.fingerprint["anchors"]] == [
+        "stdout",
+        "stderr",
+    ]
 
 
 def test_auto_requires_stable_stdout_and_stderr_when_both_exist() -> None:

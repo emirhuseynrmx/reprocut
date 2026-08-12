@@ -60,7 +60,7 @@ def test_every_publishable_path_dependency_has_the_release_version() -> None:
 
 def test_release_runbook_preserves_dependency_order() -> None:
     runbook = (ROOT / "docs" / "RELEASING.md").read_text(encoding="utf-8")
-    commands = re.findall(r"cargo publish -p ([a-z0-9-]+)", runbook)
+    commands = re.findall(r"cargo publish --locked -p ([a-z0-9-]+)", runbook)
 
     assert commands == PUBLISH_ORDER
     assert "reprocut-python` is intentionally `publish = false" in runbook

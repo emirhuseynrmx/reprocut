@@ -19,6 +19,11 @@ python scripts/release/audit.py \
 Recheck that the `reprocut` names remain available before the first upload.
 Registry availability is not ownership until publication succeeds.
 
+`Cargo.lock` is part of the audited source commit. Static audit rejects a
+missing lockfile, workflow-time regeneration, or a Cargo/Maturin graph command
+without `--locked`. Pinned Cargo 1.85 runs `cargo metadata --locked` before any
+release artifact is built.
+
 ## 2. Create one signed release tag
 
 The binary workflow is tag-driven, so the signed tag is created only after the
@@ -62,16 +67,16 @@ reprocut-adapters → reprocut-engine → reprocut
 The equivalent audited command order is:
 
 ```console
-cargo publish -p reprocut-core
-cargo publish -p reprocut-report
-cargo publish -p reprocut-oci
-cargo publish -p reprocut-workspace
-cargo publish -p reprocut-runner
-cargo publish -p reprocut-state
-cargo publish -p reprocut-syntax
-cargo publish -p reprocut-adapters
-cargo publish -p reprocut-engine
-cargo publish -p reprocut
+cargo publish --locked -p reprocut-core
+cargo publish --locked -p reprocut-report
+cargo publish --locked -p reprocut-oci
+cargo publish --locked -p reprocut-workspace
+cargo publish --locked -p reprocut-runner
+cargo publish --locked -p reprocut-state
+cargo publish --locked -p reprocut-syntax
+cargo publish --locked -p reprocut-adapters
+cargo publish --locked -p reprocut-engine
+cargo publish --locked -p reprocut
 ```
 
 `reprocut-python` is intentionally `publish = false`; it is a Maturin build crate, not a

@@ -45,7 +45,7 @@ python bug.py
 - Candidate attempts: 24
 - Cache reuses: 7
 - Inconclusive candidates: 0
-- Wall time: 300 ms
+- Wall time: 274 ms
 
 ## Included evidence
 

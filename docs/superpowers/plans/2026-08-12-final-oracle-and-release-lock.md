@@ -95,8 +95,9 @@ GitHub Actions YAML, official Rust Playground verification.
 
 - [ ] Add a release-audit regression that requires `dependency-lock` and run it
   RED while `Cargo.lock` is absent.
-- [ ] Generate `Cargo.lock` with official Cargo 1.85 in an isolated container
-  and validate it using `cargo metadata --locked`.
+- [ ] Generate `Cargo.lock` with official Cargo from a crates.io index filtered
+  to Rust 1.85-compatible packages; validate checksums/MSRV locally and require
+  pinned Cargo 1.85 `metadata --locked` in CI as the final compatibility gate.
 - [ ] Remove all workflow `cargo generate-lockfile` calls and runtime lockfile
   artifact transfer.
 - [ ] Put `--locked` on every Cargo/maturin graph-consuming workflow command.
@@ -143,4 +144,3 @@ GitHub Actions YAML, official Rust Playground verification.
 - [ ] Create the ZIP with `git archive`, read every entry, reject extra roots,
   traversal, symlinks, `.tmp`, `dist`, `target`, and `__pycache__`, then report
   size and SHA-256.
-

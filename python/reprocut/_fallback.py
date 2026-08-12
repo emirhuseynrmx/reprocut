@@ -42,9 +42,7 @@ _PROCESS_ID = re.compile(
     r"(pid|PID|process[ \t]+[Ii][Dd]|thread[ \t]+[Ii][Dd]|thread|Thread)"
     r"[ \t]*[:=#]?[ \t]*[0-9]+"
 )
-_LOOPBACK_PORT = re.compile(
-    r"(localhost|LOCALHOST|127\.0\.0\.1|\[::1\]):[0-9]{1,5}"
-)
+_LOOPBACK_PORT = re.compile(r"(localhost|LOCALHOST|127\.0\.0\.1|\[::1\]):[0-9]{1,5}")
 _NAMED_PORT = re.compile(r"(?:port|Port|PORT)[ \t]*[:=]?[ \t]*[0-9]{1,5}")
 _DURATION = re.compile(
     r"[0-9]+(?:\.[0-9]+)?[ \t]*(?:seconds|second|minutes|minute|secs|sec|"
@@ -53,12 +51,48 @@ _DURATION = re.compile(
 _PATH_LOCATION = re.compile(r"(?P<token>[^ \t\r\n:]+):[0-9]+(?::[0-9]+)?")
 _SOURCE_EXTENSIONS = frozenset(
     {
-        "bash", "c", "cc", "cjs", "cpp", "cs", "cts", "cxx", "fish", "go",
-        "h", "hh", "hpp", "hxx", "java", "js", "json", "jsx", "kt", "kts",
-        "mjs", "mts", "php", "py", "pyi", "rb", "rs", "scala", "sh", "swift",
-        "toml", "ts", "tsx", "yaml", "yml", "zsh",
+        "bash",
+        "c",
+        "cc",
+        "cjs",
+        "cpp",
+        "cs",
+        "cts",
+        "cxx",
+        "fish",
+        "go",
+        "h",
+        "hh",
+        "hpp",
+        "hxx",
+        "java",
+        "js",
+        "json",
+        "jsx",
+        "kt",
+        "kts",
+        "mjs",
+        "mts",
+        "php",
+        "py",
+        "pyi",
+        "rb",
+        "rs",
+        "scala",
+        "sh",
+        "swift",
+        "toml",
+        "ts",
+        "tsx",
+        "yaml",
+        "yml",
+        "zsh",
     }
 )
+_EXTENSIONLESS_SOURCE_FILES = frozenset(
+    {"BUILD", "Dockerfile", "Makefile", "WORKSPACE"}
+)
+_CHANNEL_ORDER = {"stdout": 0, "stderr": 1}
 _NAMED_LOCATION = re.compile(r"([Ll]ine|[Cc]olumn)[ \t]+[0-9]+")
 _HORIZONTAL_SPACE = re.compile(r"[\t ]+")
 _PYTEST = re.compile(r"^(?:failed|error)[ \t]+[^ \t\r\n]+(?:::[^ \t\r\n]+)+")
@@ -115,7 +149,9 @@ class EvaluationPolicy:
         if not 1 <= required <= runs:
             raise ValueError("flaky required must be between 1 and runs")
         if required * 3 < runs * 2:
-            raise ValueError("flaky required must be at least a two-thirds supermajority")
+            raise ValueError(
+                "flaky required must be at least a two-thirds supermajority"
+            )
         return cls("flaky", runs, required, _factory=True)
 
     @property
@@ -167,8 +203,12 @@ class FailureOracle:
         object.__setattr__(self, "_failure_patterns", failure_patterns)
         object.__setattr__(self, "_reject_patterns", reject_patterns)
         object.__setattr__(self, "_oracle_spec_digest", oracle_spec_digest)
-        object.__setattr__(self, "_required_regex", tuple(map(re.compile, failure_patterns)))
-        object.__setattr__(self, "_reject_regex", tuple(map(re.compile, reject_patterns)))
+        object.__setattr__(
+            self, "_required_regex", tuple(map(re.compile, failure_patterns))
+        )
+        object.__setattr__(
+            self, "_reject_regex", tuple(map(re.compile, reject_patterns))
+        )
 
     def __setattr__(self, name: str, value: object) -> None:
         del name, value
@@ -193,7 +233,9 @@ class FailureOracle:
         first_exit = observations[0][0]
         if mode == "exit_zero":
             if any(exit_code != 0 for exit_code, _, _ in observations):
-                raise ValueError("exit-zero mode requires every baseline to exit with code zero")
+                raise ValueError(
+                    "exit-zero mode requires every baseline to exit with code zero"
+                )
             anchors: tuple[tuple[str, str], ...] = ()
         else:
             if any(exit_code != first_exit for exit_code, _, _ in observations[1:]):
@@ -202,9 +244,13 @@ class FailureOracle:
             reject = tuple(map(re.compile, canonical_reject))
             if mode == "regex":
                 for observation in observations:
-                    diagnostic = _diagnostic_view(channel, observation[1], observation[2])
+                    diagnostic = _diagnostic_view(
+                        channel, observation[1], observation[2]
+                    )
                     if any(pattern.search(diagnostic) for pattern in reject):
-                        raise ValueError("a reject expression matches an original baseline")
+                        raise ValueError(
+                            "a reject expression matches an original baseline"
+                        )
                     if not all(pattern.search(diagnostic) for pattern in required):
                         raise ValueError(
                             "a required expression does not match every baseline"
@@ -212,17 +258,19 @@ class FailureOracle:
                 anchors = ()
             else:
                 for observation in observations:
-                    diagnostic = _diagnostic_view(channel, observation[1], observation[2])
+                    diagnostic = _diagnostic_view(
+                        channel, observation[1], observation[2]
+                    )
                     if any(pattern.search(diagnostic) for pattern in reject):
-                        raise ValueError("a reject expression matches an original baseline")
+                        raise ValueError(
+                            "a reject expression matches an original baseline"
+                        )
                 anchors = _stable_discriminators(channel, observations)
                 if not anchors:
                     raise ValueError(
                         "baseline diagnostic has no stable discriminative anchor"
                     )
-        spec_digest = _spec_digest(
-            mode, channel, canonical_failure, canonical_reject
-        )
+        spec_digest = _spec_digest(mode, channel, canonical_failure, canonical_reject)
         return cls(
             first_exit,
             mode,
@@ -345,15 +393,21 @@ def _normalize(diagnostic: str) -> str:
 
 def _normalize_source_location(match: re.Match[str]) -> str:
     token = match.group("token")
+    basename = re.split(r"[/\\]", token)[-1]
     extension = token.rpartition(".")[2].lower()
     if (
         token == "<temp>"
-        or "/" in token
-        or "\\" in token
+        or _has_explicit_source_context(match)
+        or basename in _EXTENSIONLESS_SOURCE_FILES
         or extension in _SOURCE_EXTENSIONS
     ):
         return f"{token}:<location>"
     return match.group(0)
+
+
+def _has_explicit_source_context(match: re.Match[str]) -> bool:
+    line_prefix = match.string[: match.start()].rsplit("\n", 1)[-1].rstrip(" \t")
+    return line_prefix.endswith("-->") or line_prefix.rsplit(maxsplit=1)[-1:] == ["at"]
 
 
 def _stable_discriminators(
@@ -378,7 +432,9 @@ def _stable_discriminators(
         return ()
     if channel == "auto":
         candidates = [candidate for candidate in candidates if candidate[0] < 4]
-    candidates.sort(key=lambda line: (line[0], -line[1], line[2], line[4]))
+    candidates.sort(
+        key=lambda line: (line[0], -line[1], line[2], _CHANNEL_ORDER[line[3]], line[4])
+    )
     selected: list[tuple[int, int, int, str, str]] = []
     if channel == "combined":
         selected.extend(
@@ -391,9 +447,15 @@ def _stable_discriminators(
             if candidate not in selected:
                 selected.append(candidate)
         return tuple((line[3], line[4]) for line in selected)
+    if channel == "auto":
+        for stream in streams:
+            candidate = next((item for item in candidates if item[3] == stream), None)
+            if candidate is not None:
+                selected.append(candidate)
     categories: set[int] = set()
+    categories.update(candidate[0] for candidate in selected)
     for candidate in candidates:
-        if candidate[0] not in categories:
+        if candidate[0] not in categories and candidate not in selected:
             categories.add(candidate[0])
             selected.append(candidate)
             if len(selected) == 4:
@@ -406,7 +468,9 @@ def _stable_discriminators(
     return tuple((line[3], line[4]) for line in selected)
 
 
-def _eligible_lines(stream: str, diagnostic: str) -> list[tuple[int, int, int, str, str]]:
+def _eligible_lines(
+    stream: str, diagnostic: str
+) -> list[tuple[int, int, int, str, str]]:
     result = []
     for position, line in enumerate(diagnostic.splitlines()):
         kind = _discriminator_kind(line)

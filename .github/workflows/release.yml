@@ -14,7 +14,7 @@ env:
 
 jobs:
   lockfile:
-    name: Resolve one dependency graph for every target
+    name: Validate the committed dependency graph
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -22,15 +22,10 @@ jobs:
         run: |
           rustup toolchain install 1.85.0 --profile minimal
           rustup default 1.85.0
-      - name: Resolve and validate the release graph once
+      - name: Require and validate the committed release graph
         run: |
-          cargo generate-lockfile
+          test -s Cargo.lock
           cargo metadata --locked --format-version 1 > /dev/null
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-cargo-lock
-          path: Cargo.lock
-          if-no-files-found: error
 
   build:
     name: Build and smoke ${{ matrix.target }}
@@ -67,10 +62,6 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v5
-        with:
-          name: release-cargo-lock
-          path: .
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"

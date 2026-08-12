@@ -37,15 +37,15 @@ jobs:
             exit 1
           fi
       - name: Lint every target and feature
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       - name: Run Rust contracts
-        run: cargo test --workspace --all-targets
+        run: cargo test --locked --workspace --all-targets
         env:
           TEST_PYTHON: python
       - name: Compile benchmarks
-        run: cargo bench -p reprocut-core --bench reducer --no-run
+        run: cargo bench --locked -p reprocut-core --bench reducer --no-run
       - name: Reject documentation warnings
-        run: cargo doc --workspace --no-deps
+        run: cargo doc --locked --workspace --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
       - name: Run source-checkout Python contracts
@@ -65,7 +65,7 @@ jobs:
           rustup toolchain install 1.85.0 --profile minimal
           rustup default 1.85.0
       - name: Explore ordered frontier interleavings
-        run: cargo test -p reprocut-core --features loom --test loom_winner
+        run: cargo test --locked -p reprocut-core --features loom --test loom_winner
         env:
           RUSTFLAGS: --cfg loom
 
@@ -80,7 +80,7 @@ jobs:
         run: cargo +nightly miri setup
       - name: Run pure core contracts under Miri
         run: >-
-          cargo +nightly miri test -p reprocut-core
+          cargo +nightly miri test --locked -p reprocut-core
           --lib
           --test model_contract
           --test oracle_contract
@@ -95,7 +95,7 @@ jobs:
         run: rustup toolchain install nightly --profile minimal
       - name: Test core, grammars, snapshots, and engine with ASan
         run: >-
-          cargo +nightly test
+          cargo +nightly test --locked
           -p reprocut-adapters
           -p reprocut-core
           -p reprocut-engine
@@ -130,7 +130,7 @@ jobs:
       - name: Cache the network-disabled build base
         run: docker pull debian:bookworm-slim
       - name: Build and structurally validate an OCI archive
-        run: cargo test -p reprocut-oci --test oci_builder -- --ignored --nocapture
+        run: cargo test --locked -p reprocut-oci --test oci_builder -- --ignored --nocapture
 
   oracle-adversarial:
     name: Adversarial failure-oracle contracts
@@ -143,7 +143,7 @@ jobs:
           rustup default 1.85.0
       - name: Exercise automatic, regex, exit-zero, truncation, and collision cases
         run: >-
-          cargo test -p reprocut-core
+          cargo test --locked -p reprocut-core
           --test oracle_contract
           --test oracle_properties
           --test oracle_adversarial
@@ -161,7 +161,7 @@ jobs:
           rustup toolchain install 1.85.0 --profile minimal
           rustup default 1.85.0
       - name: Disable package indexes and run committed-wheel isolation contracts
-        run: cargo test -p reprocut-engine --test python_isolation_contract
+        run: cargo test --locked -p reprocut-engine --test python_isolation_contract
         env:
           TEST_PYTHON: python
           PIP_NO_INDEX: "1"
@@ -177,7 +177,7 @@ jobs:
           rustup toolchain install 1.85.0 --profile minimal
           rustup default 1.85.0
       - name: Prove mutation detection and executable-bit preservation
-        run: cargo test -p reprocut-workspace --test snapshot_integrity
+        run: cargo test --locked -p reprocut-workspace --test snapshot_integrity
 
   python-wheel:
     name: Native wheel / Python ${{ matrix.python }}
@@ -198,7 +198,7 @@ jobs:
       - name: Build and install native wheel
         run: |
           python -m pip install maturin==1.14.1 Pillow==12.2.0 pytest==8.4.2
-          maturin build --release
+          maturin build --locked --release
           python -m pip install --force-reinstall target/wheels/reprocut-*.whl
       - name: Require native backend in Python contracts
         run: python -m pytest python/tests -q
@@ -223,7 +223,7 @@ jobs:
           rustup toolchain install 1.85.0 --profile minimal
           rustup default 1.85.0
       - name: Exercise the real CLI fixture
-        run: cargo test -p reprocut --test cli_contract
+        run: cargo test --locked -p reprocut --test cli_contract
         env:
           TEST_PYTHON: python
 
@@ -241,7 +241,7 @@ jobs:
           rustup toolchain install 1.85.0 --profile minimal
           rustup default 1.85.0
       - name: Build the measured release binary
-        run: cargo build --release -p reprocut
+        run: cargo build --locked --release -p reprocut
       - name: Install the pinned process-tree sampler
         run: python -m pip install psutil==7.2.2
       - name: Measure five fresh reductions
@@ -281,14 +281,14 @@ jobs:
             reprocut-runner reprocut-state reprocut-syntax reprocut-adapters \
             reprocut-engine reprocut
           do
-            cargo package -p "$package" --no-verify
+            cargo package --locked -p "$package" --no-verify
           done
           mkdir -p dist/crates
           cp target/package/*.crate dist/crates/
       - name: Build ABI3 wheel and source distribution
         run: |
-          maturin build --release --out dist/wheels
-          maturin sdist --out dist/sdist
+          maturin build --locked --release --out dist/wheels
+          maturin sdist --locked --out dist/sdist
       - name: Validate Python package metadata and contents
         run: python -m twine check dist/wheels/* dist/sdist/*
       - name: Upload registry-ready packages

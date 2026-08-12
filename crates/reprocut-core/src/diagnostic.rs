@@ -36,7 +36,7 @@ pub(crate) fn stable_discriminators(
     let stdout = stream_discriminators(channel, DiagnosticChannel::Stdout, baselines);
     let stderr = stream_discriminators(channel, DiagnosticChannel::Stderr, baselines);
     match channel {
-        DiagnosticChannel::Auto => select_anchors(stdout.into_iter().chain(stderr), false),
+        DiagnosticChannel::Auto => select_auto_anchors(stdout, stderr),
         DiagnosticChannel::Stdout => select_anchors(stdout, true),
         DiagnosticChannel::Stderr => select_anchors(stderr, true),
         DiagnosticChannel::Combined => {
@@ -101,16 +101,27 @@ fn select_anchors(
 ) -> Vec<DiagnosticAnchor> {
     let lines = rank_lines(lines, allow_generic);
     let mut selected = Vec::with_capacity(MAX_ANCHORS);
-    let mut categories = BTreeSet::new();
-    for line in &lines {
-        if categories.insert(line.kind) {
-            selected.push(line.clone());
-            if selected.len() == MAX_ANCHORS {
-                break;
-            }
-        }
-    }
+    fill_categories(&mut selected, &lines);
     fill_ranked(&mut selected, lines);
+    into_anchors(selected)
+}
+
+fn select_auto_anchors(
+    stdout: Vec<EligibleLine>,
+    stderr: Vec<EligibleLine>,
+) -> Vec<DiagnosticAnchor> {
+    let stdout = rank_lines(stdout, false);
+    let stderr = rank_lines(stderr, false);
+    let mut selected = Vec::with_capacity(MAX_ANCHORS);
+    if let Some(line) = stdout.first() {
+        selected.push(line.clone());
+    }
+    if let Some(line) = stderr.first() {
+        selected.push(line.clone());
+    }
+    let globally_ranked = rank_lines(stdout.into_iter().chain(stderr), false);
+    fill_categories(&mut selected, &globally_ranked);
+    fill_ranked(&mut selected, globally_ranked);
     into_anchors(selected)
 }
 
@@ -137,17 +148,59 @@ fn rank_lines(
         .filter(|line| allow_generic || line.kind != DiscriminatorKind::Message)
         .collect::<Vec<_>>();
     lines.sort_unstable_by(|left, right| {
-        (left.kind, Reverse(left.score), left.position, &left.text).cmp(&(
-            right.kind,
-            Reverse(right.score),
-            right.position,
-            &right.text,
-        ))
+        (
+            left.kind,
+            Reverse(left.score),
+            left.position,
+            channel_order(left.channel),
+            &left.text,
+        )
+            .cmp(&(
+                right.kind,
+                Reverse(right.score),
+                right.position,
+                channel_order(right.channel),
+                &right.text,
+            ))
     });
     lines
 }
 
+fn channel_order(channel: DiagnosticChannel) -> u8 {
+    match channel {
+        DiagnosticChannel::Stdout => 0,
+        DiagnosticChannel::Stderr => 1,
+        DiagnosticChannel::Auto => 2,
+        DiagnosticChannel::Combined => 3,
+    }
+}
+
+fn fill_categories(selected: &mut Vec<EligibleLine>, lines: &[EligibleLine]) {
+    if selected.len() >= MAX_ANCHORS {
+        return;
+    }
+    let mut categories = selected
+        .iter()
+        .map(|line| line.kind)
+        .collect::<BTreeSet<_>>();
+    for line in lines {
+        if categories.insert(line.kind)
+            && !selected
+                .iter()
+                .any(|item| item.channel == line.channel && item.text == line.text)
+        {
+            selected.push(line.clone());
+            if selected.len() >= MAX_ANCHORS {
+                break;
+            }
+        }
+    }
+}
+
 fn fill_ranked(selected: &mut Vec<EligibleLine>, lines: Vec<EligibleLine>) {
+    if selected.len() >= MAX_ANCHORS {
+        return;
+    }
     for line in lines {
         if selected
             .iter()
@@ -156,7 +209,7 @@ fn fill_ranked(selected: &mut Vec<EligibleLine>, lines: Vec<EligibleLine>) {
             continue;
         }
         selected.push(line);
-        if selected.len() == MAX_ANCHORS {
+        if selected.len() >= MAX_ANCHORS {
             break;
         }
     }
@@ -335,7 +388,7 @@ pub fn normalize_diagnostic(input: &str) -> String {
         Regex::new(r"(?:port|Port|PORT)[ \t]*[:=]?[ \t]*[0-9]{1,5}").expect("port regex is valid")
     });
     let duration = DURATION.get_or_init(|| {
-        Regex::new(r"[0-9]+(?:\.[0-9]+)?[ \t]*(?:ns|us|ms|s|sec|secs|second|seconds|m|min|mins|minute|minutes)")
+        Regex::new(r"[0-9]+(?:\.[0-9]+)?[ \t]*(?:seconds|second|minutes|minute|secs|sec|mins|min|ms|ns|us|s|m)")
             .expect("duration regex is valid")
     });
     let path_location = PATH_LOCATION.get_or_init(|| {
@@ -361,7 +414,8 @@ pub fn normalize_diagnostic(input: &str) -> String {
     text = path_location
         .replace_all(&text, |captures: &regex::Captures<'_>| {
             let token = &captures["token"];
-            if is_source_location_token(token) {
+            let start = captures.get(0).map_or(0, |matched| matched.start());
+            if is_source_location_token(token, has_explicit_source_context(&text[..start])) {
                 format!("{token}:<location>")
             } else {
                 captures[0].to_owned()
@@ -378,15 +432,23 @@ pub fn normalize_diagnostic(input: &str) -> String {
         .join("\n")
 }
 
-fn is_source_location_token(token: &str) -> bool {
+fn has_explicit_source_context(prefix: &str) -> bool {
+    let line = prefix.rsplit('\n').next().unwrap_or(prefix);
+    let trimmed = line.trim_end_matches([' ', '\t']);
+    trimmed.ends_with("-->") || trimmed.split_whitespace().next_back() == Some("at")
+}
+
+fn is_source_location_token(token: &str, explicit_context: bool) -> bool {
     const SOURCE_EXTENSIONS: &[&str] = &[
         "bash", "c", "cc", "cjs", "cpp", "cs", "cts", "cxx", "fish", "go", "h", "hh", "hpp", "hxx",
         "java", "js", "json", "jsx", "kt", "kts", "mjs", "mts", "php", "py", "pyi", "rb", "rs",
         "scala", "sh", "swift", "toml", "ts", "tsx", "yaml", "yml", "zsh",
     ];
+    const EXTENSIONLESS_SOURCE_FILES: &[&str] = &["BUILD", "Dockerfile", "Makefile", "WORKSPACE"];
+    let basename = token.rsplit(['/', '\\']).next().unwrap_or(token);
     token == "<temp>"
-        || token.contains('/')
-        || token.contains('\\')
+        || explicit_context
+        || EXTENSIONLESS_SOURCE_FILES.contains(&basename)
         || token.rsplit_once('.').is_some_and(|(_, extension)| {
             SOURCE_EXTENSIONS
                 .iter()
@@ -396,4 +458,32 @@ fn is_source_location_token(token: &str) -> bool {
 
 pub(crate) fn normalize_bytes(bytes: &[u8]) -> String {
     normalize_diagnostic(&String::from_utf8_lossy(bytes))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::DiagnosticChannel;
+    use super::{rank_lines, DiscriminatorKind, EligibleLine};
+
+    #[test]
+    fn rank_lines_uses_stdout_before_stderr_for_an_exact_tie() {
+        let line = |channel| EligibleLine {
+            channel,
+            text: "ValueError: shared failure".to_owned(),
+            kind: DiscriminatorKind::RootFailure,
+            score: 32,
+            position: 0,
+        };
+
+        let ranked = rank_lines(
+            [
+                line(DiagnosticChannel::Stderr),
+                line(DiagnosticChannel::Stdout),
+            ],
+            true,
+        );
+
+        assert_eq!(ranked[0].channel, DiagnosticChannel::Stdout);
+        assert_eq!(ranked[1].channel, DiagnosticChannel::Stderr);
+    }
 }

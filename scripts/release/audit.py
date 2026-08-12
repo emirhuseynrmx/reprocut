@@ -48,6 +48,11 @@ REQUIRED_CI_GATES = {
     "snapshot-integrity",
     *(f"archive-{target}" for target in REQUIRED_TARGETS),
 }
+CARGO_GRAPH_COMMAND = re.compile(
+    r"\bcargo(?: \+[^ \t]+)? (?:miri )?"
+    r"(?:bench|build|clippy|doc|install|metadata|package|publish|run|test)\b"
+)
+MATURIN_GRAPH_COMMAND = re.compile(r"\bmaturin (?:build|sdist)\b")
 
 
 @dataclass(frozen=True)
@@ -72,7 +77,8 @@ def static_checks(root: Path) -> list[Check]:
         evidence.get("schema_version") == 3
         and evidence["failure"]["same_failure"] is True
         and evidence["failure"].get("normalization_schema") == 3
-        and evidence["failure"].get("oracle_mode") in {"automatic", "regex", "exit_zero"}
+        and evidence["failure"].get("oracle_mode")
+        in {"automatic", "regex", "exit_zero"}
         and evidence["search"]["final_verifications"] == 3
         and evidence["measurements"]["original"]["files"] == 18
         and evidence["measurements"]["retained"]["files"] == 3
@@ -85,7 +91,11 @@ def static_checks(root: Path) -> list[Check]:
         )
     )
     checks.append(
-        check("demo-evidence", demo_ok, "schema 3, bound digests, 18->3, same failure, final 3/3")
+        check(
+            "demo-evidence",
+            demo_ok,
+            "schema 3, bound digests, 18->3, same failure, final 3/3",
+        )
     )
     attempts = (
         (root / "demo/result/attempts.jsonl").read_text(encoding="utf-8").splitlines()
@@ -140,10 +150,12 @@ def static_checks(root: Path) -> list[Check]:
     checks.append(
         check(
             "oracle-ci-coverage",
-            oracle_job is not None and all(target in oracle_job for target in oracle_targets),
+            oracle_job is not None
+            and all(target in oracle_job for target in oracle_targets),
             "oracle contract, property, and adversarial Cargo targets are explicit",
         )
     )
+    checks.append(dependency_lock_check(root))
 
     release_workflow = (root / ".github/workflows/release.yml").read_text(
         encoding="utf-8"
@@ -186,6 +198,39 @@ def static_checks(root: Path) -> list[Check]:
         )
     )
     return checks
+
+
+def dependency_lock_check(root: Path) -> Check:
+    workflows = sorted((root / ".github/workflows").glob("*.yml"))
+    violations: list[str] = []
+    lock = root / "Cargo.lock"
+    if not lock.is_file() or lock.stat().st_size == 0:
+        violations.append("Cargo.lock missing")
+    for workflow in workflows:
+        content = workflow.read_text(encoding="utf-8")
+        if "cargo generate-lockfile" in content:
+            violations.append(f"{workflow.name}: regenerates Cargo.lock")
+        for number, line in enumerate(content.splitlines(), start=1):
+            if (
+                CARGO_GRAPH_COMMAND.search(line) or MATURIN_GRAPH_COMMAND.search(line)
+            ) and "--locked" not in line:
+                violations.append(f"{workflow.name}:{number}: unlocked graph command")
+        action = re.compile(
+            r"(?ms)^[ \t]*uses: PyO3/maturin-action@[^\r\n]+\r?\n"
+            r"(?P<body>.*?)(?=^[ \t]*-[ \t]+(?:name:|uses:)|\Z)"
+        )
+        for match in action.finditer(content):
+            if not re.search(r"(?m)^[ \t]*args:[^\r\n]*--locked", match.group("body")):
+                violations.append(f"{workflow.name}: maturin-action is not locked")
+    return check(
+        "dependency-lock",
+        not violations,
+        (
+            "committed lock and locked workflow graph"
+            if not violations
+            else "; ".join(violations)
+        ),
+    )
 
 
 def workflow_job(workflow: str, name: str) -> Optional[str]:

@@ -1,5 +1,6 @@
 use reprocut_core::{
-    CandidateVerdict, DiagnosticChannel, ExecutionObservation, FailureOracle, OracleError,
+    normalize_diagnostic, CandidateVerdict, DiagnosticChannel, ExecutionObservation, FailureOracle,
+    OracleError,
 };
 
 fn failed(stderr: &str) -> ExecutionObservation {
@@ -92,11 +93,87 @@ fn combined_reserves_an_anchor_for_each_stream() {
         .iter()
         .map(|anchor| anchor.channel())
         .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(oracle.fingerprint().anchors().len(), 4);
     assert!(channels.contains(&DiagnosticChannel::Stdout));
     assert!(channels.contains(&DiagnosticChannel::Stderr));
     assert_eq!(
         oracle.classify(&observed(stdout, "fatal: totally unrelated")),
         CandidateVerdict::Rejected
+    );
+}
+
+#[test]
+fn auto_reserves_one_anchor_for_every_error_bearing_stream_even_when_stdout_fills_four_categories()
+{
+    let stdout = "FAILED tests/a.py::test_x\nerror[E0425]: missing value\nValueError: invoice processing failed with detailed context\nexpected twelve actual thirteen";
+    let stderr = "fatal: disk exploded";
+    let baselines = [observed(stdout, stderr), observed(stdout, stderr)];
+    let oracle = FailureOracle::from_baselines_with_channel(DiagnosticChannel::Auto, &baselines)
+        .expect("both error-bearing streams are stable");
+
+    let channels = oracle
+        .fingerprint()
+        .anchors()
+        .iter()
+        .map(|anchor| anchor.channel())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(oracle.fingerprint().anchors().len(), 4);
+    assert!(channels.contains(&DiagnosticChannel::Stdout));
+    assert!(channels.contains(&DiagnosticChannel::Stderr));
+    assert_eq!(
+        oracle.classify(&observed(stdout, "fatal: totally unrelated")),
+        CandidateVerdict::Rejected
+    );
+}
+
+#[test]
+fn api_routes_and_urls_retain_semantic_status_values() {
+    for (baseline, candidate) in [
+        ("HTTPError: GET /api/v1:404", "HTTPError: GET /api/v1:500"),
+        (
+            "HTTPError: https://example.com/v1:404",
+            "HTTPError: https://example.com/v1:500",
+        ),
+    ] {
+        let oracle = FailureOracle::from_baselines(&[failed(baseline), failed(baseline)])
+            .expect("HTTP status is a discriminative failure value");
+
+        assert_eq!(
+            oracle.classify(&failed(candidate)),
+            CandidateVerdict::Rejected,
+            "{baseline} must differ from {candidate}"
+        );
+    }
+}
+
+#[test]
+fn explicit_extensionless_source_locations_remain_volatile() {
+    for (baseline, candidate) in [
+        (
+            "RuntimeError: failed at src/module:12",
+            "RuntimeError: failed at src/module:99",
+        ),
+        (
+            "RuntimeError: failed at Makefile:12",
+            "RuntimeError: failed at Makefile:99",
+        ),
+    ] {
+        let oracle = FailureOracle::from_baselines(&[failed(baseline), failed(baseline)])
+            .expect("source location is stable after normalization");
+
+        assert_eq!(
+            oracle.classify(&failed(candidate)),
+            CandidateVerdict::Preserved,
+            "{baseline} and {candidate} differ only by source line"
+        );
+    }
+}
+
+#[test]
+fn long_duration_units_are_consumed_completely() {
+    assert_eq!(
+        normalize_diagnostic("RuntimeError: failed after 10 seconds"),
+        "RuntimeError: failed after <duration>"
     );
 }
 

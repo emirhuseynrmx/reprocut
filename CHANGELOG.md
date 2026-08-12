@@ -2,7 +2,7 @@
 
 All notable changes to ReproCut are documented here.
 
-## [Unreleased]
+## [0.1.0] - 2026-08-12
 
 ### Added
 
@@ -13,8 +13,8 @@ All notable changes to ReproCut are documented here.
 - Cargo, Python, and npm discovery plus conservative manifest preparation.
 - Tree-sitter deletion and hoisting for Rust, Python, JavaScript, TypeScript, C,
   C++, Go, and Java.
-- One schema-2 evidence model for JSON, JSONL, standalone HTML, GitHub issue
-  Markdown, reproducer scripts, protocol events, and the typed Python client.
+- Evidence schema 3 for JSON, JSONL, standalone HTML, GitHub issue Markdown,
+  reproducer scripts, protocol events, and the typed Python client.
 - Validated OCI archive export, redacted gallery preparation, and a protocol-only
   VS Code/Cursor extension.
 - A pinned, opt-in 24-case GCC/Clang upstream reduction corpus.
@@ -23,7 +23,10 @@ All notable changes to ReproCut are documented here.
 - crates.io/PyPI package metadata, generated shell completions, six-target
   deterministic archive tooling, SPDX/SHA-256 aggregation, provenance workflow,
   and real failure smoke tests.
-- A schema-2 18-to-3 measured demo and evidence-bound 24-frame animation.
+- A normalization-schema-3, 18-to-3 measured demo and evidence-bound 24-frame
+  animation.
+- A committed Cargo dependency graph consumed with `--locked` by CI, release,
+  crates.io, and PyPI build paths.
 
 ### Changed
 
@@ -32,6 +35,8 @@ All notable changes to ReproCut are documented here.
 - Python reduction now invokes the versioned Rust JSONL protocol instead of
   maintaining a second reducer.
 - Failure detection defaults to stream-aware `auto` selection.
+- Evidence schema 3, normalization schema 3, and session contract schema 2 are
+  independent versioned contracts.
 
 ### Release status
 
