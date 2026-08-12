@@ -28,7 +28,7 @@ No performance claim is made. This record covers correctness, integrity, packagi
 | Browser/report contract | Pass | Edge/Playwright at 1440x1000 and 390x844: one local request, no horizontal overflow, reveal state `1`, visible 3 px focus outline, working copy status, and `issue.md` download filename. |
 | Python bytecode compilation | Pass | `python -m compileall -q python scripts`. |
 | Repository whitespace audit | Pass | `git diff --check` produced no findings before this record was committed. |
-| Modified Rust formatting | Pass | Official rustfmt service reported both modified Rust contract files compatible. |
+| Rust formatting | Pass | Official rustfmt service reported all 90 Rust source and contract files compatible in four deterministic shards: 23 + 23 + 22 + 22. |
 
 ## Demo evidence
 
@@ -47,7 +47,7 @@ The checked-in JSON, JSONL ledger, HTML report, issue body, banner fingerprint, 
 ## Environment limitations — not passes
 
 - Native local Rust commands and native Ruff are blocked by Windows Application Control with OS error 4551. Cargo, Clippy, Miri, Loom, native PyO3-wheel import, and native Ruff results are therefore delegated to the committed CI jobs; this record does not claim local passes for them.
-- The all-90-file rustfmt API sweep exceeded both 120-second and 300-second host limits. The two Rust files changed in the release-proof slice passed the same official rustfmt endpoint individually.
+- A single all-90-file rustfmt API process exceeded both 120-second and 300-second host limits. Splitting the same sorted file set by index modulo four completed successfully and covered all 90 files; this is recorded as service latency, not a skipped formatting gate.
 - The larger full behavioral CLI contract was compiled by the Playground but the remote linker was killed with `SIGKILL` under its memory limit. The same full source composition passed the lighter seven-test CLI compile/API contract. Crate-bounded behavioral contracts above all passed.
 - Flattened Playground crates emit unused-item and unknown-`cfg(loom)` warnings because workspace boundaries and the repository lint table are not reproduced. No Clippy pass is inferred from Playground output.
 - The first final pytest attempt was unable to enumerate pytest's global Windows temp directory. Re-running with a fresh workspace-local `--basetemp` produced the recorded `56 passed; 1 skipped`; no failed test body was hidden.
