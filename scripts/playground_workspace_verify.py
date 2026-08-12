@@ -177,6 +177,32 @@ def compose_scheduler() -> str:
     return "\n".join([core, wrap("reprocut_engine", scheduler), "fn main() {}"])
 
 
+def compose_runner() -> str:
+    core = compose_core().replace("fn main() {}\n", "")
+    command_group = r'''
+use std::{io, process::{Child, Command, ExitStatus}};
+pub trait CommandGroup { fn group_spawn(&mut self) -> io::Result<GroupChild>; }
+impl CommandGroup for Command {
+    fn group_spawn(&mut self) -> io::Result<GroupChild> { self.spawn().map(GroupChild) }
+}
+pub struct GroupChild(Child);
+impl GroupChild {
+    pub fn inner(&mut self) -> &mut Child { &mut self.0 }
+    pub fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> { self.0.try_wait() }
+    pub fn kill(&mut self) -> io::Result<()> { self.0.kill() }
+    pub fn wait(&mut self) -> io::Result<ExitStatus> { self.0.wait() }
+}
+'''
+    runner = (
+        read("crates/reprocut-runner/src/lib.rs")
+        .replace("use reprocut_core::", "use crate::reprocut_core::")
+        .replace("use command_group::", "use crate::command_group::")
+    )
+    return "\n".join(
+        [core, wrap("command_group", command_group), wrap("reprocut_runner", runner), "fn main() {}"]
+    )
+
+
 def compose_engine(*, runner_override: str | None = None) -> str:
     core = compose_core().replace("fn main() {}\n", "")
     workspace = workspace_source().replace(
@@ -359,6 +385,7 @@ def main() -> int:
             "workspace",
             "state",
             "scheduler",
+            "runner",
             "engine",
             "adapters",
             "pipeline",
@@ -375,6 +402,7 @@ def main() -> int:
         "workspace": compose_workspace,
         "state": compose_state,
         "scheduler": compose_scheduler,
+        "runner": compose_runner,
         "engine": compose_engine,
         "adapters": compose_adapters,
         "pipeline": compose_pipeline,

@@ -318,21 +318,21 @@ git commit -m "fix(workspace): freeze source bytes and executable metadata"
 - Produces: `CommandSpec::with_environment(self, environment: ChildEnvironment) -> Self`.
 - Produces: immutable accessors used in engine contract hashing.
 
-- [ ] **Step 1: Add RED tests for set/remove/PATH behavior**
+- [x] **Step 1: Add RED tests for set/remove/PATH behavior**
 
 Run a child helper that prints selected variables. Assert removed `PYTHONPATH`/`PIP_INDEX_URL` are absent, explicit `VIRTUAL_ENV` and `PIP_NO_INDEX=1` are present, and the requested venv directory is the first PATH entry without losing the remaining platform PATH.
 
-- [ ] **Step 2: Run runner RED verification**
+- [x] **Step 2: Run runner RED verification**
 
 Run: `python scripts/playground_workspace_verify.py --scope engine --append scripts/verification/runner_environment_contract.rs`
 
 Expected: FAIL because `CommandSpec` cannot describe environment removal.
 
-- [ ] **Step 3: Implement immutable environment application**
+- [x] **Step 3: Implement immutable environment application**
 
 Apply `env_clear` only when requested; otherwise call `env_remove` for every removal before `envs` for every explicit setting. Construct PATH with `std::env::join_paths`, return a typed `RunnerError::InvalidEnvironment` for invalid entries, and never invoke a shell.
 
-- [ ] **Step 4: Run runner contracts GREEN**
+- [x] **Step 4: Run runner contracts GREEN**
 
 Run: `python scripts/playground_workspace_verify.py --scope engine --append scripts/verification/runner_environment_contract.rs`
 
@@ -340,7 +340,7 @@ Run: `python scripts/playground_workspace_verify.py --scope engine --append scri
 
 Expected: PASS without regressing descendant teardown.
 
-- [ ] **Step 5: Commit runner environment policy**
+- [x] **Step 5: Commit runner environment policy**
 
 ```powershell
 git add crates/reprocut-runner scripts/verification/runner_environment_contract.rs

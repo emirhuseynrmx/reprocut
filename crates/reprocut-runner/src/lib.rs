@@ -1,7 +1,8 @@
 //! Bounded child-process execution for ReproCut.
 
 use std::{
-    ffi::OsString,
+    collections::{BTreeMap, BTreeSet},
+    ffi::{OsStr, OsString},
     io::{self, Read},
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -21,6 +22,7 @@ pub struct CommandSpec {
     working_directory: PathBuf,
     timeout: Duration,
     max_output_bytes: usize,
+    environment: ChildEnvironment,
 }
 
 impl CommandSpec {
@@ -38,7 +40,14 @@ impl CommandSpec {
             working_directory,
             timeout,
             max_output_bytes,
+            environment: ChildEnvironment::inherit(),
         }
+    }
+
+    /// Replaces the default inherited child-environment policy.
+    pub fn with_environment(mut self, environment: ChildEnvironment) -> Self {
+        self.environment = environment;
+        self
     }
 
     /// Returns the executable path.
@@ -65,6 +74,90 @@ impl CommandSpec {
     pub const fn max_output_bytes(&self) -> usize {
         self.max_output_bytes
     }
+
+    /// Returns the immutable environment mutation contract.
+    pub const fn environment(&self) -> &ChildEnvironment {
+        &self.environment
+    }
+}
+
+/// Deterministic environment mutations applied directly to a child command.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ChildEnvironment {
+    clear: bool,
+    set: BTreeMap<OsString, OsString>,
+    remove: BTreeSet<OsString>,
+    path_prepend: Vec<PathBuf>,
+}
+
+impl ChildEnvironment {
+    /// Starts from the parent process environment.
+    pub const fn inherit() -> Self {
+        Self {
+            clear: false,
+            set: BTreeMap::new(),
+            remove: BTreeSet::new(),
+            path_prepend: Vec::new(),
+        }
+    }
+
+    /// Starts from an empty child environment.
+    pub const fn cleared() -> Self {
+        Self {
+            clear: true,
+            set: BTreeMap::new(),
+            remove: BTreeSet::new(),
+            path_prepend: Vec::new(),
+        }
+    }
+
+    /// Sets one exact variable after inherited removals are applied.
+    pub fn set(mut self, name: impl Into<OsString>, value: impl Into<OsString>) -> Self {
+        let name = name.into();
+        self.remove.remove(&name);
+        self.set.insert(name, value.into());
+        self
+    }
+
+    /// Removes one exact variable and any earlier explicit setting for it.
+    pub fn remove(mut self, name: impl Into<OsString>) -> Self {
+        let name = name.into();
+        self.set.remove(&name);
+        self.remove.insert(name);
+        self
+    }
+
+    /// Prepends one directory to PATH while retaining its policy-selected tail.
+    pub fn prepend_path(mut self, directory: impl Into<PathBuf>) -> Self {
+        self.path_prepend.push(directory.into());
+        self
+    }
+
+    /// Reports whether the parent environment is discarded.
+    pub const fn clears_parent(&self) -> bool {
+        self.clear
+    }
+
+    /// Returns explicit settings in lexical platform order.
+    pub const fn settings(&self) -> &BTreeMap<OsString, OsString> {
+        &self.set
+    }
+
+    /// Returns explicit removals in lexical platform order.
+    pub const fn removals(&self) -> &BTreeSet<OsString> {
+        &self.remove
+    }
+
+    /// Returns PATH prefixes in caller order.
+    pub fn path_prefixes(&self) -> &[PathBuf] {
+        &self.path_prepend
+    }
+}
+
+impl Default for ChildEnvironment {
+    fn default() -> Self {
+        Self::inherit()
+    }
 }
 
 /// A process-spawn, wait, or capture failure.
@@ -85,6 +178,13 @@ pub enum RunnerError {
         /// Stream being captured.
         stream: &'static str,
     },
+    /// PATH entries could not be encoded for the current platform.
+    #[error("invalid child environment: {source}")]
+    InvalidEnvironment {
+        /// Invalid PATH composition.
+        #[source]
+        source: std::env::JoinPathsError,
+    },
 }
 
 /// Executes child processes with bounded evidence capture.
@@ -101,6 +201,7 @@ impl ProcessRunner {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        apply_environment(&mut command, spec.environment())?;
         let mut child = ContainedChild::spawn(&mut command).map_err(|source| RunnerError::Io {
             operation: "spawn child",
             source,
@@ -144,6 +245,38 @@ impl ProcessRunner {
             containment_mechanism(),
         ))
     }
+}
+
+fn apply_environment(
+    command: &mut Command,
+    environment: &ChildEnvironment,
+) -> Result<(), RunnerError> {
+    if environment.clears_parent() {
+        command.env_clear();
+    }
+    for name in environment.removals() {
+        command.env_remove(name);
+    }
+    command.envs(environment.settings());
+
+    if environment.path_prefixes().is_empty() {
+        return Ok(());
+    }
+    let path_name = OsStr::new("PATH");
+    let explicit_path = environment.settings().get(path_name);
+    let inherited_path = (!environment.clears_parent()
+        && !environment.removals().contains(path_name))
+    .then(|| std::env::var_os(path_name))
+    .flatten();
+    let tail = explicit_path.cloned().or(inherited_path);
+    let mut entries = environment.path_prefixes().to_vec();
+    if let Some(tail) = tail {
+        entries.extend(std::env::split_paths(&tail));
+    }
+    let joined = std::env::join_paths(entries)
+        .map_err(|source| RunnerError::InvalidEnvironment { source })?;
+    command.env(path_name, joined);
+    Ok(())
 }
 
 /// Returns the OS-level primitive used to own descendant processes.

@@ -1,7 +1,7 @@
 use std::{env, ffi::OsString, fs, process::Command, thread, time::Duration};
 
 use reprocut_core::ContainmentMechanism;
-use reprocut_runner::{containment_mechanism, CommandSpec, ProcessRunner};
+use reprocut_runner::{containment_mechanism, ChildEnvironment, CommandSpec, ProcessRunner};
 
 #[test]
 fn captures_real_child_output() {
@@ -47,6 +47,37 @@ fn timeout_prevents_a_descendant_from_writing_after_the_parent_dies() {
 }
 
 #[test]
+fn child_environment_can_set_remove_and_prepend_path() {
+    let prepend = env::temp_dir().join("reprocut-contract-bin");
+    env::set_var("REPROCUT_REMOVE_ME", "host-secret");
+    let environment = ChildEnvironment::inherit()
+        .remove("REPROCUT_REMOVE_ME")
+        .set("REPROCUT_SET_ME", "candidate-value")
+        .prepend_path(&prepend);
+    let spec = child_spec(
+        "child_prints_environment",
+        Duration::from_secs(5),
+        16 * 1_024,
+    )
+    .with_environment(environment);
+
+    let observation = ProcessRunner::run(&spec).expect("child environment");
+    env::remove_var("REPROCUT_REMOVE_ME");
+    let output = String::from_utf8(observation.stdout().to_vec()).expect("UTF-8");
+
+    assert!(output.contains("removed=<missing>"));
+    assert!(output.contains("set=candidate-value"));
+    let path = output
+        .lines()
+        .find_map(|line| line.strip_prefix("path="))
+        .expect("PATH");
+    assert_eq!(
+        env::split_paths(&OsString::from(path)).next(),
+        Some(prepend)
+    );
+}
+
+#[test]
 #[ignore = "spawned by captures_real_child_output"]
 fn child_emits() {
     println!("child-stdout");
@@ -63,6 +94,20 @@ fn child_floods() {
 #[ignore = "spawned by timeout_kills_and_reaps_the_child"]
 fn child_sleeps() {
     thread::sleep(Duration::from_secs(5));
+}
+
+#[test]
+#[ignore = "spawned by child_environment_can_set_remove_and_prepend_path"]
+fn child_prints_environment() {
+    println!(
+        "removed={}",
+        env::var("REPROCUT_REMOVE_ME").unwrap_or_else(|_| "<missing>".to_owned())
+    );
+    println!(
+        "set={}",
+        env::var("REPROCUT_SET_ME").unwrap_or_else(|_| "<missing>".to_owned())
+    );
+    println!("path={}", env::var("PATH").expect("PATH"));
 }
 
 #[test]
