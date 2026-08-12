@@ -73,12 +73,10 @@ Run `$python -m pytest python/tests/test_demo_assets.py::test_banner_is_static_a
 
 Expected: FAIL because the current banner has no 18 semantic `data-file-state` groups and no `data-role="cut-trace"`.
 
-- [ ] **Step 3: Commit the verified failing contract**
+- [ ] **Step 3: Keep the verified failing contract uncommitted for Task 2**
 
-```powershell
-git add python/tests/test_demo_assets.py
-git commit -m "test(brand): bind banner to reduction evidence"
-```
+Do not create a deliberately broken commit. Preserve the RED test in the
+worktree and commit it atomically with the GREEN SVG in Task 2.
 
 ### Task 2: Forensic reduction SVG
 
@@ -125,7 +123,7 @@ Expected: every demo/GIF/banner test passes; the native backend test is not part
 - [ ] **Step 4: Commit the evidence-bound SVG**
 
 ```powershell
-git add assets/reprocut-banner.svg
+git add assets/reprocut-banner.svg python/tests/test_demo_assets.py
 git commit -m "feat(brand): redesign forensic reduction banner"
 ```
 
@@ -157,4 +155,3 @@ Allowed fixes are SVG coordinate, size, stroke, spacing, and text hierarchy chan
 Run the full Python suite with a fresh `--basetemp`, then `git diff --check` and `git status --short`.
 
 Expected: the Python suite passes with only the dedicated native-wheel smoke skipped, `git diff --check` is silent, and the worktree has no uncommitted banner changes.
-
