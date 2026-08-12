@@ -13,6 +13,7 @@ fn request_defaults_are_explicit_and_version_is_strict() {
     assert_eq!(request.ecosystem, "auto");
     assert_eq!(request.preparation, "offline");
     assert_eq!(request.timeout_ms, 5_000);
+    assert_eq!(request.oracle_mode, "automatic");
 
     let mut unsupported = request;
     unsupported.protocol_version = 9;
@@ -23,6 +24,27 @@ fn request_defaults_are_explicit_and_version_is_strict() {
             supported: PROTOCOL_VERSION,
         })
     );
+}
+
+#[test]
+fn protocol_rejects_incomplete_or_cross_mode_integrity_fields() {
+    for document in [
+        r#"{"protocol_version":1,"action":"minimize","root":"bug","output":"minimal","oracle_mode":"regex"}"#,
+        r#"{"protocol_version":1,"action":"minimize","root":"bug","output":"minimal","oracle_mode":"exit_zero","reject_patterns":["wrong"]}"#,
+        r#"{"protocol_version":1,"action":"minimize","root":"bug","output":"minimal","preparation":"isolated_python"}"#,
+    ] {
+        let request: ReductionRequestV1 = serde_json::from_str(document).expect("request JSON");
+        assert!(matches!(
+            request.validate(),
+            Err(ProtocolError::InvalidConfiguration(_))
+        ));
+    }
+
+    let valid: ReductionRequestV1 = serde_json::from_str(
+        r#"{"protocol_version":1,"action":"minimize","root":"bug","output":"minimal","oracle_mode":"regex","failure_patterns":["TypeError"],"preparation":"isolated_python","python_executable":"python","python_wheelhouse":"wheels"}"#,
+    )
+    .expect("valid request JSON");
+    valid.validate().expect("valid integrity contract");
 }
 
 #[test]
@@ -55,6 +77,13 @@ fn resume_restart_conflict_fails_before_work() {
         timeout_ms: 5_000,
         max_output_bytes: 1_048_576,
         oracle_stream: "auto".to_owned(),
+        oracle_mode: "automatic".to_owned(),
+        failure_patterns: Vec::new(),
+        reject_patterns: Vec::new(),
+        python_executable: None,
+        python_wheelhouse: None,
+        python_extras: Vec::new(),
+        prepare_spec: None,
         flaky_runs: None,
         flaky_required: None,
         jobs: 0,

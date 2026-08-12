@@ -4,7 +4,9 @@ mod cli_compile_contract {
 
     use clap::CommandFactory as _;
 
-    use super::{Action, Cli, EcosystemArg, OracleStreamArg, PrepareArg, ReduceArgs};
+    use super::{
+        Action, Cli, EcosystemArg, OracleModeArg, OracleStreamArg, PrepareArg, ReduceArgs,
+    };
 
     #[test]
     fn help_and_resume_surface_compile_together() {
@@ -28,6 +30,13 @@ mod cli_compile_contract {
             timeout_ms: 1_000,
             max_output_bytes: 4_096,
             oracle_stream: OracleStreamArg::Auto,
+            oracle_mode: OracleModeArg::Automatic,
+            failure_patterns: Vec::new(),
+            reject_patterns: Vec::new(),
+            python_executable: None,
+            python_wheelhouse: None,
+            python_extras: Vec::new(),
+            prepare_spec: None,
             flaky: false,
             flaky_runs: None,
             flaky_required: None,

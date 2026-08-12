@@ -6,6 +6,7 @@ import contextlib
 import json
 import os
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -27,6 +28,7 @@ Action = Literal["minimize", "resume"]
 Ecosystem = Literal["auto", "cargo", "python", "npm", "none"]
 Preparation = Literal["none", "offline", "lifecycle_scripts", "isolated_python"]
 OracleStream = Literal["auto", "stderr", "stdout", "combined"]
+OracleMode = Literal["automatic", "regex", "exit_zero"]
 PathArgument = Union[str, os.PathLike[str]]
 Executable = Union[PathArgument, Sequence[PathArgument]]
 
@@ -59,6 +61,13 @@ class ReductionRequest:
     timeout_ms: int = 5_000
     max_output_bytes: int = 1_048_576
     oracle_stream: OracleStream = "auto"
+    oracle_mode: OracleMode = "automatic"
+    failure_patterns: tuple[str, ...] = ()
+    reject_patterns: tuple[str, ...] = ()
+    python_executable: Optional[Path] = None
+    python_wheelhouse: Optional[Path] = None
+    python_extras: tuple[str, ...] = ()
+    prepare_spec: Optional[Path] = None
     flaky_runs: Optional[int] = None
     flaky_required: Optional[int] = None
     jobs: int = 0
@@ -69,8 +78,19 @@ class ReductionRequest:
         object.__setattr__(self, "root", Path(self.root))
         object.__setattr__(self, "output", Path(self.output))
         object.__setattr__(self, "command", tuple(str(part) for part in self.command))
+        object.__setattr__(self, "failure_patterns", tuple(sorted(set(self.failure_patterns))))
+        object.__setattr__(self, "reject_patterns", tuple(sorted(set(self.reject_patterns))))
+        object.__setattr__(
+            self,
+            "python_extras",
+            tuple(sorted({_normalize_extra(extra) for extra in self.python_extras})),
+        )
         if self.state is not None:
             object.__setattr__(self, "state", Path(self.state))
+        for field in ("python_executable", "python_wheelhouse", "prepare_spec"):
+            value = getattr(self, field)
+            if value is not None:
+                object.__setattr__(self, field, Path(value))
         if self.action not in {"minimize", "resume"}:
             raise ValueError(f"unsupported action: {self.action}")
         if self.ecosystem not in {"auto", "cargo", "python", "npm", "none"}:
@@ -84,6 +104,30 @@ class ReductionRequest:
             raise ValueError(f"unsupported preparation: {self.preparation}")
         if self.oracle_stream not in {"auto", "stderr", "stdout", "combined"}:
             raise ValueError(f"unsupported oracle stream: {self.oracle_stream}")
+        if self.oracle_mode not in {"automatic", "regex", "exit_zero"}:
+            raise ValueError(f"unsupported oracle mode: {self.oracle_mode}")
+        if len(self.failure_patterns) > 16 or len(self.reject_patterns) > 16:
+            raise ValueError("oracle accepts at most 16 required and 16 reject expressions")
+        if any(len(pattern.encode("utf-8")) > 4096 for pattern in (*self.failure_patterns, *self.reject_patterns)):
+            raise ValueError("oracle regular expression exceeds 4096 UTF-8 bytes")
+        try:
+            for pattern in (*self.failure_patterns, *self.reject_patterns):
+                re.compile(pattern)
+        except re.error as error:
+            raise ValueError(f"invalid oracle regular expression: {error}") from error
+        if self.oracle_mode == "automatic" and self.failure_patterns:
+            raise ValueError("automatic mode does not accept failure_patterns")
+        if self.oracle_mode == "regex" and not self.failure_patterns:
+            raise ValueError("regex mode requires at least one failure pattern")
+        if self.oracle_mode == "exit_zero" and (self.failure_patterns or self.reject_patterns):
+            raise ValueError("exit_zero mode does not accept regex patterns")
+        isolation_selected = self.preparation == "isolated_python"
+        isolation_complete = self.python_executable is not None and self.python_wheelhouse is not None
+        isolation_fields = isolation_complete or self.python_executable is not None or self.python_wheelhouse is not None or bool(self.python_extras) or self.prepare_spec is not None
+        if isolation_selected != isolation_complete or (not isolation_selected and isolation_fields):
+            raise ValueError(
+                "isolated_python requires python_executable and python_wheelhouse, and isolation fields require isolated_python"
+            )
         if self.timeout_ms < 1 or self.max_output_bytes < 1 or self.jobs < 0:
             raise ValueError(
                 "timeouts and capture limits must be positive; jobs cannot be negative"
@@ -117,6 +161,10 @@ class ReductionRequest:
             "timeout_ms": self.timeout_ms,
             "max_output_bytes": self.max_output_bytes,
             "oracle_stream": self.oracle_stream,
+            "oracle_mode": self.oracle_mode,
+            "failure_patterns": list(self.failure_patterns),
+            "reject_patterns": list(self.reject_patterns),
+            "python_extras": list(self.python_extras),
             "jobs": self.jobs,
             "restart": self.restart,
         }
@@ -126,7 +174,20 @@ class ReductionRequest:
             document["flaky_required"] = self.flaky_required
         if self.state is not None:
             document["state"] = os.fspath(self.state)
+        if self.python_executable is not None:
+            document["python_executable"] = os.fspath(self.python_executable)
+        if self.python_wheelhouse is not None:
+            document["python_wheelhouse"] = os.fspath(self.python_wheelhouse)
+        if self.prepare_spec is not None:
+            document["prepare_spec"] = os.fspath(self.prepare_spec)
         return document
+
+
+def _normalize_extra(name: str) -> str:
+    value = str(name)
+    if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?", value):
+        raise ValueError(f"invalid Python extra name: {value}")
+    return re.sub(r"[-_.]+", "-", value).lower()
 
 
 @dataclass(frozen=True)
@@ -463,13 +524,34 @@ def _load_evidence(path: Path, fingerprint: str) -> Mapping[str, object]:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise ReproCutError(f"cannot read completed reduction evidence {path}: {error}") from error
-    if not isinstance(document, dict) or document.get("schema_version") != 2:
-        raise ReproCutError("completed reduction evidence must use schema version 2")
+    if not isinstance(document, dict) or document.get("schema_version") != 3:
+        raise ReproCutError("completed reduction evidence must use schema version 3")
     failure = document.get("failure")
     if not isinstance(failure, dict) or failure.get("same_failure") is not True:
         raise ReproCutError("completed evidence does not prove the same failure")
     if failure.get("fingerprint_sha256") != fingerprint:
         raise ReproCutError("event and evidence fingerprints disagree")
+    for label, value in (
+        ("source snapshot", document.get("source_snapshot_sha256")),
+        ("fingerprint", failure.get("fingerprint_sha256")),
+        ("oracle spec", failure.get("oracle_spec_sha256")),
+    ):
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+            raise ReproCutError(f"completed evidence has an invalid {label} SHA-256")
+    preparation = document.get("preparation")
+    if not isinstance(preparation, dict):
+        raise ReproCutError("completed evidence omitted preparation contract")
+    preparation_digest = preparation.get("contract_sha256")
+    limitations = preparation.get("limitations")
+    if preparation_digest is not None and (
+        not isinstance(preparation_digest, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", preparation_digest)
+    ):
+        raise ReproCutError("completed evidence has an invalid preparation SHA-256")
+    if preparation_digest is None and not (
+        isinstance(limitations, list) and limitations
+    ):
+        raise ReproCutError("missing preparation digest requires an explicit limitation")
     return cast(Mapping[str, object], _freeze_json(document))
 
 

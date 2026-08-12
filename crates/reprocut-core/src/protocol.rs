@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use super::{DiagnosticChannel, OracleMode, OracleSpec};
+
 /// Current additive JSON protocol version.
 pub const PROTOCOL_VERSION: u16 = 1;
 
@@ -46,6 +48,27 @@ pub struct ReductionRequestV1 {
     /// Diagnostic channel used to identify the failure.
     #[serde(default = "default_auto")]
     pub oracle_stream: String,
+    /// Failure recognition mode: `automatic`, `regex`, or `exit_zero`.
+    #[serde(default = "default_automatic")]
+    pub oracle_mode: String,
+    /// Required regular expressions for regex mode.
+    #[serde(default)]
+    pub failure_patterns: Vec<String>,
+    /// Regular expressions that always reject a candidate.
+    #[serde(default)]
+    pub reject_patterns: Vec<String>,
+    /// Explicit Python interpreter used to create candidate-local virtual environments.
+    #[serde(default)]
+    pub python_executable: Option<PathBuf>,
+    /// Offline wheel corpus captured before candidate execution.
+    #[serde(default)]
+    pub python_wheelhouse: Option<PathBuf>,
+    /// Canonical Python extras installed with the candidate.
+    #[serde(default)]
+    pub python_extras: Vec<String>,
+    /// Optional strict schema-1 argv-only preparation specification.
+    #[serde(default)]
+    pub prepare_spec: Option<PathBuf>,
     /// Total observations in flaky-majority mode.
     #[serde(default)]
     pub flaky_runs: Option<u16>,
@@ -74,6 +97,48 @@ impl ReductionRequestV1 {
         }
         if self.action == ProtocolAction::Resume && self.restart {
             return Err(ProtocolError::ResumeRestartConflict);
+        }
+        let mode = match self.oracle_mode.as_str() {
+            "automatic" => OracleMode::Automatic,
+            "regex" => OracleMode::Regex,
+            "exit_zero" => OracleMode::ExitZero,
+            _ => {
+                return Err(ProtocolError::InvalidConfiguration(
+                    "unsupported oracle mode",
+                ))
+            }
+        };
+        let channel = match self.oracle_stream.as_str() {
+            "auto" => DiagnosticChannel::Auto,
+            "stderr" => DiagnosticChannel::Stderr,
+            "stdout" => DiagnosticChannel::Stdout,
+            "combined" => DiagnosticChannel::Combined,
+            _ => {
+                return Err(ProtocolError::InvalidConfiguration(
+                    "unsupported oracle stream",
+                ))
+            }
+        };
+        OracleSpec::new(
+            mode,
+            channel,
+            self.failure_patterns.clone(),
+            self.reject_patterns.clone(),
+        )
+        .map_err(|_| ProtocolError::InvalidConfiguration("invalid oracle configuration"))?;
+        let isolation_selected = self.preparation == "isolated_python";
+        let isolation_complete =
+            self.python_executable.is_some() && self.python_wheelhouse.is_some();
+        let isolation_fields_present = self.python_executable.is_some()
+            || self.python_wheelhouse.is_some()
+            || !self.python_extras.is_empty()
+            || self.prepare_spec.is_some();
+        if isolation_selected != isolation_complete
+            || (!isolation_selected && isolation_fields_present)
+        {
+            return Err(ProtocolError::InvalidConfiguration(
+                "isolated_python requires python_executable and python_wheelhouse, and Python isolation fields require isolated_python",
+            ));
         }
         Ok(())
     }
@@ -135,6 +200,9 @@ pub enum ProtocolError {
     /// Resume cannot be combined with destructive state restart.
     #[error("protocol resume requests cannot set restart=true")]
     ResumeRestartConflict,
+    /// Fields were individually valid JSON but formed an unsafe contract.
+    #[error("invalid protocol configuration: {0}")]
+    InvalidConfiguration(&'static str),
 }
 
 fn default_auto() -> String {
@@ -143,6 +211,10 @@ fn default_auto() -> String {
 
 fn default_offline() -> String {
     "offline".to_owned()
+}
+
+fn default_automatic() -> String {
+    "automatic".to_owned()
 }
 
 const fn default_timeout_ms() -> u64 {

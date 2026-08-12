@@ -40,7 +40,7 @@ def test_typed_client_consumes_the_versioned_engine_protocol(tmp_path: Path) -> 
     ]
     assert result.fingerprint_sha256 == "a" * 64
     assert result.output == request.output
-    assert result.evidence["schema_version"] == 2
+    assert result.evidence["schema_version"] == 3
     assert result.evidence["failure"]["same_failure"] is True
     with pytest.raises(TypeError):
         result.evidence["schema_version"] = 9
@@ -82,6 +82,46 @@ def test_request_rejects_resume_restart_and_invalid_flaky_bounds(tmp_path: Path)
             output=tmp_path / "minimal",
             action="resume",
             restart=True,
+        )
+
+
+def test_integrity_contract_is_canonical_and_mode_validated(tmp_path: Path) -> None:
+    request = ReductionRequest(
+        root=tmp_path,
+        output=tmp_path / "minimal",
+        oracle_mode="regex",
+        failure_patterns=(r"TypeError", r"currency", r"TypeError"),
+        reject_patterns=(r"secondary",),
+        preparation="isolated_python",
+        python_executable=Path(sys.executable),
+        python_wheelhouse=tmp_path / "wheels",
+        python_extras=("Fast_JSON.parser", "fast-json-parser"),
+        prepare_spec=tmp_path / "prepare.json",
+    )
+
+    assert request.failure_patterns == (r"TypeError", r"currency")
+    assert request.python_extras == ("fast-json-parser",)
+    assert request.to_protocol()["oracle_mode"] == "regex"
+    assert request.to_protocol()["python_extras"] == ["fast-json-parser"]
+
+    with pytest.raises(ValueError, match="requires at least one"):
+        ReductionRequest(
+            root=tmp_path,
+            output=tmp_path / "minimal",
+            oracle_mode="regex",
+        )
+    with pytest.raises(ValueError, match="does not accept"):
+        ReductionRequest(
+            root=tmp_path,
+            output=tmp_path / "minimal",
+            oracle_mode="exit_zero",
+            reject_patterns=("wrong",),
+        )
+    with pytest.raises(ValueError, match="requires python_executable"):
+        ReductionRequest(
+            root=tmp_path,
+            output=tmp_path / "minimal",
+            preparation="isolated_python",
         )
 
 
@@ -155,7 +195,7 @@ if mode == "failure":
     raise SystemExit(1)
 output = pathlib.Path(request["output"])
 output.mkdir()
-evidence = {{"schema_version":2,"failure":{{"same_failure":True,"fingerprint_sha256":"a" * 64}}}}
+evidence = {{"schema_version":3,"source_snapshot_sha256":"b" * 64,"preparation":{{"mode":"offline","contract_sha256":"c" * 64,"limitations":[]}},"failure":{{"same_failure":True,"fingerprint_sha256":"a" * 64,"oracle_spec_sha256":"d" * 64}}}}
 (output / "reduction.json").write_text(json.dumps(evidence), encoding="utf-8")
 (output / "report.html").write_text("report", encoding="utf-8")
 (output / "issue.md").write_text("issue", encoding="utf-8")

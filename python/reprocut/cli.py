@@ -46,6 +46,17 @@ def build_parser() -> argparse.ArgumentParser:
             choices=("auto", "stderr", "stdout", "combined"),
             default="auto",
         )
+        command.add_argument(
+            "--oracle-mode",
+            choices=("automatic", "regex", "exit_zero"),
+            default="automatic",
+        )
+        command.add_argument("--failure-regex", action="append", default=[])
+        command.add_argument("--reject-regex", action="append", default=[])
+        command.add_argument("--python-executable", type=Path)
+        command.add_argument("--python-wheelhouse", type=Path)
+        command.add_argument("--python-extra", action="append", default=[])
+        command.add_argument("--prepare-spec", type=Path)
         command.add_argument("--timeout-ms", type=int, default=5_000)
         command.add_argument("--max-output-bytes", type=int, default=1_048_576)
         command.add_argument("--flaky-runs", type=int)
@@ -75,6 +86,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             timeout_ms=args.timeout_ms,
             max_output_bytes=args.max_output_bytes,
             oracle_stream=args.oracle_stream,
+            oracle_mode=args.oracle_mode,
+            failure_patterns=tuple(args.failure_regex),
+            reject_patterns=tuple(args.reject_regex),
+            python_executable=args.python_executable,
+            python_wheelhouse=args.python_wheelhouse,
+            python_extras=tuple(args.python_extra),
+            prepare_spec=args.prepare_spec,
             flaky_runs=args.flaky_runs,
             flaky_required=args.flaky_required,
             jobs=args.jobs,

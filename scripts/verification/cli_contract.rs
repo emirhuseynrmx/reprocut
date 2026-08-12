@@ -9,7 +9,8 @@ mod cli_remote_contract {
     use clap::CommandFactory as _;
 
     use super::{
-        execute, Action, Cli, CliError, EcosystemArg, OracleStreamArg, PrepareArg, ReduceArgs,
+        execute, Action, Cli, CliError, EcosystemArg, OracleModeArg, OracleStreamArg, PrepareArg,
+        ReduceArgs,
     };
 
     fn sandbox(label: &str) -> std::path::PathBuf {
@@ -31,6 +32,13 @@ mod cli_remote_contract {
             timeout_ms: 3_000,
             max_output_bytes: 64 * 1024,
             oracle_stream: OracleStreamArg::Auto,
+            oracle_mode: OracleModeArg::Automatic,
+            failure_patterns: Vec::new(),
+            reject_patterns: Vec::new(),
+            python_executable: None,
+            python_wheelhouse: None,
+            python_extras: Vec::new(),
+            prepare_spec: None,
             flaky: false,
             flaky_runs: None,
             flaky_required: None,

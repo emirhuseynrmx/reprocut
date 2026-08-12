@@ -13,18 +13,20 @@ use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{generate, Shell};
 use reprocut_adapters::{Adapter, AdapterError, Ecosystem, EcosystemSelection};
 use reprocut_core::{
-    CandidateVerdict, ContentHasher, DiagnosticChannel, EvaluationPolicy, PolicyError,
-    ProgressEventV1, ProtocolAction, ProtocolError, ReductionRequestV1, TerminationReason,
-    PROTOCOL_VERSION,
+    CandidateVerdict, DiagnosticChannel, EvaluationPolicy, OracleError, OracleMode, OracleSpec,
+    PolicyError, ProgressEventV1, ProtocolAction, ProtocolError, ReductionRequestV1,
+    TerminationReason, PROTOCOL_VERSION,
 };
 use reprocut_engine::{
-    EngineError, PreparationMode, ReductionEngine, ReductionOutcome, ReductionRequest, SessionMode,
+    EngineError, PreparationMode, PythonIsolationRequest, PythonPreparationError, ReductionEngine,
+    ReductionOutcome, ReductionRequest, SessionMode,
 };
 use reprocut_oci::{export_archive, Builder, OciError, OciRequest, RuntimeFamily};
 use reprocut_report::{
     render_issue, render_report, write_attempts_jsonl, AttemptSummary, ChannelAnchor,
     EvaluationPolicyEvidence, FailureEvidence, MaterialMeasurement, MeasurementSet,
-    ReductionEvidence, ReportModel, RetentionEvidence, SearchEvidence, EVIDENCE_SCHEMA_VERSION,
+    PreparationEvidence, ReductionEvidence, ReportModel, RetentionEvidence, SearchEvidence,
+    EVIDENCE_SCHEMA_VERSION,
 };
 use reprocut_workspace::{ProjectInventory, ProjectSnapshot, WorkspaceError};
 use serde::Serialize;
@@ -196,7 +198,7 @@ struct ReduceArgs {
     #[arg(long, value_enum, default_value_t = EcosystemArg::Auto)]
     ecosystem: EcosystemArg,
 
-    /// Candidate preparation authority; isolated-python trusts your command environment.
+    /// Candidate preparation authority; isolated-python builds a fresh offline venv per candidate.
     #[arg(long, value_enum, default_value_t = PrepareArg::Offline)]
     prepare: PrepareArg,
 
@@ -211,6 +213,34 @@ struct ReduceArgs {
     /// Process stream used to identify the stabilized failure.
     #[arg(long, value_enum, default_value_t = OracleStreamArg::Auto)]
     oracle_stream: OracleStreamArg,
+
+    /// Failure recognition contract.
+    #[arg(long, value_enum, default_value_t = OracleModeArg::Automatic)]
+    oracle_mode: OracleModeArg,
+
+    /// Required regex in regex mode; repeat for an AND contract.
+    #[arg(long = "failure-regex")]
+    failure_patterns: Vec<String>,
+
+    /// Regex that rejects a candidate in automatic or regex mode.
+    #[arg(long = "reject-regex")]
+    reject_patterns: Vec<String>,
+
+    /// Explicit Python interpreter for isolated-python preparation.
+    #[arg(long)]
+    python_executable: Option<PathBuf>,
+
+    /// Offline wheel directory captured before reduction begins.
+    #[arg(long)]
+    python_wheelhouse: Option<PathBuf>,
+
+    /// Python extra to install; repeatable, normalized, and deduplicated.
+    #[arg(long = "python-extra")]
+    python_extras: Vec<String>,
+
+    /// Strict schema-1 JSON containing argv-only preparation commands.
+    #[arg(long)]
+    prepare_spec: Option<PathBuf>,
 
     /// Evaluate each failure using a validated repeated-run supermajority.
     #[arg(long)]
@@ -316,6 +346,24 @@ enum OracleStreamArg {
     Combined,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
+#[serde(rename_all = "snake_case")]
+enum OracleModeArg {
+    Automatic,
+    Regex,
+    ExitZero,
+}
+
+impl From<OracleModeArg> for OracleMode {
+    fn from(value: OracleModeArg) -> Self {
+        match value {
+            OracleModeArg::Automatic => Self::Automatic,
+            OracleModeArg::Regex => Self::Regex,
+            OracleModeArg::ExitZero => Self::ExitZero,
+        }
+    }
+}
+
 impl From<OracleStreamArg> for DiagnosticChannel {
     fn from(value: OracleStreamArg) -> Self {
         match value {
@@ -352,6 +400,10 @@ enum CliError {
     Serialize(#[from] serde_json::Error),
     #[error(transparent)]
     Policy(#[from] PolicyError),
+    #[error(transparent)]
+    Oracle(#[from] OracleError),
+    #[error(transparent)]
+    PythonPreparation(#[from] PythonPreparationError),
     #[error(transparent)]
     Protocol(#[from] ProtocolError),
     #[error("gallery submission is invalid: {0}")]
@@ -468,6 +520,16 @@ fn protocol_reduce_args(request: ReductionRequestV1) -> Result<ReduceArgs, CliEr
             ))
         }
     };
+    let oracle_mode = match request.oracle_mode.as_str() {
+        "automatic" => OracleModeArg::Automatic,
+        "regex" => OracleModeArg::Regex,
+        "exit_zero" => OracleModeArg::ExitZero,
+        _ => {
+            return Err(CliError::InvalidArguments(
+                "unsupported protocol oracle mode",
+            ))
+        }
+    };
     Ok(ReduceArgs {
         root: request.root,
         output: request.output,
@@ -476,6 +538,13 @@ fn protocol_reduce_args(request: ReductionRequestV1) -> Result<ReduceArgs, CliEr
         timeout_ms: request.timeout_ms,
         max_output_bytes: request.max_output_bytes,
         oracle_stream,
+        oracle_mode,
+        failure_patterns: request.failure_patterns,
+        reject_patterns: request.reject_patterns,
+        python_executable: request.python_executable,
+        python_wheelhouse: request.python_wheelhouse,
+        python_extras: request.python_extras,
+        prepare_spec: request.prepare_spec,
         flaky: request.flaky_runs.is_some() || request.flaky_required.is_some(),
         flaky_runs: request.flaky_runs,
         flaky_required: request.flaky_required,
@@ -537,6 +606,7 @@ fn prepare_gallery(arguments: GalleryPrepareArgs) -> Result<(), CliError> {
             evidence.schema_version
         )));
     }
+    evidence.validate().map_err(CliError::InvalidArguments)?;
     if !evidence.failure.same_failure
         || evidence.failure.fingerprint_sha256.len() != 64
         || !evidence
@@ -765,6 +835,13 @@ fn execute_reduction(
         ));
     }
     let evaluation_policy = evaluation_policy(&arguments)?;
+    let oracle_spec = OracleSpec::new(
+        arguments.oracle_mode.into(),
+        arguments.oracle_stream.into(),
+        arguments.failure_patterns.clone(),
+        arguments.reject_patterns.clone(),
+    )?;
+    let python_isolation = python_isolation_request(&arguments)?;
     ensure_output_absent(&arguments.output)?;
     let adapter = Adapter::detect(&arguments.root, arguments.ecosystem.selection())?;
     arguments.ecosystem = adapter.ecosystem().into();
@@ -791,9 +868,15 @@ fn execute_reduction(
         arguments.max_output_bytes,
     )
     .with_evaluation(arguments.oracle_stream.into(), evaluation_policy)
+    .with_oracle(oracle_spec)
     .with_runtime(arguments.jobs, session_mode(&arguments, resume))
     .with_inventory_policy(adapter.inventory_policy().clone())
     .with_ecosystem(adapter.ecosystem(), arguments.prepare.into());
+    let request = if let Some(isolation) = python_isolation {
+        request.with_python_isolation(isolation)
+    } else {
+        request
+    };
 
     if human_progress {
         eprintln!("reprocut: proving a stable baseline and searching safe cuts...");
@@ -808,6 +891,7 @@ fn execute_reduction(
     }
 
     let evidence = build_evidence(&arguments, &outcome);
+    evidence.validate().map_err(CliError::InvalidArguments)?;
     let json = serde_json::to_vec_pretty(&evidence)?;
     publish_artifact(&arguments, &outcome, &evidence, &json)?;
 
@@ -817,6 +901,42 @@ fn execute_reduction(
         evidence,
         json,
     })
+}
+
+fn python_isolation_request(
+    arguments: &ReduceArgs,
+) -> Result<Option<PythonIsolationRequest>, CliError> {
+    let selected = arguments.prepare == PrepareArg::IsolatedPython;
+    let fields_present = arguments.python_executable.is_some()
+        || arguments.python_wheelhouse.is_some()
+        || !arguments.python_extras.is_empty()
+        || arguments.prepare_spec.is_some();
+    if !selected && fields_present {
+        return Err(CliError::InvalidArguments(
+            "Python isolation fields require --prepare isolated-python",
+        ));
+    }
+    if !selected {
+        return Ok(None);
+    }
+    let interpreter = arguments
+        .python_executable
+        .clone()
+        .ok_or(CliError::InvalidArguments(
+            "--prepare isolated-python requires --python-executable and --python-wheelhouse",
+        ))?;
+    let wheelhouse = arguments
+        .python_wheelhouse
+        .clone()
+        .ok_or(CliError::InvalidArguments(
+            "--prepare isolated-python requires --python-executable and --python-wheelhouse",
+        ))?;
+    let mut isolation = PythonIsolationRequest::new(interpreter, wheelhouse)
+        .with_extras(arguments.python_extras.clone())?;
+    if let Some(spec) = &arguments.prepare_spec {
+        isolation = isolation.with_prepare_spec(spec.clone());
+    }
+    Ok(Some(isolation))
 }
 
 fn split_command(command: &[String]) -> (&str, &[String]) {
@@ -850,10 +970,15 @@ fn build_evidence(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> Reducti
     ReductionEvidence {
         schema_version: EVIDENCE_SCHEMA_VERSION,
         source_root: arguments.root.display().to_string(),
+        source_snapshot_sha256: outcome.source_snapshot_digest().to_hex(),
         output: arguments.output.display().to_string(),
         command: arguments.command.clone(),
         ecosystem: arguments.ecosystem.name().to_owned(),
-        preparation: prepare_name(arguments.prepare).to_owned(),
+        preparation: PreparationEvidence {
+            mode: prepare_name(arguments.prepare).to_owned(),
+            contract_sha256: Some(outcome.preparation_digest().to_hex()),
+            limitations: Vec::new(),
+        },
         measurements: MeasurementSet {
             original: MaterialMeasurement {
                 files: u64::try_from(outcome.original_files()).unwrap_or(u64::MAX),
@@ -883,11 +1008,12 @@ fn build_evidence(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> Reducti
         },
         failure: FailureEvidence {
             same_failure: true,
-            fingerprint_sha256: fingerprint_digest(fingerprint),
+            fingerprint_sha256: fingerprint.digest().to_hex(),
             exit_code: fingerprint.exit_code(),
             signal: fingerprint.signal(),
             termination: termination_name(fingerprint.termination()),
             oracle_stream: diagnostic_channel_name(arguments.oracle_stream.into()).to_owned(),
+            oracle_mode: oracle_mode_name(fingerprint.mode()).to_owned(),
             anchor: fingerprint.anchor().to_owned(),
             anchors: fingerprint
                 .anchors()
@@ -898,6 +1024,9 @@ fn build_evidence(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> Reducti
                 })
                 .collect(),
             normalization_schema: fingerprint.normalization_schema(),
+            failure_patterns: fingerprint.failure_patterns().to_vec(),
+            reject_patterns: fingerprint.reject_patterns().to_vec(),
+            oracle_spec_sha256: fingerprint.oracle_spec_digest().to_hex(),
         },
         kept_files: outcome
             .snapshot()
@@ -936,20 +1065,6 @@ fn material_measurement(snapshot: &reprocut_workspace::ProjectSnapshot) -> Mater
         lines,
         syntax_nodes: None,
     }
-}
-
-fn fingerprint_digest(fingerprint: &reprocut_core::FailureFingerprint) -> String {
-    let mut hasher = ContentHasher::new();
-    hasher.update(b"REPROCUT-FINGERPRINT\0");
-    hasher.update(&fingerprint.normalization_schema().to_le_bytes());
-    hasher.update(termination_name(fingerprint.termination()).as_bytes());
-    for anchor in fingerprint.anchors() {
-        hasher.update(diagnostic_channel_name(anchor.channel()).as_bytes());
-        hasher.update(&[0]);
-        hasher.update(anchor.text().as_bytes());
-        hasher.update(&[0]);
-    }
-    hasher.finalize().to_hex()
 }
 
 fn session_mode(arguments: &ReduceArgs, resume: bool) -> SessionMode {
@@ -1025,6 +1140,14 @@ const fn diagnostic_channel_name(channel: DiagnosticChannel) -> &'static str {
         DiagnosticChannel::Stderr => "stderr",
         DiagnosticChannel::Stdout => "stdout",
         DiagnosticChannel::Combined => "combined",
+    }
+}
+
+const fn oracle_mode_name(mode: OracleMode) -> &'static str {
+    match mode {
+        OracleMode::Automatic => "automatic",
+        OracleMode::Regex => "regex",
+        OracleMode::ExitZero => "exit_zero",
     }
 }
 
