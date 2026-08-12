@@ -2,12 +2,15 @@
 
 mod scheduler;
 mod pipeline;
+mod python_isolation;
 
+pub use python_isolation::{PythonIsolationRequest, PythonPreparationError};
 pub use scheduler::{CandidatePlan, FrontierOutcome, FrontierScheduler, SchedulerError};
 
 use pipeline::{
     manifest_candidates, syntax_candidates, PipelineError, StructuredCandidate, SyntaxPhase,
 };
+use python_isolation::{FrozenPythonPreparation, PreparedPythonCandidate};
 
 use std::{
     collections::HashMap,
@@ -78,6 +81,7 @@ pub struct ReductionRequest {
     inventory_policy: InventoryPolicy,
     ecosystem: Ecosystem,
     preparation_mode: PreparationMode,
+    python_isolation: Option<PythonIsolationRequest>,
 }
 
 impl ReductionRequest {
@@ -102,6 +106,7 @@ impl ReductionRequest {
             inventory_policy: InventoryPolicy::source_only(),
             ecosystem: Ecosystem::None,
             preparation_mode: PreparationMode::None,
+            python_isolation: None,
         }
     }
 
@@ -137,6 +142,14 @@ impl ReductionRequest {
     ) -> Self {
         self.ecosystem = ecosystem;
         self.preparation_mode = preparation_mode;
+        self
+    }
+
+    /// Enables frozen-wheelhouse Python isolation for every execution phase.
+    pub fn with_python_isolation(mut self, isolation: PythonIsolationRequest) -> Self {
+        self.ecosystem = Ecosystem::Python;
+        self.preparation_mode = PreparationMode::IsolatedPython;
+        self.python_isolation = Some(isolation);
         self
     }
 
@@ -198,6 +211,11 @@ impl ReductionRequest {
     /// Returns candidate preparation authority.
     pub const fn preparation_mode(&self) -> PreparationMode {
         self.preparation_mode
+    }
+
+    /// Returns the explicit Python isolation contract, when configured.
+    pub const fn python_isolation(&self) -> Option<&PythonIsolationRequest> {
+        self.python_isolation.as_ref()
     }
 }
 
@@ -343,6 +361,12 @@ pub enum EngineError {
     /// Cached structured evidence could not be materialized under the current environment.
     #[error("a preserved structured candidate could not be prepared for publication")]
     StructuredRealizationFailed,
+    /// Isolated Python was selected without a complete frozen-input contract.
+    #[error("isolated Python preparation requires an explicit isolation request")]
+    MissingPythonIsolation,
+    /// Python preparation or command resolution failed closed.
+    #[error(transparent)]
+    PythonPreparation(#[from] PythonPreparationError),
     /// A generated candidate referenced an invalid inventory index.
     #[error("candidate referenced an invalid inventory unit")]
     InvalidCandidate,
@@ -371,6 +395,24 @@ impl ReductionEngine {
         let source_snapshot = ProjectSnapshot::capture(&inventory, request.inventory_policy())?;
         let source_digest = source_snapshot.digest();
         let original_measurements = source_snapshot.measurements();
+        let python_preparation = request
+            .python_isolation()
+            .map(|isolation| {
+                FrozenPythonPreparation::capture(
+                    isolation,
+                    request.timeout(),
+                    request.max_output_bytes(),
+                )
+            })
+            .transpose()?;
+        if let Some(preparation) = &python_preparation {
+            preparation.validate_original_program(request.program())?;
+        }
+        if request.preparation_mode() == PreparationMode::IsolatedPython
+            && python_preparation.is_none()
+        {
+            return Err(EngineError::MissingPythonIsolation);
+        }
         let contract = session_contract(request, source_digest);
         let (state, resumed) = open_state(request.session_mode(), contract)?;
         let state_path = state.as_ref().map(|store| store.path().to_path_buf());
@@ -380,7 +422,12 @@ impl ReductionEngine {
         let mut baselines = Vec::with_capacity(usize::from(policy.runs()));
 
         for _ in 0..policy.runs() {
-            let observation = match run_candidate(request, &source_snapshot, &all_units)? {
+            let observation = match run_candidate(
+                request,
+                &source_snapshot,
+                &all_units,
+                python_preparation.as_ref(),
+            )? {
                 CandidateExecution::Observed(observation) => observation,
                 CandidateExecution::PreparationRejected => {
                     return Err(EngineError::BaselinePreparationFailed);
@@ -449,6 +496,7 @@ impl ReductionEngine {
                     request,
                     inventory: &inventory,
                     source_snapshot: &source_snapshot,
+                    python_preparation: python_preparation.as_ref(),
                     oracle: &oracle,
                     policy,
                     writer: writer.as_ref(),
@@ -509,6 +557,7 @@ impl ReductionEngine {
         from_digest = snapshot.digest();
         let structured = StructuredReductionContext {
             request,
+            python_preparation: python_preparation.as_ref(),
             oracle: &oracle,
             policy,
             writer: writer.as_ref(),
@@ -530,14 +579,16 @@ impl ReductionEngine {
             if final_error.is_some() {
                 return None;
             }
-            Some(match run_snapshot_candidate(request, &snapshot) {
-                Ok(CandidateExecution::Observed(observation)) => oracle.classify(&observation),
-                Ok(CandidateExecution::PreparationRejected) => CandidateVerdict::Rejected,
-                Err(error) => {
-                    final_error = Some(error);
-                    CandidateVerdict::Inconclusive
-                }
-            })
+            Some(
+                match run_snapshot_candidate(request, &snapshot, python_preparation.as_ref()) {
+                    Ok(CandidateExecution::Observed(observation)) => oracle.classify(&observation),
+                    Ok(CandidateExecution::PreparationRejected) => CandidateVerdict::Rejected,
+                    Err(error) => {
+                        final_error = Some(error);
+                        CandidateVerdict::Inconclusive
+                    }
+                },
+            )
         }));
         if let Some(error) = final_error {
             return Err(error);
@@ -640,26 +691,45 @@ fn run_candidate(
     request: &ReductionRequest,
     source_snapshot: &ProjectSnapshot,
     kept: &[&ReductionUnit],
+    python_preparation: Option<&FrozenPythonPreparation>,
 ) -> Result<CandidateExecution, EngineError> {
     let snapshot = source_snapshot.subset(kept.iter().copied())?;
-    run_snapshot_candidate(request, &snapshot)
+    run_snapshot_candidate(request, &snapshot, python_preparation)
 }
 
 fn run_snapshot_candidate(
     request: &ReductionRequest,
     snapshot: &ProjectSnapshot,
+    python_preparation: Option<&FrozenPythonPreparation>,
 ) -> Result<CandidateExecution, EngineError> {
     let candidate = CandidateWorkspace::materialize_snapshot(snapshot)?;
     if !prepare_candidate(request, candidate.root())? {
         return Ok(CandidateExecution::PreparationRejected);
     }
-    let command = CommandSpec::new(
-        request.program.clone(),
-        request.arguments.clone(),
-        candidate.root().to_path_buf(),
-        request.timeout,
-        request.max_output_bytes,
-    );
+    let command = if let Some(preparation) = python_preparation {
+        let Some(prepared) = preparation.prepare(
+            candidate.root(),
+            request.timeout(),
+            request.max_output_bytes(),
+        )?
+        else {
+            return Ok(CandidateExecution::PreparationRejected);
+        };
+        prepared.command_for(
+            request.program(),
+            request.arguments(),
+            request.timeout(),
+            request.max_output_bytes(),
+        )?
+    } else {
+        CommandSpec::new(
+            request.program.clone(),
+            request.arguments.clone(),
+            candidate.root().to_path_buf(),
+            request.timeout,
+            request.max_output_bytes,
+        )
+    };
     Ok(CandidateExecution::Observed(ProcessRunner::run(&command)?))
 }
 
@@ -719,6 +789,7 @@ struct StructuredFrontierOutcome {
 
 struct StructuredReductionContext<'a> {
     request: &'a ReductionRequest,
+    python_preparation: Option<&'a FrozenPythonPreparation>,
     oracle: &'a FailureOracle,
     policy: EvaluationPolicy,
     writer: Option<&'a WriterHandle>,
@@ -885,9 +956,23 @@ impl StructuredReductionContext<'_> {
         let snapshot = candidate
             .snapshot()
             .capture_prepared(workspace.root(), candidate.capture_paths())?;
+        let python = if let Some(preparation) = self.python_preparation {
+            let Some(prepared) = preparation.prepare(
+                workspace.root(),
+                self.request.timeout(),
+                self.request.max_output_bytes(),
+            )?
+            else {
+                return Ok(None);
+            };
+            Some(prepared)
+        } else {
+            None
+        };
         Ok(Some(PreparedStructuredCandidate {
             workspace,
             snapshot,
+            python,
         }))
     }
 
@@ -898,13 +983,22 @@ impl StructuredReductionContext<'_> {
         let Some(prepared) = self.realize(candidate)? else {
             return Ok(StructuredExecution::PreparationRejected);
         };
-        let command = CommandSpec::new(
-            self.request.program.clone(),
-            self.request.arguments.clone(),
-            prepared.workspace.root().to_path_buf(),
-            self.request.timeout,
-            self.request.max_output_bytes,
-        );
+        let command = if let Some(python) = &prepared.python {
+            python.command_for(
+                self.request.program(),
+                self.request.arguments(),
+                self.request.timeout(),
+                self.request.max_output_bytes(),
+            )?
+        } else {
+            CommandSpec::new(
+                self.request.program.clone(),
+                self.request.arguments.clone(),
+                prepared.workspace.root().to_path_buf(),
+                self.request.timeout,
+                self.request.max_output_bytes,
+            )
+        };
         Ok(StructuredExecution::Observed {
             observation: ProcessRunner::run(&command)?,
             realized: prepared.snapshot,
@@ -921,6 +1015,7 @@ struct StructuredPayload {
 struct PreparedStructuredCandidate {
     workspace: CandidateWorkspace,
     snapshot: ProjectSnapshot,
+    python: Option<PreparedPythonCandidate>,
 }
 
 enum StructuredExecution {
@@ -1068,6 +1163,7 @@ struct FrontierEvaluationContext<'a> {
     request: &'a ReductionRequest,
     inventory: &'a ProjectInventory,
     source_snapshot: &'a ProjectSnapshot,
+    python_preparation: Option<&'a FrozenPythonPreparation>,
     oracle: &'a FailureOracle,
     policy: EvaluationPolicy,
     writer: Option<&'a WriterHandle>,
@@ -1135,7 +1231,12 @@ impl FrontierEvaluationContext<'_> {
                 return None;
             }
             Some(
-                match run_candidate(self.request, self.source_snapshot, &kept) {
+                match run_candidate(
+                    self.request,
+                    self.source_snapshot,
+                    &kept,
+                    self.python_preparation,
+                ) {
                     Ok(CandidateExecution::Observed(observation)) => {
                         self.oracle.classify(&observation)
                     }

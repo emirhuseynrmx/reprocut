@@ -217,6 +217,12 @@ def compose_engine(*, runner_override: str | None = None) -> str:
     scheduler = read("crates/reprocut-engine/src/scheduler.rs").replace(
         "use reprocut_core::", "use crate::reprocut_core::"
     )
+    python_isolation = (
+        read("crates/reprocut-engine/src/python_isolation.rs")
+        .replace("use reprocut_core::", "use crate::reprocut_core::")
+        .replace("use reprocut_runner::", "use crate::reprocut_runner::")
+        .replace("reprocut_core::ExecutionObservation", "crate::reprocut_core::ExecutionObservation")
+    )
     pipeline = r'''
 use crate::reprocut_adapters::{Ecosystem, PreparationPlan};
 use crate::reprocut_workspace::ProjectSnapshot;
@@ -255,15 +261,24 @@ pub(crate) fn syntax_candidates(
         .replace("pub use reprocut_workspace::", "pub use crate::reprocut_workspace::")
     )
     runner = runner_override or r'''
-use std::{ffi::OsString, path::PathBuf, time::Duration};
+use std::{ffi::{OsStr, OsString}, path::{Path, PathBuf}, time::Duration};
 use crate::reprocut_core::ExecutionObservation;
 use thiserror::Error;
 #[derive(Debug, Error)]
 #[error("Playground engine compile stub")]
 pub struct RunnerError;
+#[derive(Clone, Debug, Default)]
+pub struct ChildEnvironment;
+impl ChildEnvironment {
+    pub fn inherit() -> Self { Self }
+    pub fn remove(self, _: impl AsRef<OsStr>) -> Self { self }
+    pub fn set(self, _: impl AsRef<OsStr>, _: impl AsRef<OsStr>) -> Self { self }
+    pub fn prepend_path(self, _: impl AsRef<Path>) -> Self { self }
+}
 pub struct CommandSpec;
 impl CommandSpec {
     pub fn new(_: PathBuf, _: Vec<OsString>, _: PathBuf, _: Duration, _: usize) -> Self { Self }
+    pub fn with_environment(self, _: ChildEnvironment) -> Self { self }
 }
 pub struct ProcessRunner;
 impl ProcessRunner {
@@ -274,6 +289,7 @@ impl ProcessRunner {
         read("crates/reprocut-engine/src/lib.rs")
         .replace("mod scheduler;", f"mod scheduler {{ {scheduler} }}")
         .replace("mod pipeline;", f"mod pipeline {{ {pipeline} }}")
+        .replace("mod python_isolation;", f"mod python_isolation {{ {python_isolation} }}")
         .replace("use reprocut_adapters::", "use crate::reprocut_adapters::")
         .replace("use reprocut_core::", "use crate::reprocut_core::")
         .replace("use reprocut_runner::", "use crate::reprocut_runner::")

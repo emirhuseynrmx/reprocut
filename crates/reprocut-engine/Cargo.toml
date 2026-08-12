@@ -15,11 +15,10 @@ reprocut-runner = { path = "../reprocut-runner", version = "0.1.0" }
 reprocut-state = { path = "../reprocut-state", version = "0.1.0" }
 reprocut-syntax = { path = "../reprocut-syntax", version = "0.1.0" }
 reprocut-workspace = { path = "../reprocut-workspace", version = "0.1.0" }
+serde.workspace = true
 serde_json.workspace = true
-thiserror.workspace = true
-
-[dev-dependencies]
 tempfile.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

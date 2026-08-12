@@ -367,47 +367,47 @@ git commit -m "feat(runner): make child environments explicit"
 - Produces: `FrozenPythonPreparation::{digest, prepare(snapshot), command_for(candidate_root, original_program, arguments)}`.
 - Consumes: Task 5 `ChildEnvironment` and Task 4 snapshots.
 
-- [ ] **Step 1: Build tiny project-owned wheel fixtures without registry access**
+- [x] **Step 1: Build tiny project-owned wheel fixtures without registry access**
 
 The fixture contains two local packages, `required_dep` and `unused_dep`, each built into a deterministic wheel and committed under `tests/fixtures/python_isolation/wheels/`. The failing project imports `required_dep`, declares both dependencies, and exits with a stable exception. The build script exists only to reproduce the checked-in wheels; tests consume the committed wheel bytes and never contact an index.
 
-- [ ] **Step 2: Add RED integration contracts**
+- [x] **Step 2: Add RED integration contracts**
 
 Assert: host-only modules are invisible; every baseline/candidate/final run has a distinct `sys.prefix`; deleting `required_dep` rejects during preparation/test; deleting `unused_dep` can be preserved; `PIP_INDEX_URL`/`PYTHONPATH` are scrubbed; only the frozen wheelhouse is used; absolute host Python/pytest commands are rejected; non-wheel, symlink, traversal-like, duplicate-case, or changed wheelhouse entries fail closed; changed wheelhouse/prepare-spec changes preparation digest.
 
-- [ ] **Step 3: Run Python isolation RED tests**
+- [x] **Step 3: Run Python isolation RED tests**
 
 Run: `python scripts/playground_workspace_verify.py --scope engine --append scripts/verification/python_isolation_contract.rs`
 
 Expected: FAIL because `IsolatedPython` currently trusts the caller environment and has no preparation contract.
 
-- [ ] **Step 4: Implement frozen wheelhouse capture**
+- [x] **Step 4: Implement frozen wheelhouse capture**
 
 Canonicalize the caller path once, enumerate regular non-symlink `.whl` files only, validate basename safety and case-insensitive uniqueness, copy into an owned temp directory, then hash sorted filename, byte length, and bytes under `REPROCUT-WHEELHOUSE-V1\0`. Retain the owned directory for the session lifetime; candidates never read the caller directory.
 
-- [ ] **Step 5: Implement interpreter and prepare-spec validation**
+- [x] **Step 5: Implement interpreter and prepare-spec validation**
 
 Run the explicit interpreter once with a fixed `-c` probe returning implementation/version/executable JSON. Validate extras with normalized Python extra-name grammar. Deserialize schema-1 prepare spec with `deny_unknown_fields`, argv arrays only, and only `{python}`, `{candidate}`, `{wheelhouse}` placeholders; reject empty argv, shell strings, and unknown placeholders.
 
-- [ ] **Step 6: Implement fresh candidate-local venv preparation**
+- [x] **Step 6: Implement fresh candidate-local venv preparation**
 
 For every run invoke explicit interpreter `-m venv <owned-venv>` without system site packages; use venv Python `-m pip install --disable-pip-version-check --no-input --no-index --find-links <frozen-wheelhouse> .[extras]`; run optional expanded argv; construct Task 5 environment with `VIRTUAL_ENV`, `PYTHONNOUSERSITE=1`, `PIP_NO_INDEX=1`, `PIP_FIND_LINKS`, and venv PATH first while removing ambient Python/index/user-site variables.
 
-- [ ] **Step 7: Resolve candidate command safely**
+- [x] **Step 7: Resolve candidate command safely**
 
 Map `python`, `python3`, and platform variants to venv Python; resolve pytest and other relative tool names only inside the venv Scripts/bin directory; reject absolute Python/test-runner paths outside the candidate venv. Preserve non-Python project-owned relative executables only when they resolve under candidate root.
 
-- [ ] **Step 8: Bind complete preparation identity**
+- [x] **Step 8: Bind complete preparation identity**
 
 Hash canonical interpreter path/identity, frozen wheelhouse digest, sorted extras, prepare-spec bytes/expanded argv, environment-policy version, install argv, timeout, and capture limit under `REPROCUT-PYTHON-PREP-V1\0`. Expose digest and a non-secret evidence description; never serialize temporary owned paths as identity.
 
-- [ ] **Step 9: Run isolation integration GREEN**
+- [x] **Step 9: Run isolation integration GREEN**
 
 Run: `python scripts/playground_workspace_verify.py --scope engine --append scripts/verification/python_isolation_contract.rs`
 
 Expected: PASS entirely offline on Windows/Unix path-layout fixtures.
 
-- [ ] **Step 10: Commit Python isolation**
+- [x] **Step 10: Commit Python isolation**
 
 ```powershell
 git add crates/reprocut-engine tests/fixtures/python_isolation scripts/verification/python_isolation_contract.rs
