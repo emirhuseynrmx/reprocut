@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::transformation::ContentDigest;
+
 /// The conservative result of evaluating one reduction candidate.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -193,15 +195,31 @@ impl ExecutionObservation {
     }
 }
 
+/// Selects the exact evidence contract used to recognize interesting candidates.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OracleMode {
+    /// Derive exact stable diagnostic discriminators from repeated baselines.
+    Automatic,
+    /// Require caller-owned regular expressions and reject veto expressions.
+    Regex,
+    /// Treat command exit code zero as interesting without inspecting output.
+    ExitZero,
+}
+
 /// A stable, serializable identity for the failure ReproCut must preserve.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct FailureFingerprint {
+    mode: OracleMode,
     exit_code: Option<i32>,
     signal: Option<i32>,
     termination: TerminationReason,
     anchor: String,
     anchors: Vec<DiagnosticAnchor>,
+    failure_patterns: Vec<String>,
+    reject_patterns: Vec<String>,
     normalization_schema: u16,
+    oracle_spec_digest: ContentDigest,
 }
 
 impl FailureFingerprint {
@@ -212,39 +230,55 @@ impl FailureFingerprint {
             anchor.clone(),
         )];
         Self {
+            mode: OracleMode::Automatic,
             exit_code,
             signal,
             termination: TerminationReason::from_legacy(exit_code, signal, false),
             anchor,
             anchors,
+            failure_patterns: Vec::new(),
+            reject_patterns: Vec::new(),
             normalization_schema: crate::NORMALIZATION_SCHEMA,
+            oracle_spec_digest: ContentDigest::of(b"REPROCUT-LEGACY-AUTOMATIC-SPEC\0"),
         }
     }
 
-    /// Creates a fingerprint from stream-qualified anchors.
-    pub(crate) fn from_anchors(
-        termination: TerminationReason,
+    /// Creates a mode-aware fingerprint from an already validated oracle contract.
+    pub(crate) fn from_oracle(
+        mode: OracleMode,
+        termination: Option<TerminationReason>,
         anchors: Vec<DiagnosticAnchor>,
+        failure_patterns: Vec<String>,
+        reject_patterns: Vec<String>,
+        oracle_spec_digest: ContentDigest,
     ) -> Self {
-        debug_assert!(!anchors.is_empty());
         let anchor = anchors
             .first()
             .map(|item| item.text.clone())
             .unwrap_or_default();
         Self {
+            mode,
             exit_code: match termination {
-                TerminationReason::ExitCode(code) => Some(code),
+                Some(TerminationReason::ExitCode(code)) => Some(code),
                 _ => None,
             },
             signal: match termination {
-                TerminationReason::UnixSignal(signal) => Some(signal),
+                Some(TerminationReason::UnixSignal(signal)) => Some(signal),
                 _ => None,
             },
-            termination,
+            termination: termination.unwrap_or(TerminationReason::RunnerFailure),
             anchor,
             anchors,
+            failure_patterns,
+            reject_patterns,
             normalization_schema: crate::NORMALIZATION_SCHEMA,
+            oracle_spec_digest,
         }
+    }
+
+    /// Returns the configured interestingness mode.
+    pub const fn mode(&self) -> OracleMode {
+        self.mode
     }
 
     /// Returns the expected process exit code.
@@ -272,8 +306,81 @@ impl FailureFingerprint {
         &self.anchors
     }
 
+    /// Returns caller-owned regexes that must all match.
+    pub fn failure_patterns(&self) -> &[String] {
+        &self.failure_patterns
+    }
+
+    /// Returns caller-owned regexes that veto a match.
+    pub fn reject_patterns(&self) -> &[String] {
+        &self.reject_patterns
+    }
+
     /// Returns the version of the deterministic normalization contract.
     pub const fn normalization_schema(&self) -> u16 {
         self.normalization_schema
     }
+
+    /// Returns the digest of the validated oracle configuration.
+    pub const fn oracle_spec_digest(&self) -> ContentDigest {
+        self.oracle_spec_digest
+    }
+
+    /// Returns a canonical SHA-256 identity for every failure evidence field.
+    pub fn digest(&self) -> ContentDigest {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"REPROCUT-FINGERPRINT-V2\0");
+        bytes.push(match self.mode {
+            OracleMode::Automatic => 0,
+            OracleMode::Regex => 1,
+            OracleMode::ExitZero => 2,
+        });
+        encode_termination(&mut bytes, self.termination);
+        bytes.extend_from_slice(&self.normalization_schema.to_le_bytes());
+        bytes.extend_from_slice(self.oracle_spec_digest.as_bytes());
+        encode_len(&mut bytes, self.anchors.len());
+        for anchor in &self.anchors {
+            bytes.push(match anchor.channel {
+                DiagnosticChannel::Auto => 0,
+                DiagnosticChannel::Stderr => 1,
+                DiagnosticChannel::Stdout => 2,
+                DiagnosticChannel::Combined => 3,
+            });
+            encode_text(&mut bytes, &anchor.text);
+        }
+        encode_strings(&mut bytes, &self.failure_patterns);
+        encode_strings(&mut bytes, &self.reject_patterns);
+        ContentDigest::of(&bytes)
+    }
+}
+
+fn encode_termination(bytes: &mut Vec<u8>, termination: TerminationReason) {
+    match termination {
+        TerminationReason::ExitCode(code) => {
+            bytes.push(0);
+            bytes.extend_from_slice(&code.to_le_bytes());
+        }
+        TerminationReason::UnixSignal(signal) => {
+            bytes.push(1);
+            bytes.extend_from_slice(&signal.to_le_bytes());
+        }
+        TerminationReason::TimedOut => bytes.push(2),
+        TerminationReason::RunnerFailure => bytes.push(3),
+    }
+}
+
+fn encode_strings(bytes: &mut Vec<u8>, values: &[String]) {
+    encode_len(bytes, values.len());
+    for value in values {
+        encode_text(bytes, value);
+    }
+}
+
+fn encode_text(bytes: &mut Vec<u8>, value: &str) {
+    encode_len(bytes, value.len());
+    bytes.extend_from_slice(value.as_bytes());
+}
+
+fn encode_len(bytes: &mut Vec<u8>, value: usize) {
+    bytes.extend_from_slice(&u64::try_from(value).unwrap_or(u64::MAX).to_le_bytes());
 }

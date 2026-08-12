@@ -132,7 +132,7 @@ git commit -m "fix(core): harden automatic failure identity"
 - Produces: `FailureOracle::from_spec_and_baselines(spec: OracleSpec, baselines: &[ExecutionObservation]) -> Result<Self, OracleError>`.
 - Produces: `FailureFingerprint::{mode, termination, anchors, failure_patterns, reject_patterns, normalization_schema, oracle_spec_digest}` and `pub fn digest(&self) -> ContentDigest`.
 
-- [ ] **Step 1: Add RED tests for configuration bounds and three verdict contracts**
+- [x] **Step 1: Add RED tests for configuration bounds and three verdict contracts**
 
 ```rust
 #[test]
@@ -154,35 +154,35 @@ fn reject_pattern_vetoes_required_regex() {
 
 Add tests for invalid regex, empty regex mode, patterns in exit-zero mode, 17 patterns, 4097-byte patterns, baseline required-pattern mismatch, reject-pattern baseline match, termination mismatch, automatic reject veto, and fingerprint digest changes for every field.
 
-- [ ] **Step 2: Run the oracle-mode RED suite**
+- [x] **Step 2: Run the oracle-mode RED suite**
 
 Run: `python scripts/playground_workspace_verify.py --scope core --append scripts/verification/oracle_modes_contract.rs`
 
 Expected: FAIL because `OracleMode`, `OracleSpec`, and mode-aware fingerprint fields are absent.
 
-- [ ] **Step 3: Implement `OracleSpec` validation and canonical encoding**
+- [x] **Step 3: Implement `OracleSpec` validation and canonical encoding**
 
 Compile patterns with Rust `regex::Regex`, deduplicate and sort pattern strings lexically, enforce counts/byte lengths and mode combinations before observations are evaluated, and add precise `OracleError` variants (`InvalidConfiguration`, `InvalidPattern`, `PatternTooLong`, `TooManyPatterns`, `BaselinePatternMismatch`, `BaselineUnexpectedReject`, `ExitZeroBaselineRequired`).
 
-- [ ] **Step 4: Implement mode-specific construction and classification**
+- [x] **Step 4: Implement mode-specific construction and classification**
 
 Automatic uses Task 1 anchors plus reject veto; regex uses newline-canonicalized bounded raw selected text with reject-first/all-required/termination-equal semantics; exit-zero requires baseline `ExitCode(0)`, treats candidate `ExitCode(0)` as preserved, other exit codes as rejected, and timeout/signal/runner failure as inconclusive. Automatic and regex treat truncation as inconclusive; exit-zero deliberately ignores truncation.
 
-- [ ] **Step 5: Replace compatibility fingerprint fields with one mode-aware serialized value**
+- [x] **Step 5: Replace compatibility fingerprint fields with one mode-aware serialized value**
 
 Encode every fingerprint field using fixed tags plus length-delimited bytes under domain `REPROCUT-FINGERPRINT\0`; set `normalization_schema` to `2`; retain `anchor()` only as a display accessor returning the first anchor or an empty string for exit-zero. Include the canonical `OracleSpec` digest in the fingerprint digest.
 
-- [ ] **Step 6: Run oracle, model, docs, and format verification GREEN**
+- [x] **Step 6: Run oracle, model, docs, and format verification GREEN**
 
 Run: `python scripts/playground_workspace_verify.py --scope core --append scripts/verification/oracle_modes_contract.rs`
 
-Run: `python scripts/playground_workspace_verify.py --scope core --append scripts/verification/final_rust_contract.rs`
+Run: `python scripts/playground_workspace_verify.py --scope full --append scripts/verification/final_rust_contract.rs`
 
 Run: `python scripts/playground_rustfmt.py`
 
 Expected: PASS, including deterministic digest tests.
 
-- [ ] **Step 7: Commit oracle modes and fingerprints**
+- [x] **Step 7: Commit oracle modes and fingerprints**
 
 ```powershell
 git add crates/reprocut-core scripts/verification/final_rust_contract.rs

@@ -36,15 +36,15 @@ mod final_rust_contract {
 
     #[test]
     fn oracle_rejects_wrong_and_incomplete_evidence() {
-        let baseline = observation(1, "TypeError: request 10 at /tmp/alpha.py", false, false);
-        let second = observation(1, "TypeError: request 20 at /var/run/beta.py", false, false);
+        let baseline = observation(1, "TypeError: request at /tmp/alpha.py", false, false);
+        let second = observation(1, "TypeError: request at /var/tmp/beta.py", false, false);
         let oracle =
             FailureOracle::from_baselines(&[baseline, second]).expect("baseline is stable");
 
         assert_eq!(
             oracle.classify(&observation(
                 1,
-                "TypeError: request 30 at /opt/build/gamma.py",
+                "TypeError: request at /tmp/gamma.py",
                 false,
                 false,
             )),
@@ -53,7 +53,7 @@ mod final_rust_contract {
         assert_eq!(
             oracle.classify(&observation(
                 2,
-                "TypeError: request 30 at /opt/x.py",
+                "TypeError: request at /tmp/x.py",
                 false,
                 false
             )),
@@ -62,7 +62,7 @@ mod final_rust_contract {
         assert_eq!(
             oracle.classify(&observation(
                 1,
-                "TypeError: request 30 at /opt/x.py",
+                "TypeError: request at /tmp/x.py",
                 true,
                 false
             )),

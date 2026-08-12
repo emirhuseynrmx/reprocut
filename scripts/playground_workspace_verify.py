@@ -103,7 +103,7 @@ def compose_core() -> str:
     )
     model = read("crates/reprocut-core/src/model.rs").replace(
         "crate::NORMALIZATION_SCHEMA", "super::NORMALIZATION_SCHEMA"
-    )
+    ).replace("use crate::transformation::", "use super::transformation::")
     oracle = (
         read("crates/reprocut-core/src/oracle.rs")
         .replace("use crate::{", "use super::{", 1)

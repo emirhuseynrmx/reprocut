@@ -9,12 +9,12 @@ mod reducer;
 mod transformation;
 mod winner;
 
+pub use diagnostic::{normalize_diagnostic, NORMALIZATION_SCHEMA};
 pub use model::{
     CandidateVerdict, ContainmentMechanism, DiagnosticAnchor, DiagnosticChannel,
-    ExecutionObservation, FailureFingerprint, TerminationReason,
+    ExecutionObservation, FailureFingerprint, OracleMode, TerminationReason,
 };
-pub use diagnostic::{normalize_diagnostic, NORMALIZATION_SCHEMA};
-pub use oracle::{FailureOracle, OracleError};
+pub use oracle::{FailureOracle, OracleError, OracleSpec};
 pub use policy::{
     wilson_interval, AggregateDecision, AggregateEvidence, ConfidenceInterval, EvaluationPolicy,
     PolicyError,
