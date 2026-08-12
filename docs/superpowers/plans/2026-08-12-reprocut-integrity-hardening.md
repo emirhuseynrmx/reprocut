@@ -432,33 +432,33 @@ git commit -m "feat(engine): isolate Python candidates offline"
 - Produces: `SessionContract::new_v2(source_snapshot_digest, command_digest, oracle_spec_digest, preparation_digest, policy_digest, adapter_version, engine_version)`.
 - Produces: cache key `SHA256(candidate_snapshot_digest || oracle_spec_digest || preparation_digest)` with domain separation.
 
-- [ ] **Step 1: Add RED session/cache tests**
+- [x] **Step 1: Add RED session/cache tests**
 
 Create two otherwise identical contracts that differ in each of: source execute mask, command argv boundary, oracle mode/channel/pattern, normalization schema, preparation digest, ecosystem, inventory exclusion, timeout, capture budget, and evaluation policy. Assert distinct digests and refuse resume from schema 1 with an actionable incompatibility error. Assert candidate cache misses when oracle/preparation identity changes.
 
-- [ ] **Step 2: Run session RED verification**
+- [x] **Step 2: Run session RED verification**
 
 Run: `python scripts/playground_workspace_verify.py --scope engine --append scripts/verification/session_integrity_contract.rs`
 
 Expected: FAIL because current session identity omits most fields and uses normalization schema 1.
 
-- [ ] **Step 3: Implement session contract schema 2**
+- [x] **Step 3: Implement session contract schema 2**
 
 Persist explicit `contract_schema = 2`; encode every field with domain tags and length prefixes; add migration 0003 only to store the schema marker for new sessions, not to migrate old identity. `resume` must reject any older contract with: `state contract schema 1 is incompatible with ReproCut 0.1 integrity schema 2; restart explicitly`.
 
-- [ ] **Step 4: Bind oracle and preparation before opening state**
+- [x] **Step 4: Bind oracle and preparation before opening state**
 
 Capture source snapshot, validate/capture Python preparation when requested, construct/validate `OracleSpec`, then build/open session state. No child process starts before all static contracts succeed. Incomplete isolated-Python configuration disables dependency candidates only when isolation was not requested; an explicitly requested incomplete contract returns a configuration error.
 
-- [ ] **Step 5: Apply identical preparation to every phase**
+- [x] **Step 5: Apply identical preparation to every phase**
 
 Use one engine helper for baseline, file candidate, structured candidate, final verification, and publication verification: materialize snapshot, prepare fresh environment, resolve command, execute, classify. Baseline preparation failure aborts; candidate preparation failure rejects; preparation timeout/runner failure is inconclusive.
 
-- [ ] **Step 6: Replace cache identity and pipeline gating**
+- [x] **Step 6: Replace cache identity and pipeline gating**
 
 Use candidate snapshot + oracle spec + preparation digest, not transformation description or live inventory. Enable Python dependency manifest candidates only when `FrozenPythonPreparation` exists; keep safe script-entry reduction available without it and expose a limitation explaining why dependency entries were skipped.
 
-- [ ] **Step 7: Run state, pipeline, and engine GREEN verification**
+- [x] **Step 7: Run state, pipeline, and engine GREEN verification**
 
 Run: `python scripts/playground_workspace_verify.py --scope engine --append scripts/verification/session_integrity_contract.rs`
 
@@ -468,7 +468,7 @@ Run: `python scripts/playground_workspace_verify.py --scope engine --append scri
 
 Expected: PASS with exact resume refusal and phase parity.
 
-- [ ] **Step 8: Commit engine/session integrity**
+- [x] **Step 8: Commit engine/session integrity**
 
 ```powershell
 git add crates/reprocut-engine crates/reprocut-state scripts/verification/session_integrity_contract.rs

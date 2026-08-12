@@ -128,7 +128,7 @@ fn inconclusive_retries_append_evidence_and_can_become_terminal() {
 }
 
 #[test]
-fn schema_one_journals_migrate_without_losing_compatibility() {
+fn schema_one_journals_migrate_but_old_session_contracts_are_not_reused() {
     let temporary = tempfile::tempdir().expect("state directory");
     let database = temporary.path().join("state.sqlite3");
     let connection = rusqlite::Connection::open(&database).expect("database");
@@ -143,7 +143,7 @@ fn schema_one_journals_migrate_without_losing_compatibility() {
     let version = connection
         .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
         .expect("version");
-    assert_eq!(version, 2);
+    assert_eq!(version, 3);
 }
 
 #[test]
@@ -161,10 +161,12 @@ fn restart_is_explicit_and_preserves_prior_sessions() {
 }
 
 fn contract(seed: &str) -> SessionContract {
-    SessionContract::new(
+    SessionContract::new_v2(
         ContentDigest::of(format!("source-{seed}").as_bytes()),
         ContentDigest::of(format!("command-{seed}").as_bytes()),
-        1,
+        ContentDigest::of(format!("oracle-{seed}").as_bytes()),
+        ContentDigest::of(format!("preparation-{seed}").as_bytes()),
+        ContentDigest::of(format!("policy-{seed}").as_bytes()),
         "files-v1".to_owned(),
         "0.1.0".to_owned(),
     )

@@ -27,7 +27,8 @@ use reprocut_adapters::{Ecosystem, NpmManifest, PreparationPlan};
 use reprocut_core::{
     reduce_hierarchical_frontiers, AggregateDecision, AggregateEvidence, CandidateRank,
     CandidateVerdict, ContentDigest, DiagnosticChannel, EvaluationPolicy, ExecutionObservation,
-    FailureFingerprint, FailureOracle, FrontierClass, OracleError, ReductionResult, ReductionUnit,
+    FailureFingerprint, FailureOracle, FrontierClass, OracleError, OracleMode, OracleSpec,
+    ReductionResult, ReductionUnit,
 };
 use reprocut_runner::{CommandSpec, ProcessRunner, RunnerError};
 use reprocut_state::{
@@ -75,6 +76,7 @@ pub struct ReductionRequest {
     timeout: Duration,
     max_output_bytes: usize,
     diagnostic_channel: DiagnosticChannel,
+    oracle_spec: OracleSpec,
     evaluation_policy: EvaluationPolicy,
     jobs: usize,
     session_mode: SessionMode,
@@ -100,6 +102,7 @@ impl ReductionRequest {
             timeout,
             max_output_bytes,
             diagnostic_channel: DiagnosticChannel::Auto,
+            oracle_spec: OracleSpec::automatic(DiagnosticChannel::Auto),
             evaluation_policy: EvaluationPolicy::strict(),
             jobs: 1,
             session_mode: SessionMode::Ephemeral,
@@ -117,7 +120,15 @@ impl ReductionRequest {
         evaluation_policy: EvaluationPolicy,
     ) -> Self {
         self.diagnostic_channel = diagnostic_channel;
+        self.oracle_spec = OracleSpec::automatic(diagnostic_channel);
         self.evaluation_policy = evaluation_policy;
+        self
+    }
+
+    /// Returns a request using one prevalidated oracle contract.
+    pub fn with_oracle(mut self, oracle_spec: OracleSpec) -> Self {
+        self.diagnostic_channel = oracle_spec.channel();
+        self.oracle_spec = oracle_spec;
         self
     }
 
@@ -181,6 +192,11 @@ impl ReductionRequest {
     /// Returns the process-stream selection policy.
     pub const fn diagnostic_channel(&self) -> DiagnosticChannel {
         self.diagnostic_channel
+    }
+
+    /// Returns the complete validated failure-recognition contract.
+    pub const fn oracle_spec(&self) -> &OracleSpec {
+        &self.oracle_spec
     }
 
     /// Returns the repeated-execution policy.
@@ -413,7 +429,11 @@ impl ReductionEngine {
         {
             return Err(EngineError::MissingPythonIsolation);
         }
-        let contract = session_contract(request, source_digest);
+        let preparation_digest = python_preparation
+            .as_ref()
+            .map(FrozenPythonPreparation::digest)
+            .unwrap_or_else(|| builtin_preparation_digest(request));
+        let contract = session_contract(request, source_digest, preparation_digest);
         let (state, resumed) = open_state(request.session_mode(), contract)?;
         let state_path = state.as_ref().map(|store| store.path().to_path_buf());
         let writer = state.as_ref().map(StateStore::writer);
@@ -433,7 +453,8 @@ impl ReductionEngine {
                     return Err(EngineError::BaselinePreparationFailed);
                 }
             };
-            if policy == EvaluationPolicy::strict()
+            if request.oracle_spec().mode() != OracleMode::ExitZero
+                && policy == EvaluationPolicy::strict()
                 && observation.exit_code() == Some(0)
                 && observation.signal().is_none()
             {
@@ -441,7 +462,7 @@ impl ReductionEngine {
             }
             baselines.push(observation);
         }
-        let oracle = stabilize_oracle(request.diagnostic_channel(), policy, &baselines)?;
+        let oracle = stabilize_oracle(request.oracle_spec(), policy, &baselines)?;
         let first_error = Mutex::new(None::<EngineError>);
         let attempts_by_digest = Mutex::new(HashMap::<ContentDigest, AttemptRecord>::new());
         let memory_cache = Mutex::new(HashMap::<ContentDigest, AttemptRecord>::new());
@@ -467,7 +488,16 @@ impl ReductionEngine {
 
                 for (slot, candidate) in frontier.iter().enumerate() {
                     let unit_ids = candidate.iter().map(|unit| unit.id()).collect::<Vec<_>>();
-                    let digest = candidate_digest(&unit_ids);
+                    let Ok(candidate_snapshot) = source_snapshot.subset(candidate.iter().copied())
+                    else {
+                        set_error(&first_error, EngineError::InvalidCandidate);
+                        return vec![None; frontier.len()];
+                    };
+                    let digest = candidate_cache_digest(
+                        candidate_snapshot.digest(),
+                        request.oracle_spec().digest(),
+                        preparation_digest,
+                    );
                     slot_digests.push(digest);
                     if let Some(&unique) = unique_by_digest.get(&digest) {
                         slot_to_unique.push(unique);
@@ -558,6 +588,7 @@ impl ReductionEngine {
         let structured = StructuredReductionContext {
             request,
             python_preparation: python_preparation.as_ref(),
+            preparation_digest,
             oracle: &oracle,
             policy,
             writer: writer.as_ref(),
@@ -625,12 +656,12 @@ impl ReductionEngine {
 }
 
 fn stabilize_oracle(
-    channel: DiagnosticChannel,
+    spec: &OracleSpec,
     policy: EvaluationPolicy,
     baselines: &[ExecutionObservation],
 ) -> Result<FailureOracle, OracleError> {
     if policy == EvaluationPolicy::strict() {
-        return FailureOracle::from_baselines_with_channel(channel, baselines);
+        return FailureOracle::from_spec_and_baselines(spec.clone(), baselines);
     }
 
     let mut best = None::<(u16, usize, FailureOracle)>;
@@ -641,7 +672,7 @@ fn stabilize_oracle(
             }
             let pair = [&baselines[left], &baselines[right]];
             let pair = [pair[0].clone(), pair[1].clone()];
-            let Ok(candidate) = FailureOracle::from_baselines_with_channel(channel, &pair) else {
+            let Ok(candidate) = FailureOracle::from_spec_and_baselines(spec.clone(), &pair) else {
                 continue;
             };
             let evidence = policy.aggregate(
@@ -790,6 +821,7 @@ struct StructuredFrontierOutcome {
 struct StructuredReductionContext<'a> {
     request: &'a ReductionRequest,
     python_preparation: Option<&'a FrozenPythonPreparation>,
+    preparation_digest: ContentDigest,
     oracle: &'a FailureOracle,
     policy: EvaluationPolicy,
     writer: Option<&'a WriterHandle>,
@@ -869,7 +901,11 @@ impl StructuredReductionContext<'_> {
             .into_iter()
             .enumerate()
             .map(|(index, candidate)| {
-                let digest = structured_candidate_digest(&candidate);
+                let digest = structured_candidate_digest(
+                    &candidate,
+                    self.request.oracle_spec().digest(),
+                    self.preparation_digest,
+                );
                 CandidatePlan::new(
                     CandidateRank::new(
                         phase,
@@ -1138,10 +1174,16 @@ impl StructuredEvaluationContext<'_, '_> {
     }
 }
 
-fn structured_candidate_digest(candidate: &StructuredCandidate) -> ContentDigest {
+fn structured_candidate_digest(
+    candidate: &StructuredCandidate,
+    oracle_spec: ContentDigest,
+    preparation_digest: ContentDigest,
+) -> ContentDigest {
     let mut encoded = Vec::new();
-    encoded.extend_from_slice(b"REPROCUT-STRUCTURED\0");
+    encoded.extend_from_slice(b"REPROCUT-STRUCTURED-V2\0");
     encoded.extend_from_slice(candidate.snapshot().digest().as_bytes());
+    encoded.extend_from_slice(oracle_spec.as_bytes());
+    encoded.extend_from_slice(preparation_digest.as_bytes());
     if let Some(preparation) = candidate.preparation() {
         for command in preparation.commands() {
             encode_field(&mut encoded, command.program().to_string_lossy().as_bytes());
@@ -1319,11 +1361,21 @@ fn open_state(
     }
 }
 
-fn session_contract(request: &ReductionRequest, source: ContentDigest) -> SessionContract {
+fn session_contract(
+    request: &ReductionRequest,
+    source: ContentDigest,
+    preparation_digest: ContentDigest,
+) -> SessionContract {
     let mut command = Vec::new();
+    command.extend_from_slice(b"REPROCUT-COMMAND-V2\0");
     encode_field(
         &mut command,
         request.program().as_os_str().to_string_lossy().as_bytes(),
+    );
+    command.extend_from_slice(
+        &u64::try_from(request.arguments().len())
+            .unwrap_or(u64::MAX)
+            .to_le_bytes(),
     );
     for argument in request.arguments() {
         encode_field(&mut command, argument.to_string_lossy().as_bytes());
@@ -1334,46 +1386,78 @@ fn session_contract(request: &ReductionRequest, source: ContentDigest) -> Sessio
             .unwrap_or(u64::MAX)
             .to_le_bytes(),
     );
-    command.push(match request.diagnostic_channel() {
-        DiagnosticChannel::Auto => 0,
-        DiagnosticChannel::Stderr => 1,
-        DiagnosticChannel::Stdout => 2,
-        DiagnosticChannel::Combined => 3,
-    });
-    command.extend_from_slice(&request.evaluation_policy().runs().to_le_bytes());
-    command.extend_from_slice(&request.evaluation_policy().required().to_le_bytes());
-    command.push(match request.ecosystem() {
-        Ecosystem::Cargo => 1,
-        Ecosystem::Python => 2,
-        Ecosystem::Npm => 3,
-        Ecosystem::None => 0,
-    });
-    command.push(match request.preparation_mode() {
-        PreparationMode::None => 0,
-        PreparationMode::Offline => 1,
-        PreparationMode::LifecycleScripts => 2,
-        PreparationMode::IsolatedPython => 3,
-    });
-    let mut adapter_version = String::from("files-v2");
+    let mut adapter_version = String::from("files-v3");
+    adapter_version.push(char::from(
+        b'0' + match request.ecosystem() {
+            Ecosystem::Cargo => 1,
+            Ecosystem::Python => 2,
+            Ecosystem::Npm => 3,
+            Ecosystem::None => 0,
+        },
+    ));
+    adapter_version.push(char::from(
+        b'0' + match request.preparation_mode() {
+            PreparationMode::None => 0,
+            PreparationMode::Offline => 1,
+            PreparationMode::LifecycleScripts => 2,
+            PreparationMode::IsolatedPython => 3,
+        },
+    ));
     for name in request.inventory_policy().excluded_directory_names() {
         adapter_version.push('\0');
         adapter_version.push_str(name);
     }
-    SessionContract::new(
+    SessionContract::new_v2(
         source,
         ContentDigest::of(&command),
-        1,
+        request.oracle_spec().digest(),
+        preparation_digest,
+        evaluation_policy_digest(request.evaluation_policy()),
         adapter_version,
         env!("CARGO_PKG_VERSION").to_owned(),
     )
 }
 
-fn candidate_digest(ids: &[u32]) -> ContentDigest {
-    let mut encoded = Vec::with_capacity(20_usize.saturating_add(ids.len().saturating_mul(4)));
-    encoded.extend_from_slice(b"REPROCUT-CANDIDATE\0");
-    for id in ids {
-        encoded.extend_from_slice(&id.to_le_bytes());
-    }
+fn candidate_cache_digest(
+    snapshot: ContentDigest,
+    oracle_spec: ContentDigest,
+    preparation: ContentDigest,
+) -> ContentDigest {
+    let mut encoded = Vec::with_capacity(128);
+    encoded.extend_from_slice(b"REPROCUT-CANDIDATE-CACHE-V2\0");
+    encoded.extend_from_slice(snapshot.as_bytes());
+    encoded.extend_from_slice(oracle_spec.as_bytes());
+    encoded.extend_from_slice(preparation.as_bytes());
+    ContentDigest::of(&encoded)
+}
+
+fn evaluation_policy_digest(policy: EvaluationPolicy) -> ContentDigest {
+    let mut encoded = Vec::with_capacity(32);
+    encoded.extend_from_slice(b"REPROCUT-POLICY-V1\0");
+    encoded.push(match policy {
+        EvaluationPolicy::Strict => 0,
+        EvaluationPolicy::Flaky { .. } => 1,
+    });
+    encoded.extend_from_slice(&policy.runs().to_le_bytes());
+    encoded.extend_from_slice(&policy.required().to_le_bytes());
+    ContentDigest::of(&encoded)
+}
+
+fn builtin_preparation_digest(request: &ReductionRequest) -> ContentDigest {
+    let mut encoded = Vec::with_capacity(64);
+    encoded.extend_from_slice(b"REPROCUT-BUILTIN-PREPARATION-V1\0");
+    encoded.push(match request.ecosystem() {
+        Ecosystem::None => 0,
+        Ecosystem::Cargo => 1,
+        Ecosystem::Python => 2,
+        Ecosystem::Npm => 3,
+    });
+    encoded.push(match request.preparation_mode() {
+        PreparationMode::None => 0,
+        PreparationMode::Offline => 1,
+        PreparationMode::LifecycleScripts => 2,
+        PreparationMode::IsolatedPython => 3,
+    });
     ContentDigest::of(&encoded)
 }
 

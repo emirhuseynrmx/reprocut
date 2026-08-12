@@ -10,20 +10,24 @@ use std::{
     time::Duration,
 };
 
-use reprocut_core::{CandidateVerdict, ContentDigest};
+use reprocut_core::{CandidateVerdict, ContentDigest, NORMALIZATION_SCHEMA};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use thiserror::Error;
 
-use schema::{MIGRATION_0001, MIGRATION_0002, SCHEMA_VERSION};
+use schema::{MIGRATION_0001, MIGRATION_0002, MIGRATION_0003, SCHEMA_VERSION};
 
 const WRITER_QUEUE_CAPACITY: usize = 64;
 
 /// Immutable fields that determine whether a previous session is reusable.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SessionContract {
+    contract_schema: u16,
     source_digest: ContentDigest,
     command_digest: ContentDigest,
     normalization_schema: u16,
+    oracle_spec_digest: ContentDigest,
+    preparation_digest: ContentDigest,
+    policy_digest: ContentDigest,
     adapter_version: String,
     engine_version: String,
 }
@@ -38,9 +42,37 @@ impl SessionContract {
         engine_version: String,
     ) -> Self {
         Self {
+            contract_schema: 1,
             source_digest,
             command_digest,
             normalization_schema,
+            oracle_spec_digest: ContentDigest::of(b"REPROCUT-LEGACY-ORACLE\0"),
+            preparation_digest: ContentDigest::of(b"REPROCUT-LEGACY-PREPARATION\0"),
+            policy_digest: ContentDigest::of(b"REPROCUT-LEGACY-POLICY\0"),
+            adapter_version,
+            engine_version,
+        }
+    }
+
+    /// Creates the complete ReproCut 0.1 integrity contract.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_v2(
+        source_digest: ContentDigest,
+        command_digest: ContentDigest,
+        oracle_spec_digest: ContentDigest,
+        preparation_digest: ContentDigest,
+        policy_digest: ContentDigest,
+        adapter_version: String,
+        engine_version: String,
+    ) -> Self {
+        Self {
+            contract_schema: 2,
+            source_digest,
+            command_digest,
+            normalization_schema: NORMALIZATION_SCHEMA,
+            oracle_spec_digest,
+            preparation_digest,
+            policy_digest,
             adapter_version,
             engine_version,
         }
@@ -53,13 +85,43 @@ impl SessionContract {
                 .saturating_add(self.adapter_version.len())
                 .saturating_add(self.engine_version.len()),
         );
-        bytes.extend_from_slice(b"REPROCUT-SESSION\0");
+        if self.contract_schema == 1 {
+            bytes.extend_from_slice(b"REPROCUT-SESSION\0");
+        } else {
+            bytes.extend_from_slice(b"REPROCUT-SESSION-V2\0");
+            bytes.extend_from_slice(&self.contract_schema.to_le_bytes());
+        }
         bytes.extend_from_slice(self.source_digest.as_bytes());
         bytes.extend_from_slice(self.command_digest.as_bytes());
         bytes.extend_from_slice(&self.normalization_schema.to_le_bytes());
+        if self.contract_schema >= 2 {
+            bytes.extend_from_slice(self.oracle_spec_digest.as_bytes());
+            bytes.extend_from_slice(self.preparation_digest.as_bytes());
+            bytes.extend_from_slice(self.policy_digest.as_bytes());
+        }
         encode_text(&mut bytes, &self.adapter_version);
         encode_text(&mut bytes, &self.engine_version);
         ContentDigest::of(&bytes)
+    }
+
+    /// Returns the integrity-contract schema independently from the SQLite schema.
+    pub const fn contract_schema(&self) -> u16 {
+        self.contract_schema
+    }
+
+    /// Returns the validated oracle configuration identity.
+    pub const fn oracle_spec_digest(&self) -> ContentDigest {
+        self.oracle_spec_digest
+    }
+
+    /// Returns the frozen candidate-preparation identity.
+    pub const fn preparation_digest(&self) -> ContentDigest {
+        self.preparation_digest
+    }
+
+    /// Returns the repeated-evaluation policy identity.
+    pub const fn policy_digest(&self) -> ContentDigest {
+        self.policy_digest
     }
 
     /// Returns the immutable source-tree identity.
@@ -424,8 +486,8 @@ impl StateStore {
             .execute(
                 "INSERT INTO sessions(
                     contract_digest, source_digest, command_digest,
-                    normalization_schema, adapter_version, engine_version
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    normalization_schema, adapter_version, engine_version, contract_schema
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 params![
                     contract.digest().as_bytes().as_slice(),
                     contract.source_digest.as_bytes().as_slice(),
@@ -433,6 +495,7 @@ impl StateStore {
                     i64::from(contract.normalization_schema),
                     contract.adapter_version,
                     contract.engine_version,
+                    i64::from(contract.contract_schema),
                 ],
             )
             .map_err(database_error)?;
@@ -448,13 +511,22 @@ impl StateStore {
         migrate(&connection)?;
         let latest = connection
             .query_row(
-                "SELECT id, contract_digest FROM sessions ORDER BY id DESC LIMIT 1",
+                "SELECT id, contract_digest, contract_schema FROM sessions ORDER BY id DESC LIMIT 1",
                 [],
-                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?)),
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, Vec<u8>>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                },
             )
             .optional()
             .map_err(database_error)?
             .ok_or(StateError::NoSession)?;
+        if latest.2 != i64::from(contract.contract_schema) {
+            return Err(StateError::LegacyContractSchema { found: latest.2 });
+        }
         if latest.1.as_slice() != contract.digest().as_bytes() {
             return Err(StateError::IncompatibleSession {
                 session_id: latest.0,
@@ -536,6 +608,14 @@ pub enum StateError {
     IncompatibleSession {
         /// Refused previous session.
         session_id: i64,
+    },
+    /// A journal session predates the complete ReproCut 0.1 integrity identity.
+    #[error(
+        "state contract schema {found} is incompatible with ReproCut 0.1 integrity schema 2; restart explicitly"
+    )]
+    LegacyContractSchema {
+        /// Persisted contract schema.
+        found: i64,
     },
     /// A record violated fail-closed causal rules.
     #[error("invalid state record: {0}")]
@@ -986,10 +1066,21 @@ fn migrate(connection: &Connection) -> Result<(), StateError> {
                 .map_err(database_error)?;
             connection
                 .execute_batch(MIGRATION_0002)
+                .map_err(database_error)?;
+            connection
+                .execute_batch(MIGRATION_0003)
                 .map_err(database_error)
         }
-        1 => connection
-            .execute_batch(MIGRATION_0002)
+        1 => {
+            connection
+                .execute_batch(MIGRATION_0002)
+                .map_err(database_error)?;
+            connection
+                .execute_batch(MIGRATION_0003)
+                .map_err(database_error)
+        }
+        2 => connection
+            .execute_batch(MIGRATION_0003)
             .map_err(database_error),
         SCHEMA_VERSION => Ok(()),
         found => Err(StateError::SchemaVersion {

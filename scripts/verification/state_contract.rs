@@ -105,10 +105,12 @@ mod state_contract {
     }
 
     fn session(seed: &str) -> SessionContract {
-        SessionContract::new(
+        SessionContract::new_v2(
             ContentDigest::of(format!("source-{seed}").as_bytes()),
             ContentDigest::of(format!("command-{seed}").as_bytes()),
-            1,
+            ContentDigest::of(format!("oracle-{seed}").as_bytes()),
+            ContentDigest::of(format!("preparation-{seed}").as_bytes()),
+            ContentDigest::of(format!("policy-{seed}").as_bytes()),
             "files-v1".to_owned(),
             "0.1.0".to_owned(),
         )
