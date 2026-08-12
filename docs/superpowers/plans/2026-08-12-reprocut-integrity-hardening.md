@@ -656,7 +656,7 @@ git commit -m "test(release): require 0.1 integrity evidence"
 - Consumes the exact committed 0.1 source tree.
 - Produces a verification record with commands, UTC timestamps, commit SHA, pass/fail/skip counts, platform limitation, and ZIP SHA-256.
 
-- [ ] **Step 1: Run formatting and complete remote Rust workspace verification**
+- [x] **Step 1: Run formatting and complete remote Rust workspace verification**
 
 Run: `python scripts/playground_rustfmt.py`
 
@@ -664,7 +664,7 @@ Run: `python scripts/playground_workspace_verify.py`
 
 Expected: all composed workspace contracts pass; no warning/error is omitted from the verification record.
 
-- [ ] **Step 2: Run Python and browser/report verification**
+- [x] **Step 2: Run Python and browser/report verification**
 
 Run: `$env:PYTHONPATH='.test-deps;python'; & 'C:\Users\emirh\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' -m pytest python/tests -q --basetemp .tmp/pytest-final`
 
@@ -672,7 +672,7 @@ Run: `& 'C:\Users\emirh\.cache\codex-runtimes\codex-primary-runtime\dependencies
 
 Expected: Python suite and browser contract pass; native-wheel skip is recorded, not described as a pass.
 
-- [ ] **Step 3: Run static release and repository hygiene audits**
+- [x] **Step 3: Run static release and repository hygiene audits**
 
 Run: `& 'C:\Users\emirh\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' scripts/release/audit.py --repository . --static-only`
 
@@ -682,18 +682,18 @@ Run: `git status --short`
 
 Expected: static audit passes, diff check is empty, and status contains only the intended verification record before its commit.
 
-- [ ] **Step 4: Commit the verification record**
+- [x] **Step 4: Commit the verification record**
 
 ```powershell
 git add docs/verification/2026-08-12-integrity-hardening.md
 git commit -m "docs(verify): record 0.1 integrity gates"
 ```
 
-- [ ] **Step 5: Create a clean source ZIP from tracked release files**
+- [x] **Step 5: Create a clean source ZIP from tracked release files**
 
 Use `git archive --format=zip --prefix=reprocut-0.1.0/ -o dist/reprocut-0.1.0-source.zip HEAD`; verify its entries contain no `.git`, `.reprocut`, temporary pytest data, local wheel caches, secrets, state databases, or unrelated workspace files. Calculate SHA-256 with `Get-FileHash -Algorithm SHA256` and append it to the verification handoff without amending committed source claims.
 
-- [ ] **Step 6: Report exact outcome without publishing**
+- [x] **Step 6: Report exact outcome without publishing**
 
 Provide links to the source tree, verification record, and ZIP; list exact pass/skip counts and the Windows native-Rust limitation; state that crates.io/PyPI publication, push, and tag remain for the user.
 
