@@ -1,7 +1,7 @@
 use reprocut_report::{
     write_attempts_jsonl, AttemptSummary, ChannelAnchor, EvaluationPolicyEvidence, FailureEvidence,
-    MaterialMeasurement, MeasurementSet, ReductionEvidence, RetentionEvidence, SearchEvidence,
-    EVIDENCE_SCHEMA_VERSION,
+    MaterialMeasurement, MeasurementSet, PreparationEvidence, ReductionEvidence, RetentionEvidence,
+    SearchEvidence, EVIDENCE_SCHEMA_VERSION,
 };
 use serde_json::json;
 
@@ -15,6 +15,7 @@ fn one_model_serializes_consistent_measurements_and_attempts() {
     assert_eq!(value["measurements"]["retained"]["bytes"], 512);
     assert_eq!(value["search"]["attempts"], 41);
     assert_eq!(value["failure"]["same_failure"], true);
+    evidence.validate().expect("schema-3 evidence is valid");
 
     let mut jsonl = Vec::new();
     write_attempts_jsonl(&evidence.attempts, &mut jsonl).expect("attempt JSONL");
@@ -39,6 +40,7 @@ fn fixture() -> ReductionEvidence {
     ReductionEvidence {
         schema_version: EVIDENCE_SCHEMA_VERSION,
         source_root: "fixture".to_owned(),
+        source_snapshot_sha256: "1".repeat(64),
         output: "minimal".to_owned(),
         command: vec![
             "python".to_owned(),
@@ -47,7 +49,11 @@ fn fixture() -> ReductionEvidence {
             "two words".to_owned(),
         ],
         ecosystem: "python".to_owned(),
-        preparation: "offline".to_owned(),
+        preparation: PreparationEvidence {
+            mode: "offline".to_owned(),
+            contract_sha256: Some("2".repeat(64)),
+            limitations: Vec::new(),
+        },
         measurements: MeasurementSet {
             original: MaterialMeasurement {
                 files: 18,
@@ -83,17 +89,21 @@ fn fixture() -> ReductionEvidence {
         },
         failure: FailureEvidence {
             same_failure: true,
-            fingerprint_sha256: "abc123".to_owned(),
+            fingerprint_sha256: "a".repeat(64),
             exit_code: Some(1),
             signal: None,
             termination: "exit 1".to_owned(),
             oracle_stream: "stderr".to_owned(),
+            oracle_mode: "automatic".to_owned(),
             anchor: "ValueError: sentinel".to_owned(),
             anchors: vec![ChannelAnchor {
                 channel: "stderr".to_owned(),
                 text: "ValueError: sentinel".to_owned(),
             }],
-            normalization_schema: 1,
+            normalization_schema: 2,
+            failure_patterns: Vec::new(),
+            reject_patterns: Vec::new(),
+            oracle_spec_sha256: "b".repeat(64),
         },
         kept_files: vec![RetentionEvidence {
             path: "bug.py".to_owned(),

@@ -221,16 +221,19 @@ footer { display: flex; justify-content: space-between; gap: 2rem; padding: 1.2r
     <article class="oracle-record">
       <div class="section-heading">
         <p>02 / Failure identity</p>
-        <h2>Oracle anchor</h2>
+        <h2>Oracle evidence</h2>
       </div>
       <p class="label">Normalized diagnostic</p>
       <blockquote>exit 1 · ValueError: unstable &lt;input&gt;</blockquote>
       <dl class="fingerprint-meta">
         <div><dt>Fingerprint SHA-256</dt><dd><code>0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef</code></dd></div>
         <div><dt>Oracle stream</dt><dd><code>stderr</code></dd></div>
+        <div><dt>Oracle mode</dt><dd><code>automatic</code></dd></div>
+        <div><dt>Oracle spec SHA-256</dt><dd><code>1111111111111111111111111111111111111111111111111111111111111111</code></dd></div>
+        <div><dt>Normalization schema</dt><dd><code>2</code></dd></div>
       </dl>
-      <ol class="anchor-list"><li><span>stderr</span><code>ValueError: unstable &lt;input&gt;</code></li></ol>
-      <p class="annotation">Exit state and every stream-qualified normalized anchor matched the stable baseline across final verification.</p>
+      <h3>Automatic discriminators</h3><ol class="anchor-list"><li><span>stderr</span><code>ValueError: unstable &lt;input&gt;</code></li></ol>
+      <p class="annotation">Every final observation satisfied the exact recorded mode contract; incomplete observations never authorize a cut.</p>
     </article>
 
     <article class="kept-record">
@@ -261,6 +264,11 @@ footer { display: flex; justify-content: space-between; gap: 2rem; padding: 1.2r
         <div><dt>Wall time</dt><dd>4200 ms</dd></div>
       </dl>
       <ul class="diagnostic-list"><li><code>Timing is wall-clock, not a benchmark.</code></li></ul>
+      <dl class="fingerprint-meta">
+        <div><dt>Source snapshot SHA-256</dt><dd><code>2222222222222222222222222222222222222222222222222222222222222222</code></dd></div>
+        <div><dt>Preparation</dt><dd><code>offline</code></dd></div>
+        <div><dt>Preparation contract</dt><dd><code>3333333333333333333333333333333333333333333333333333333333333333</code></dd></div>
+      </dl>
     </article>
   </section>
 

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Current machine-readable reduction evidence schema.
-pub const EVIDENCE_SCHEMA_VERSION: u16 = 2;
+pub const EVIDENCE_SCHEMA_VERSION: u16 = 3;
 
 /// The single immutable model used by every publication surface.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -13,14 +13,16 @@ pub struct ReductionEvidence {
     pub schema_version: u16,
     /// Display-only source root recorded by the caller.
     pub source_root: String,
+    /// SHA-256 identity of the immutable source snapshot used for the session.
+    pub source_snapshot_sha256: String,
     /// Display-only artifact destination recorded by the caller.
     pub output: String,
     /// Exact reproduction argument vector.
     pub command: Vec<String>,
     /// Selected ecosystem adapter name.
     pub ecosystem: String,
-    /// Candidate preparation policy name.
-    pub preparation: String,
+    /// Candidate preparation policy and complete contract identity.
+    pub preparation: PreparationEvidence,
     /// Before/after project mass and elapsed time.
     pub measurements: MeasurementSet,
     /// Search policy, counters, and accepted history.
@@ -101,6 +103,17 @@ pub struct EvaluationPolicyEvidence {
     pub required: u16,
 }
 
+/// Frozen candidate-preparation evidence.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct PreparationEvidence {
+    /// `none`, `offline`, `lifecycle_scripts`, or `isolated_python`.
+    pub mode: String,
+    /// Complete preparation identity when the engine can bind it.
+    pub contract_sha256: Option<String>,
+    /// Explicit limits when no preparation identity is available.
+    pub limitations: Vec<String>,
+}
+
 /// One stream-qualified normalized diagnostic anchor.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ChannelAnchor {
@@ -125,12 +138,20 @@ pub struct FailureEvidence {
     pub termination: String,
     /// Configured diagnostic stream selection.
     pub oracle_stream: String,
+    /// `automatic`, `regex`, or `exit_zero`.
+    pub oracle_mode: String,
     /// Primary backward-compatible diagnostic anchor.
     pub anchor: String,
     /// All stream-qualified anchors used for classification.
     pub anchors: Vec<ChannelAnchor>,
     /// Diagnostic normalization algorithm generation.
     pub normalization_schema: u16,
+    /// Canonical required regex expressions.
+    pub failure_patterns: Vec<String>,
+    /// Canonical reject regex expressions.
+    pub reject_patterns: Vec<String>,
+    /// SHA-256 identity of the complete oracle configuration.
+    pub oracle_spec_sha256: String,
 }
 
 /// Honest evidence for a path present in the final verified snapshot.
@@ -178,6 +199,59 @@ impl ReductionEvidence {
     pub fn display_command(&self) -> String {
         display_command(&self.command)
     }
+
+    /// Validates cryptographic fields and mode-specific evidence invariants.
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.schema_version != EVIDENCE_SCHEMA_VERSION {
+            return Err("unsupported evidence schema");
+        }
+        if !lower_sha256(&self.source_snapshot_sha256)
+            || !lower_sha256(&self.failure.fingerprint_sha256)
+            || !lower_sha256(&self.failure.oracle_spec_sha256)
+        {
+            return Err("evidence digests must be lowercase SHA-256 hex");
+        }
+        match &self.preparation.contract_sha256 {
+            Some(digest) if !lower_sha256(digest) => {
+                return Err("preparation digest must be lowercase SHA-256 hex")
+            }
+            None if self.preparation.limitations.is_empty() => {
+                return Err("missing preparation digest requires an explicit limitation")
+            }
+            Some(_) | None => {}
+        }
+        if !self.failure.same_failure || self.search.final_verifications == 0 {
+            return Err("same-failure evidence requires final verification");
+        }
+        match self.failure.oracle_mode.as_str() {
+            "automatic"
+                if self.failure.failure_patterns.is_empty()
+                    && !self.failure.anchors.is_empty()
+                    && self.failure.normalization_schema == 2 => {}
+            "regex"
+                if !self.failure.failure_patterns.is_empty()
+                    && self.failure.anchors.is_empty()
+                    && self.failure.normalization_schema == 2 => {}
+            "exit_zero"
+                if self.failure.failure_patterns.is_empty()
+                    && self.failure.reject_patterns.is_empty()
+                    && self.failure.anchors.is_empty()
+                    && self.failure.anchor.is_empty()
+                    && self.failure.normalization_schema == 2 => {}
+            "automatic" | "regex" | "exit_zero" => {
+                return Err("oracle evidence violates its mode contract")
+            }
+            _ => return Err("unsupported oracle evidence mode"),
+        }
+        Ok(())
+    }
+}
+
+fn lower_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 /// Formats argv for human-facing surfaces without changing executable scripts.

@@ -57,16 +57,19 @@
     <article class="oracle-record">
       <div class="section-heading">
         <p>02 / Failure identity</p>
-        <h2>Oracle anchor</h2>
+        <h2>Oracle evidence</h2>
       </div>
       <p class="label">Normalized diagnostic</p>
       <blockquote>{{FINGERPRINT}}</blockquote>
       <dl class="fingerprint-meta">
         <div><dt>Fingerprint SHA-256</dt><dd><code>{{FINGERPRINT_SHA256}}</code></dd></div>
         <div><dt>Oracle stream</dt><dd><code>{{ORACLE_STREAM}}</code></dd></div>
+        <div><dt>Oracle mode</dt><dd><code>{{ORACLE_MODE}}</code></dd></div>
+        <div><dt>Oracle spec SHA-256</dt><dd><code>{{ORACLE_SPEC_SHA256}}</code></dd></div>
+        <div><dt>Normalization schema</dt><dd><code>{{NORMALIZATION_SCHEMA}}</code></dd></div>
       </dl>
-      <ol class="anchor-list">{{ANCHORS}}</ol>
-      <p class="annotation">Exit state and every stream-qualified normalized anchor matched the stable baseline across final verification.</p>
+      {{ORACLE_EVIDENCE}}
+      <p class="annotation">Every final observation satisfied the exact recorded mode contract; incomplete observations never authorize a cut.</p>
     </article>
 
     <article class="kept-record">
@@ -97,6 +100,11 @@
         <div><dt>Wall time</dt><dd>{{ELAPSED_MS}} ms</dd></div>
       </dl>
       <ul class="diagnostic-list">{{LIMITATIONS}}</ul>
+      <dl class="fingerprint-meta">
+        <div><dt>Source snapshot SHA-256</dt><dd><code>{{SOURCE_SNAPSHOT_SHA256}}</code></dd></div>
+        <div><dt>Preparation</dt><dd><code>{{PREPARATION_MODE}}</code></dd></div>
+        <div><dt>Preparation contract</dt><dd><code>{{PREPARATION_CONTRACT}}</code></dd></div>
+      </dl>
     </article>
   </section>
 

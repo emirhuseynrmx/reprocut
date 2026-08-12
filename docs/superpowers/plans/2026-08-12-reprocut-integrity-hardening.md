@@ -492,11 +492,11 @@ git commit -m "fix(engine): bind candidates to complete session identity"
 - Protocol V1 additive fields: `oracle_mode`, `failure_patterns`, `reject_patterns`, `python_executable`, `python_wheelhouse`, `python_extras`, and `prepare_spec`.
 - Python `ReductionRequest` exposes the same typed fields and validations.
 
-- [ ] **Step 1: Add RED parser/protocol tests for valid and invalid combinations**
+- [x] **Step 1: Add RED parser/protocol tests for valid and invalid combinations**
 
 Assert `--oracle-mode exit-zero -- <command>` parses; regex requires at least one `--failure-regex`; exit-zero rejects regex flags; `--prepare isolated-python` requires interpreter and wheelhouse; Python extras normalize/deduplicate; protocol denies unknown fields and rejects the same invalid combinations before engine execution.
 
-- [ ] **Step 2: Run CLI and Python client RED tests**
+- [x] **Step 2: Run CLI and Python client RED tests**
 
 Run: `python scripts/playground_workspace_verify.py --scope full --append scripts/verification/cli_contract.rs`
 
@@ -504,15 +504,15 @@ Run: `$env:PYTHONPATH='.test-deps;python'; & 'C:\Users\emirh\.cache\codex-runtim
 
 Expected: FAIL on absent fields and obsolete “trusts your command environment” semantics.
 
-- [ ] **Step 3: Add Clap values and central conversion validation**
+- [x] **Step 3: Add Clap values and central conversion validation**
 
 Introduce `OracleModeArg`; make pattern flags repeatable; add isolation paths/extras/spec; convert CLI and protocol through one `validated_request` function that constructs `OracleSpec` and `PythonIsolationRequest`. Replace help text with the explicit offline isolation requirements and exit-zero semantics.
 
-- [ ] **Step 4: Extend additive protocol V1 and Python serialization**
+- [x] **Step 4: Extend additive protocol V1 and Python serialization**
 
 Default omitted `oracle_mode` to `automatic`, pattern arrays to empty, and isolation fields to `None`/empty. Validate field combinations in Rust `ReductionRequestV1::validate` and Python `ReductionRequest.__post_init__`; serialize canonical values without changing `PROTOCOL_VERSION = 1`.
 
-- [ ] **Step 5: Run CLI/client/protocol GREEN verification**
+- [x] **Step 5: Run CLI/client/protocol GREEN verification**
 
 Run: `python scripts/playground_workspace_verify.py --scope full --append scripts/verification/cli_contract.rs`
 
@@ -520,7 +520,7 @@ Run: `$env:PYTHONPATH='.test-deps;python'; & 'C:\Users\emirh\.cache\codex-runtim
 
 Expected: PASS with identical early validation in both entry points.
 
-- [ ] **Step 6: Commit public configuration surfaces**
+- [x] **Step 6: Commit public configuration surfaces**
 
 ```powershell
 git add crates/reprocut-core/src/protocol.rs crates/reprocut-cli python/reprocut python/tests/test_client.py scripts/verification/cli_contract.rs scripts/verification/cli_compile_contract.rs
@@ -548,21 +548,21 @@ git commit -m "feat(cli): expose validated integrity contracts"
 - Produces `FailureEvidence` fields `oracle_mode`, `normalization_schema`, `anchors`, `failure_patterns`, `reject_patterns`, `oracle_spec_sha256`, and `fingerprint_sha256`.
 - Produces top-level `source_snapshot_sha256: String` and `preparation: PreparationEvidence { mode, contract_sha256: Option<String>, limitations }`.
 
-- [ ] **Step 1: Add RED evidence round-trip and golden assertions**
+- [x] **Step 1: Add RED evidence round-trip and golden assertions**
 
 Assert schema 3 rejects missing/invalid 64-character lowercase digests, exit-zero evidence has no anchors/patterns, regex evidence carries patterns verbatim, automatic evidence carries schema-2 anchors, and preparation/source digests displayed in HTML and issue Markdown match JSON exactly.
 
-- [ ] **Step 2: Run report RED verification**
+- [x] **Step 2: Run report RED verification**
 
 Run: `python scripts/playground_workspace_verify.py --scope report --append scripts/verification/report_contract.rs`
 
 Expected: FAIL because evidence is schema 2 and reports assume one textual anchor.
 
-- [ ] **Step 3: Make schema-3 evidence the single publication model**
+- [x] **Step 3: Make schema-3 evidence the single publication model**
 
 Populate all fields from `ReductionOutcome`/`FailureFingerprint`/frozen preparation; validate mode-specific invariants in `ReductionEvidence::validate`; update Python client `_load_evidence` to require schema 3 and same-failure/digest agreement.
 
-- [ ] **Step 4: Render mode-aware HTML and issue evidence**
+- [x] **Step 4: Render mode-aware HTML and issue evidence**
 
 Display “Automatic discriminators”, “Required/reject regex”, or “Exit-zero interestingness” according to mode. Show source snapshot and preparation contract hashes, normalization schema, phase limitations, before/after measurements, and final verification count. Do not claim fuzzy similarity or Python isolation when unavailable.
 
@@ -574,7 +574,7 @@ Run: `& 'C:\Users\emirh\.cache\codex-runtimes\codex-primary-runtime\dependencies
 
 Expected: PASS with schema-3 fixture and no unstamped second truth model.
 
-- [ ] **Step 6: Commit evidence schema 3**
+- [x] **Step 6: Commit evidence schema 3**
 
 ```powershell
 git add crates/reprocut-report crates/reprocut-cli/src/main.rs python/reprocut/client.py tests/golden

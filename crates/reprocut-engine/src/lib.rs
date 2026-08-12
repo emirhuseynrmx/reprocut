@@ -238,6 +238,8 @@ impl ReductionRequest {
 /// A completed, repeatedly verified reduction.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReductionOutcome {
+    source_snapshot_digest: ContentDigest,
+    preparation_digest: ContentDigest,
     original_files: usize,
     original_bytes: u64,
     original_lines: u64,
@@ -257,6 +259,16 @@ pub struct ReductionOutcome {
 }
 
 impl ReductionOutcome {
+    /// Returns the immutable source tree identity used by every candidate.
+    pub const fn source_snapshot_digest(&self) -> ContentDigest {
+        self.source_snapshot_digest
+    }
+
+    /// Returns the complete built-in or isolated preparation contract identity.
+    pub const fn preparation_digest(&self) -> ContentDigest {
+        self.preparation_digest
+    }
+
     /// Returns the original regular-file count.
     pub const fn original_files(&self) -> usize {
         self.original_files
@@ -634,6 +646,8 @@ impl ReductionEngine {
             .unwrap_or_default();
 
         Ok(ReductionOutcome {
+            source_snapshot_digest: source_digest,
+            preparation_digest,
             original_files: inventory.units().len(),
             original_bytes: original_measurements.bytes(),
             original_lines: original_measurements.lines(),

@@ -11,10 +11,15 @@ mod gallery_contract {
         let evidence = ReductionEvidence {
             schema_version: EVIDENCE_SCHEMA_VERSION,
             source_root: "/private/source".to_owned(),
+            source_snapshot_sha256: "c".repeat(64),
             output: "/private/output".to_owned(),
             command: vec!["python".to_owned(), "--token=private".to_owned()],
             ecosystem: "python".to_owned(),
-            preparation: "offline".to_owned(),
+            preparation: PreparationEvidence {
+                mode: "offline".to_owned(),
+                contract_sha256: Some("d".repeat(64)),
+                limitations: Vec::new(),
+            },
             measurements: MeasurementSet {
                 original: MaterialMeasurement {
                     files: 18,
@@ -55,9 +60,16 @@ mod gallery_contract {
                 signal: None,
                 termination: "exit 1".to_owned(),
                 oracle_stream: "stderr".to_owned(),
+                oracle_mode: "automatic".to_owned(),
                 anchor: "private diagnostic".to_owned(),
-                anchors: Vec::new(),
-                normalization_schema: 1,
+                anchors: vec![ChannelAnchor {
+                    channel: "stderr".to_owned(),
+                    text: "private diagnostic".to_owned(),
+                }],
+                normalization_schema: 2,
+                failure_patterns: Vec::new(),
+                reject_patterns: Vec::new(),
+                oracle_spec_sha256: "b".repeat(64),
             },
             kept_files: Vec::new(),
             accepted_structured_edits: Vec::new(),

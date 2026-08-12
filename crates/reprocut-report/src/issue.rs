@@ -72,11 +72,66 @@ pub fn render_issue(evidence: &ReductionEvidence) -> String {
     .expect("writing to String cannot fail");
     writeln!(
         issue,
+        "- Oracle mode: `{}`",
+        escape_markdown_text(&evidence.failure.oracle_mode),
+    )
+    .expect("writing to String cannot fail");
+    writeln!(
+        issue,
+        "- Oracle spec SHA-256: `{}`",
+        evidence.failure.oracle_spec_sha256,
+    )
+    .expect("writing to String cannot fail");
+    writeln!(
+        issue,
         "- Normalization schema: `{}`\n",
         evidence.failure.normalization_schema,
     )
     .expect("writing to String cannot fail");
-    issue.push_str(&fenced("text", &evidence.failure.anchor));
+    match evidence.failure.oracle_mode.as_str() {
+        "automatic" => issue.push_str(&fenced("text", &evidence.failure.anchor)),
+        "regex" => {
+            issue.push_str("### Required regex\n\n");
+            for pattern in &evidence.failure.failure_patterns {
+                writeln!(issue, "- `{}`", escape_markdown_text(pattern))
+                    .expect("writing to String cannot fail");
+            }
+            issue.push_str("\n### Reject regex\n\n");
+            if evidence.failure.reject_patterns.is_empty() {
+                issue.push_str("_None configured._\n\n");
+            } else {
+                for pattern in &evidence.failure.reject_patterns {
+                    writeln!(issue, "- `{}`", escape_markdown_text(pattern))
+                        .expect("writing to String cannot fail");
+                }
+                issue.push('\n');
+            }
+        }
+        "exit_zero" => issue.push_str(
+            "Exit-zero interestingness: only a successful command preserves the candidate; incomplete execution is inconclusive.\n\n",
+        ),
+        _ => {}
+    }
+
+    issue.push_str("## Integrity contracts\n\n");
+    writeln!(
+        issue,
+        "- Source snapshot SHA-256: `{}`",
+        evidence.source_snapshot_sha256,
+    )
+    .expect("writing to String cannot fail");
+    writeln!(issue, "- Preparation mode: `{}`", evidence.preparation.mode)
+        .expect("writing to String cannot fail");
+    writeln!(
+        issue,
+        "- Preparation contract: `{}`\n",
+        evidence
+            .preparation
+            .contract_sha256
+            .as_deref()
+            .unwrap_or("unavailable; see limits"),
+    )
+    .expect("writing to String cannot fail");
 
     issue.push_str("## Reproduce\n\n");
     issue.push_str(&fenced("sh", &evidence.display_command()));

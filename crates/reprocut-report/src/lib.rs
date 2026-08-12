@@ -7,8 +7,8 @@ use std::fmt::Write as _;
 
 pub use evidence::{
     display_command, write_attempts_jsonl, AttemptSummary, ChannelAnchor, EvaluationPolicyEvidence,
-    FailureEvidence, MaterialMeasurement, MeasurementSet, ReductionEvidence, RetentionEvidence,
-    SearchEvidence, EVIDENCE_SCHEMA_VERSION,
+    FailureEvidence, MaterialMeasurement, MeasurementSet, PreparationEvidence, ReductionEvidence,
+    RetentionEvidence, SearchEvidence, EVIDENCE_SCHEMA_VERSION,
 };
 pub use issue::render_issue;
 
@@ -55,6 +55,22 @@ pub struct ReportModel {
     pub fingerprint_sha256: String,
     /// Configured diagnostic stream selection.
     pub oracle_stream: String,
+    /// Oracle mode and mode-aware human-readable recognition summary.
+    pub oracle_mode: String,
+    /// Required expressions in regex mode.
+    pub failure_patterns: Vec<String>,
+    /// Reject expressions in automatic and regex modes.
+    pub reject_patterns: Vec<String>,
+    /// Oracle configuration identity.
+    pub oracle_spec_sha256: String,
+    /// Immutable source project identity.
+    pub source_snapshot_sha256: String,
+    /// Candidate preparation mode.
+    pub preparation_mode: String,
+    /// Candidate preparation identity or an explicit unavailable marker.
+    pub preparation_contract: String,
+    /// Diagnostic normalization generation.
+    pub normalization_schema: u16,
     /// Stream-qualified diagnostic anchors.
     pub anchors: Vec<ChannelAnchor>,
     /// Files present in the final verified snapshot.
@@ -85,12 +101,21 @@ impl From<&ReductionEvidence> for ReportModel {
             cache_hits: evidence.search.cache_hits,
             final_verifications: evidence.search.final_verifications,
             accepted_sizes: evidence.search.accepted_file_sizes.clone(),
-            fingerprint: format!(
-                "{} | {}",
-                evidence.failure.termination, evidence.failure.anchor
-            ),
+            fingerprint: failure_summary(&evidence.failure),
             fingerprint_sha256: evidence.failure.fingerprint_sha256.clone(),
             oracle_stream: evidence.failure.oracle_stream.clone(),
+            oracle_mode: evidence.failure.oracle_mode.clone(),
+            failure_patterns: evidence.failure.failure_patterns.clone(),
+            reject_patterns: evidence.failure.reject_patterns.clone(),
+            oracle_spec_sha256: evidence.failure.oracle_spec_sha256.clone(),
+            source_snapshot_sha256: evidence.source_snapshot_sha256.clone(),
+            preparation_mode: evidence.preparation.mode.clone(),
+            preparation_contract: evidence
+                .preparation
+                .contract_sha256
+                .clone()
+                .unwrap_or_else(|| "unavailable; see limitations".to_owned()),
+            normalization_schema: evidence.failure.normalization_schema,
             anchors: evidence.failure.anchors.clone(),
             kept_files: evidence.kept_files.clone(),
             structured_edits: evidence.accepted_structured_edits.clone(),
@@ -138,6 +163,28 @@ pub fn render_report(model: &ReportModel) -> String {
             &escape_html(&model.fingerprint_sha256),
         )
         .replace("{{ORACLE_STREAM}}", &escape_html(&model.oracle_stream))
+        .replace("{{ORACLE_MODE}}", &escape_html(&model.oracle_mode))
+        .replace(
+            "{{ORACLE_SPEC_SHA256}}",
+            &escape_html(&model.oracle_spec_sha256),
+        )
+        .replace(
+            "{{SOURCE_SNAPSHOT_SHA256}}",
+            &escape_html(&model.source_snapshot_sha256),
+        )
+        .replace(
+            "{{PREPARATION_MODE}}",
+            &escape_html(&model.preparation_mode),
+        )
+        .replace(
+            "{{PREPARATION_CONTRACT}}",
+            &escape_html(&model.preparation_contract),
+        )
+        .replace(
+            "{{NORMALIZATION_SCHEMA}}",
+            &model.normalization_schema.to_string(),
+        )
+        .replace("{{ORACLE_EVIDENCE}}", &render_oracle_evidence(model))
         .replace("{{ISSUE_BASE64}}", &base64(&model.issue_markdown))
         .replace("{{ANCHORS}}", &render_anchors(&model.anchors))
         .replace("{{STAGES}}", &render_stages(model))
@@ -150,6 +197,31 @@ pub fn render_report(model: &ReportModel) -> String {
             "{{LIMITATIONS}}",
             &render_string_list(&model.limitations, "No limitations were recorded."),
         )
+}
+
+fn failure_summary(failure: &FailureEvidence) -> String {
+    match failure.oracle_mode.as_str() {
+        "automatic" => format!("{} | {}", failure.termination, failure.anchor),
+        "regex" => format!("{} | required regex contract", failure.termination),
+        "exit_zero" => "exit 0 | interesting command succeeded".to_owned(),
+        _ => failure.termination.clone(),
+    }
+}
+
+fn render_oracle_evidence(model: &ReportModel) -> String {
+    match model.oracle_mode.as_str() {
+        "automatic" => format!(
+            "<h3>Automatic discriminators</h3><ol class=\"anchor-list\">{}</ol>",
+            render_anchors(&model.anchors)
+        ),
+        "regex" => format!(
+            "<h3>Required regex</h3><ol class=\"diagnostic-list\">{}</ol><h3>Reject regex</h3><ol class=\"diagnostic-list\">{}</ol>",
+            render_string_list(&model.failure_patterns, "No required expression recorded."),
+            render_string_list(&model.reject_patterns, "No reject expression configured."),
+        ),
+        "exit_zero" => "<h3>Exit-zero interestingness</h3><p>The candidate is preserved only when the command exits successfully; timeout, signal, or runner failure is inconclusive.</p>".to_owned(),
+        _ => "<p>Unsupported oracle evidence.</p>".to_owned(),
+    }
 }
 
 fn render_stages(model: &ReportModel) -> String {
