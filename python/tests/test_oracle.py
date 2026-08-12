@@ -37,14 +37,25 @@ def test_unstable_or_too_small_baseline_is_a_value_error() -> None:
 
 def test_fingerprint_is_an_immutable_plain_value() -> None:
     oracle = stable_oracle()
-    assert oracle.fingerprint == {
+    fingerprint = oracle.fingerprint
+    assert fingerprint | {
+        "oracle_spec_sha256": "<digest>",
+        "fingerprint_sha256": "<digest>",
+    } == {
+        "mode": "automatic",
         "exit_code": 1,
         "signal": None,
         "termination": {"kind": "exit_code", "value": 1},
         "anchor": "TypeError: currency",
         "anchors": [{"channel": "stderr", "text": "TypeError: currency"}],
-        "normalization_schema": 1,
+        "failure_patterns": [],
+        "reject_patterns": [],
+        "normalization_schema": 2,
+        "oracle_spec_sha256": "<digest>",
+        "fingerprint_sha256": "<digest>",
     }
+    assert len(fingerprint["oracle_spec_sha256"]) == 64
+    assert len(fingerprint["fingerprint_sha256"]) == 64
     with pytest.raises(AttributeError):
         oracle.extra = "mutation"  # type: ignore[attr-defined]
 
@@ -52,32 +63,54 @@ def test_fingerprint_is_an_immutable_plain_value() -> None:
 def test_volatile_paths_and_ids_do_not_change_failure_identity() -> None:
     oracle = FailureOracle.from_baselines(
         [
-            (1, "TypeError: request 10 at /tmp/alpha.py"),
-            (1, "TypeError: request 20 at /var/run/beta.py"),
+            (1, "PID 10 TypeError: request at /tmp/alpha.py:10:2 port 5001 after 10ms"),
+            (1, "PID 20 TypeError: request at /var/tmp/beta.py:20:4 port 5002 after 20ms"),
         ]
     )
-    assert oracle.classify(1, "TypeError: request 30 at /opt/build/gamma.py") == "preserved"
+    assert (
+        oracle.classify(
+            1,
+            "PID 30 TypeError: request at /tmp/gamma.py:30:8 port 5003 after 30ms",
+        )
+        == "preserved"
+    )
 
 
 def test_auto_requires_stable_stdout_and_stderr_when_both_exist() -> None:
     oracle = FailureOracle.from_baselines(
-        [(1, "stable stdout", "stable stderr"), (1, "stable stdout", "stable stderr")],
+        [
+            (1, "FAILED tests/a.py::test_total", "TypeError: currency"),
+            (1, "FAILED tests/a.py::test_total", "TypeError: currency"),
+        ],
         channel="auto",
     )
-    assert oracle.classify(1, "stable stderr", stdout="stable stdout") == "preserved"
-    assert oracle.classify(1, "stable stderr", stdout="changed stdout") == "rejected"
+    assert (
+        oracle.classify(
+            1, "TypeError: currency", stdout="FAILED tests/a.py::test_total"
+        )
+        == "preserved"
+    )
+    assert (
+        oracle.classify(
+            1, "TypeError: currency", stdout="FAILED tests/b.py::test_total"
+        )
+        == "rejected"
+    )
     assert oracle.fingerprint["anchors"] == [
-        {"channel": "stdout", "text": "stable stdout"},
-        {"channel": "stderr", "text": "stable stderr"},
+        {"channel": "stdout", "text": "FAILED tests/a.py::test_total"},
+        {"channel": "stderr", "text": "TypeError: currency"},
     ]
 
 
 def test_explicit_stderr_ignores_unstable_stdout_baselines() -> None:
     oracle = FailureOracle.from_baselines(
-        [(1, "progress one", "stable stderr"), (1, "progress two", "stable stderr")],
+        [
+            (1, "progress one", "TypeError: currency"),
+            (1, "progress two", "TypeError: currency"),
+        ],
         channel="stderr",
     )
-    assert oracle.classify(1, "stable stderr", stdout="anything") == "preserved"
+    assert oracle.classify(1, "TypeError: currency", stdout="anything") == "preserved"
 
 
 def test_python_policy_validates_the_same_supermajority_contract() -> None:

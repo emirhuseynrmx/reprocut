@@ -206,31 +206,31 @@ git commit -m "feat(core): add explicit oracle modes"
 - Produces immutable fingerprint dictionaries containing `mode`, `termination`, `anchors`, `failure_patterns`, `reject_patterns`, `normalization_schema`, `oracle_spec_sha256`, and `fingerprint_sha256`.
 - Consumes literal cross-language cases from `python/tests/oracle_cases.json`.
 
-- [ ] **Step 1: Add shared RED corpus and fallback assertions**
+- [x] **Step 1: Add shared RED corpus and fallback assertions**
 
 Store cases with `name`, `mode`, `channel`, `failure_patterns`, `reject_patterns`, `baselines`, `candidate`, and `expected`. Include every adversarial case from Task 1 plus regex and exit-zero cases from Task 2. Assert exact fingerprint dictionaries, not only verdict strings.
 
-- [ ] **Step 2: Run fallback RED tests**
+- [x] **Step 2: Run fallback RED tests**
 
 Run: `$env:PYTHONPATH='.test-deps;python'; & 'C:\Users\emirh\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' -m pytest python/tests/test_oracle.py python/tests/test_oracle_parity.py -q --basetemp .tmp/pytest-oracle-red`
 
 Expected: FAIL on missing mode parameters and schema-1 fingerprint data.
 
-- [ ] **Step 3: Port the exact deterministic contract to `_fallback.py`**
+- [x] **Step 3: Port the exact deterministic contract to `_fallback.py`**
 
 Mirror Rust regex syntax only where Python `re` accepts the shared corpus, apply the same bounds, contextual normalizers, boilerplate predicates, line categories, ordering, and verdict rules. Use `hashlib.sha256` over the same tag/length-delimited encoding so fallback and native produce byte-identical hex digests.
 
-- [ ] **Step 4: Extend PyO3 and type stubs without duplicating Rust verdict logic**
+- [x] **Step 4: Extend PyO3 and type stubs without duplicating Rust verdict logic**
 
 Parse Python sequences into `OracleSpec`, call `FailureOracle::from_spec_and_baselines`, expose exact fingerprint fields/digests, and keep frozen object behavior. Update `_native.pyi` literals for modes and channels.
 
-- [ ] **Step 5: Run fallback suite GREEN and mark native parity as CI-required**
+- [x] **Step 5: Run fallback suite GREEN and mark native parity as CI-required**
 
 Run: `$env:PYTHONPATH='.test-deps;python'; & 'C:\Users\emirh\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' -m pytest python/tests/test_oracle.py python/tests/test_oracle_parity.py -q --basetemp .tmp/pytest-oracle-green`
 
 Expected: fallback PASS; native-only test skips only when the local wheel is unavailable and remains mandatory in wheel CI.
 
-- [ ] **Step 6: Commit Python oracle parity**
+- [x] **Step 6: Commit Python oracle parity**
 
 ```powershell
 git add crates/reprocut-python python/reprocut python/tests

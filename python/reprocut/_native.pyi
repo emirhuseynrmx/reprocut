@@ -3,6 +3,7 @@ from typing import Literal, Union
 
 Verdict = Literal["preserved", "rejected", "inconclusive"]
 Channel = Literal["auto", "stderr", "stdout", "combined"]
+Mode = Literal["automatic", "regex", "exit_zero"]
 
 class EvaluationPolicy:
     @classmethod
@@ -22,7 +23,10 @@ class FailureOracle:
         cls,
         baselines: Sequence[Union[tuple[int, str], tuple[int, str, str]]],
         *,
+        mode: Mode = "automatic",
         channel: Channel = "auto",
+        failure_patterns: Sequence[str] | None = None,
+        reject_patterns: Sequence[str] | None = None,
     ) -> FailureOracle: ...
 
     def classify(

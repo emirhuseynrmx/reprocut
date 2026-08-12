@@ -1,0 +1,115 @@
+[
+  {
+    "name": "automatic_context_preserved",
+    "mode": "automatic",
+    "channel": "auto",
+    "failure_patterns": [],
+    "reject_patterns": [],
+    "baselines": [
+      [1, "FAILED tests/a.py::test_total", "PID 10 TypeError: invoice at /tmp/a.py:10:2 port 5001 after 10ms"],
+      [1, "FAILED tests/a.py::test_total", "PID 20 TypeError: invoice at /var/tmp/b.py:20:4 port 5002 after 20ms"]
+    ],
+    "candidate": {
+      "exit_code": 1,
+      "stdout": "FAILED tests/a.py::test_total",
+      "diagnostic": "PID 30 TypeError: invoice at /tmp/c.py:30:8 port 5003 after 30ms"
+    },
+    "expected": "preserved",
+    "fingerprint": {
+      "mode": "automatic",
+      "exit_code": 1,
+      "signal": null,
+      "termination": {"kind": "exit_code", "value": 1},
+      "anchor": "FAILED tests/a.py::test_total",
+      "anchors": [
+        {"channel": "stdout", "text": "FAILED tests/a.py::test_total"},
+        {"channel": "stderr", "text": "PID <id> TypeError: invoice at <temp>:<location> port <port> after <duration>"}
+      ],
+      "failure_patterns": [],
+      "reject_patterns": [],
+      "normalization_schema": 2,
+      "oracle_spec_sha256": "3015cdd3dcd09acb2c9e17736d828908ee6ccab62db68928f1de9e2c1468d142",
+      "fingerprint_sha256": "c5174c7e6af66d3d5c1845371e6d3717051623e4614ce1873731d205fc864ac5"
+    }
+  },
+  {
+    "name": "automatic_semantic_change_rejected",
+    "mode": "automatic",
+    "channel": "stderr",
+    "failure_patterns": [],
+    "reject_patterns": [],
+    "baselines": [[1, "TypeError: invoice 41"], [1, "TypeError: invoice 41"]],
+    "candidate": {"exit_code": 1, "diagnostic": "TypeError: invoice 42"},
+    "expected": "rejected",
+    "fingerprint": {
+      "mode": "automatic",
+      "exit_code": 1,
+      "signal": null,
+      "termination": {"kind": "exit_code", "value": 1},
+      "anchor": "TypeError: invoice 41",
+      "anchors": [{"channel": "stderr", "text": "TypeError: invoice 41"}],
+      "failure_patterns": [],
+      "reject_patterns": [],
+      "normalization_schema": 2,
+      "oracle_spec_sha256": "1c82610274183be423701b7037ec7605f66e3589b10ca57e49a663b53e0d9738",
+      "fingerprint_sha256": "c5712100feef81d5476b8bfcc61f99f25aca08b4bdc03c7026b6451d666014d4"
+    }
+  },
+  {
+    "name": "regex_required_preserved",
+    "mode": "regex",
+    "channel": "combined",
+    "failure_patterns": ["TypeError: invoice [0-9]+", "currency"],
+    "reject_patterns": ["PermissionError"],
+    "baselines": [[1, "currency=EUR", "TypeError: invoice 41"], [1, "currency=EUR", "TypeError: invoice 42"]],
+    "candidate": {"exit_code": 1, "stdout": "currency=EUR", "diagnostic": "TypeError: invoice 99"},
+    "expected": "preserved",
+    "fingerprint": {
+      "mode": "regex",
+      "exit_code": 1,
+      "signal": null,
+      "termination": {"kind": "exit_code", "value": 1},
+      "anchor": "",
+      "anchors": [],
+      "failure_patterns": ["TypeError: invoice [0-9]+", "currency"],
+      "reject_patterns": ["PermissionError"],
+      "normalization_schema": 2,
+      "oracle_spec_sha256": "099cb6301757af57a751e13f73ad8e048d406ee7b10cc377a234441cda9d3f64",
+      "fingerprint_sha256": "b049c6c2366bd7fe88f9e4f01e85572cba45c8bd4da776ec30dfd64fda93b235"
+    }
+  },
+  {
+    "name": "regex_reject_veto",
+    "mode": "regex",
+    "channel": "combined",
+    "failure_patterns": ["TypeError: invoice [0-9]+", "currency"],
+    "reject_patterns": ["PermissionError"],
+    "baselines": [[1, "currency=EUR", "TypeError: invoice 41"], [1, "currency=EUR", "TypeError: invoice 42"]],
+    "candidate": {"exit_code": 1, "stdout": "currency=EUR", "diagnostic": "TypeError: invoice 99 PermissionError"},
+    "expected": "rejected",
+    "fingerprint_ref": "regex_required_preserved"
+  },
+  {
+    "name": "exit_zero_ignores_truncation",
+    "mode": "exit_zero",
+    "channel": "auto",
+    "failure_patterns": [],
+    "reject_patterns": [],
+    "baselines": [[0, "ready", ""], [0, "ready", "stderr drift"]],
+    "candidate": {"exit_code": 0, "diagnostic": "truncated", "truncated": true},
+    "expected": "preserved",
+    "fingerprint": {
+      "mode": "exit_zero",
+      "exit_code": 0,
+      "signal": null,
+      "termination": {"kind": "exit_code", "value": 0},
+      "anchor": "",
+      "anchors": [],
+      "failure_patterns": [],
+      "reject_patterns": [],
+      "normalization_schema": 2,
+      "oracle_spec_sha256": "1ca9f6c384604e2e220eca1cc799b1f2c075943406d18a6a6476001187356643",
+      "fingerprint_sha256": "dd70526132aef0c726925d97be202ce36381893d331440e64b13bb4650529fb5"
+    }
+  }
+]
