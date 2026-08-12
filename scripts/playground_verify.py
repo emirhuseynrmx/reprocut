@@ -10,7 +10,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
-INCLUDE_STR = re.compile(r'include_str!\("([^"]+)"\)')
+INCLUDE_STR = re.compile(r'include_str!\(\s*"([^"]+)"\s*\)')
 
 
 def inline_includes(source_path: Path, source: str) -> str:

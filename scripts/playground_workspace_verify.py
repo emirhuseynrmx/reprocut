@@ -11,7 +11,7 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-INCLUDE_STR = re.compile(r'include_str!\("([^"]+)"\)')
+INCLUDE_STR = re.compile(r'include_str!\(\s*"([^"]+)"\s*\)')
 
 
 def read(path: str) -> str:
