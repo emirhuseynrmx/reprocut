@@ -1182,6 +1182,8 @@ fn publish_artifact(
     attempts_writer
         .flush()
         .map_err(|source| io_error("flush attempt ledger", &attempts_path, source))?;
+    // Windows forbids renaming a directory while a descendant file handle is open.
+    drop(attempts_writer);
     write_reproduction_scripts(&artifact, &arguments.command)?;
 
     ensure_output_absent(&arguments.output)?;

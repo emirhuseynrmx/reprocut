@@ -27,5 +27,5 @@ def test_wheel_uses_the_native_backend() -> None:
     )
     assert stderr_oracle.classify(1, "ValueError: default stdout") == "preserved"
     assert oracle.fingerprint["fingerprint_sha256"] == (
-        "b049c6c2366bd7fe88f9e4f01e85572cba45c8bd4da776ec30dfd64fda93b235"
+        "cba09230e0e5a74124cf9ae96f6d0c3b30dbfbb35a6b5292d72e6b31c6736435"
     )

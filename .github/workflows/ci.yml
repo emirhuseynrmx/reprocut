@@ -280,13 +280,7 @@ jobs:
         run: python -m pip install maturin==1.14.1 twine==7.0.0
       - name: Package every publishable Rust crate
         run: |
-          for package in \
-            reprocut-core reprocut-report reprocut-oci reprocut-workspace \
-            reprocut-runner reprocut-state reprocut-syntax reprocut-adapters \
-            reprocut-engine reprocut
-          do
-            cargo package --locked -p "$package" --no-verify
-          done
+          cargo package --locked --workspace --exclude reprocut-python --no-verify
           mkdir -p dist/crates
           cp target/package/*.crate dist/crates/
       - name: Build ABI3 wheel and source distribution

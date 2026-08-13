@@ -13,7 +13,7 @@ use pipeline::{
 use python_isolation::{FrozenPythonPreparation, PreparedPythonCandidate};
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     ffi::OsString,
     path::{Path, PathBuf},
     sync::{
@@ -481,6 +481,7 @@ impl ReductionEngine {
         let inconclusive_attempts = AtomicU64::new(0);
         let cache_hits = AtomicU64::new(0);
         let mut from_digest = source_digest;
+        let mut accepted_material_digests = HashSet::from([source_digest]);
         let mut transition_ordinal = 0_u64;
         let mut frontier_phase = 0_u16;
 
@@ -576,7 +577,7 @@ impl ReductionEngine {
                     let Some(winner) = earliest_terminal_preserved(&verdicts) else {
                         break None;
                     };
-                    if slot_material_digests[winner] == from_digest {
+                    if accepted_material_digests.contains(&slot_material_digests[winner]) {
                         verdicts[winner] = Some(CandidateVerdict::Rejected);
                         continue;
                     }
@@ -605,6 +606,7 @@ impl ReductionEngine {
                         }
                     }
                     from_digest = slot_material_digests[winner];
+                    accepted_material_digests.insert(from_digest);
                     transition_ordinal = transition_ordinal.saturating_add(1);
                 }
                 verdicts
@@ -633,6 +635,7 @@ impl ReductionEngine {
             &mut frontier_phase,
             &mut transition_ordinal,
             &mut from_digest,
+            &mut accepted_material_digests,
         )?;
         let snapshot = structured_outcome.snapshot;
         let mut final_error = None;
@@ -871,6 +874,7 @@ impl StructuredReductionContext<'_> {
         frontier_phase: &mut u16,
         transition_ordinal: &mut u64,
         from_digest: &mut ContentDigest,
+        accepted_material_digests: &mut HashSet<ContentDigest>,
     ) -> Result<StructuredReductionOutcome, EngineError> {
         let mut attempts = 0_u64;
         let mut accepted = Vec::new();
@@ -880,8 +884,13 @@ impl StructuredReductionContext<'_> {
                 self.request.ecosystem(),
                 self.request.preparation_mode(),
             )?;
-            let manifest_outcome =
-                self.evaluate_frontier(manifests, frontier_phase, transition_ordinal, from_digest)?;
+            let manifest_outcome = self.evaluate_frontier(
+                manifests,
+                frontier_phase,
+                transition_ordinal,
+                from_digest,
+                accepted_material_digests,
+            )?;
             attempts = attempts.saturating_add(manifest_outcome.attempts);
             if let Some((key, next)) = manifest_outcome.accepted {
                 accepted.push(key);
@@ -896,6 +905,7 @@ impl StructuredReductionContext<'_> {
                     frontier_phase,
                     transition_ordinal,
                     from_digest,
+                    accepted_material_digests,
                 )?;
                 attempts = attempts.saturating_add(syntax_outcome.attempts);
                 if let Some((key, next)) = syntax_outcome.accepted {
@@ -919,6 +929,7 @@ impl StructuredReductionContext<'_> {
         frontier_phase: &mut u16,
         transition_ordinal: &mut u64,
         from_digest: &mut ContentDigest,
+        accepted_material_digests: &mut HashSet<ContentDigest>,
     ) -> Result<StructuredFrontierOutcome, EngineError> {
         if candidates.is_empty() {
             return Ok(StructuredFrontierOutcome {
@@ -955,6 +966,7 @@ impl StructuredReductionContext<'_> {
             shared: self,
             realized: &realized,
             current_digest: *from_digest,
+            accepted_material_digests,
         };
         let outcome = FrontierScheduler::evaluate(plans, self.request.jobs(), |payload| {
             evaluator.evaluate(payload)
@@ -985,6 +997,12 @@ impl StructuredReductionContext<'_> {
                 .map(|prepared| prepared.snapshot)
                 .ok_or(EngineError::StructuredRealizationFailed)?,
         };
+        if accepted_material_digests.contains(&realized.digest()) {
+            return Ok(StructuredFrontierOutcome {
+                accepted: None,
+                attempts: observed,
+            });
+        }
         if let Some(writer) = self.writer {
             let attempt = lock(self.attempts_by_digest)
                 .get(&payload.digest)
@@ -1002,6 +1020,7 @@ impl StructuredReductionContext<'_> {
             )?;
         }
         *from_digest = realized.digest();
+        accepted_material_digests.insert(*from_digest);
         *transition_ordinal = transition_ordinal.saturating_add(1);
         Ok(StructuredFrontierOutcome {
             accepted: Some((payload.candidate.key().to_owned(), realized)),
@@ -1099,12 +1118,20 @@ struct StructuredEvaluationContext<'context, 'request> {
     shared: &'context StructuredReductionContext<'request>,
     realized: &'context Mutex<HashMap<ContentDigest, ProjectSnapshot>>,
     current_digest: ContentDigest,
+    accepted_material_digests: &'context HashSet<ContentDigest>,
 }
 
 impl StructuredEvaluationContext<'_, '_> {
     fn evaluate(&self, payload: &StructuredPayload) -> CandidateVerdict {
         if has_error(self.shared.first_error) {
             return CandidateVerdict::Inconclusive;
+        }
+        if payload.candidate.preparation().is_none()
+            && self
+                .accepted_material_digests
+                .contains(&payload.candidate.snapshot().digest())
+        {
+            return CandidateVerdict::Rejected;
         }
         if let Some(record) = lock(self.shared.memory_cache).get(&payload.digest).cloned() {
             self.shared.cache_hits.fetch_add(1, Ordering::Relaxed);
@@ -1154,7 +1181,8 @@ impl StructuredEvaluationContext<'_, '_> {
                         nondeterministic_preparation = true;
                         CandidateVerdict::Inconclusive
                     } else {
-                        let material_changed = current.digest() != self.current_digest;
+                        let material_changed = current.digest() != self.current_digest
+                            && !self.accepted_material_digests.contains(&current.digest());
                         realized = Some(current);
                         if material_changed {
                             self.shared.oracle.classify(&observation)

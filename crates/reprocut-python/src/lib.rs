@@ -1,7 +1,7 @@
 use pyo3::{
     exceptions::PyValueError,
     prelude::*,
-    types::{PyAny, PyDict, PyList, PyModule},
+    types::{PyAny, PyDict, PyList, PyModule, PySequence},
 };
 use reprocut_core::{
     CandidateVerdict, DiagnosticChannel, EvaluationPolicy, ExecutionObservation, FailureOracle,
@@ -80,13 +80,13 @@ impl NativeFailureOracle {
         failure_patterns: Option<Vec<String>>,
         reject_patterns: Option<Vec<String>>,
     ) -> PyResult<Self> {
+        let mode = parse_mode(mode)?;
+        let channel = parse_channel(channel)?;
+        let failure_patterns = failure_patterns.unwrap_or_default();
+        let reject_patterns = reject_patterns.unwrap_or_default();
+        validate_mode_configuration(mode, &failure_patterns, &reject_patterns)?;
         let observations = extract_observations(baselines)?;
-        let spec = OracleSpec::new(
-            parse_mode(mode)?,
-            parse_channel(channel)?,
-            failure_patterns.unwrap_or_default(),
-            reject_patterns.unwrap_or_default(),
-        )
+        let spec = OracleSpec::new(mode, channel, failure_patterns, reject_patterns)
         .map_err(|error| PyValueError::new_err(error.to_string()))?;
         let inner = FailureOracle::from_spec_and_baselines(spec, &observations)
             .map_err(|error| PyValueError::new_err(error.to_string()))?;
@@ -170,23 +170,61 @@ const fn mode_name(mode: OracleMode) -> &'static str {
 }
 
 fn extract_observations(baselines: &Bound<'_, PyAny>) -> PyResult<Vec<ExecutionObservation>> {
-    if let Ok(values) = baselines.extract::<Vec<(i32, String, String)>>() {
-        return Ok(values
-            .into_iter()
-            .map(|(exit_code, stdout, stderr)| observation(exit_code, stdout, stderr, false, false))
-            .collect());
-    }
-    let values = baselines.extract::<Vec<(i32, String)>>().map_err(|_| {
+    let invalid = || {
         PyValueError::new_err(
             "baselines must contain (exit_code, diagnostic) pairs or (exit_code, stdout, stderr) triples",
         )
-    })?;
-    Ok(values
-        .into_iter()
-        .map(|(exit_code, diagnostic)| {
-            observation(exit_code, String::new(), diagnostic, false, false)
-        })
-        .collect())
+    };
+    let baselines = baselines.cast::<PySequence>().map_err(|_| invalid())?;
+    let mut observations = Vec::with_capacity(baselines.len().map_err(|_| invalid())?);
+    for index in 0..baselines.len().map_err(|_| invalid())? {
+        let item = baselines.get_item(index).map_err(|_| invalid())?;
+        let item = item.cast::<PySequence>().map_err(|_| invalid())?;
+        let exit_code = item
+            .get_item(0)
+            .and_then(|value| value.extract::<i32>())
+            .map_err(|_| invalid())?;
+        let (stdout, stderr) = match item.len().map_err(|_| invalid())? {
+            2 => (
+                String::new(),
+                item.get_item(1)
+                    .and_then(|value| value.extract::<String>())
+                    .map_err(|_| invalid())?,
+            ),
+            3 => (
+                item.get_item(1)
+                    .and_then(|value| value.extract::<String>())
+                    .map_err(|_| invalid())?,
+                item.get_item(2)
+                    .and_then(|value| value.extract::<String>())
+                    .map_err(|_| invalid())?,
+            ),
+            _ => return Err(invalid()),
+        };
+        observations.push(observation(exit_code, stdout, stderr, false, false));
+    }
+    Ok(observations)
+}
+
+fn validate_mode_configuration(
+    mode: OracleMode,
+    failure_patterns: &[String],
+    reject_patterns: &[String],
+) -> PyResult<()> {
+    match mode {
+        OracleMode::Regex if failure_patterns.is_empty() => Err(PyValueError::new_err(
+            "regex mode requires at least one failure pattern",
+        )),
+        OracleMode::Automatic if !failure_patterns.is_empty() => Err(PyValueError::new_err(
+            "automatic mode does not accept failure patterns",
+        )),
+        OracleMode::ExitZero if !failure_patterns.is_empty() || !reject_patterns.is_empty() => {
+            Err(PyValueError::new_err(
+                "exit_zero mode does not accept patterns",
+            ))
+        }
+        OracleMode::Automatic | OracleMode::Regex | OracleMode::ExitZero => Ok(()),
+    }
 }
 
 fn parse_channel(value: &str) -> PyResult<DiagnosticChannel> {
