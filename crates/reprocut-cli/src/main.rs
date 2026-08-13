@@ -112,7 +112,7 @@ enum GalleryCommand {
 
 #[derive(Debug, Args)]
 struct GalleryPrepareArgs {
-    /// Completed ReproCut artifact containing reduction.json.
+    /// Completed `ReproCut` artifact containing `reduction.json`.
     #[arg(long, value_name = "ARTIFACT")]
     from: PathBuf,
 
@@ -147,7 +147,7 @@ enum ProtocolCommand {
 
 #[derive(Debug, Args)]
 struct ProtocolRunArgs {
-    /// JSON file containing a ReductionRequestV1.
+    /// JSON file containing a `ReductionRequestV1`.
     #[arg(long)]
     request: PathBuf,
 }
@@ -166,7 +166,7 @@ enum ExportFormat {
 
 #[derive(Debug, Args)]
 struct OciArgs {
-    /// Completed ReproCut artifact containing project/ and reduction.json.
+    /// Completed `ReproCut` artifact containing `project/` and `reduction.json`.
     #[arg(long, value_name = "ARTIFACT")]
     from: PathBuf,
 
@@ -174,7 +174,7 @@ struct OciArgs {
     #[arg(short, long, default_value = "reprocut.oci.tar")]
     output: PathBuf,
 
-    /// OCI builder frontend; auto probes Docker Buildx then BuildKit.
+    /// OCI builder frontend; auto probes `Docker Buildx` then `BuildKit`.
     #[arg(long, value_enum, default_value_t = BuilderArg::Auto)]
     builder: BuilderArg,
 }
@@ -264,7 +264,7 @@ struct ReduceArgs {
     #[arg(long, default_value_t = 0)]
     jobs: usize,
 
-    /// SQLite journal path (defaults to ROOT/.reprocut/state.sqlite3).
+    /// SQLite journal path (defaults to `ROOT/.reprocut/state.sqlite3`).
     #[arg(long)]
     state: Option<PathBuf>,
 
@@ -430,20 +430,19 @@ fn main() -> ExitCode {
 
 fn execute(cli: Cli) -> Result<(), CliError> {
     match cli.action {
-        Action::Minimize(arguments) => reduce_project(arguments, false),
-        Action::Reduce(arguments) => reduce_project(arguments, false),
+        Action::Minimize(arguments) | Action::Reduce(arguments) => reduce_project(arguments, false),
         Action::Resume(arguments) => reduce_project(arguments, true),
         Action::Export(arguments) => export_artifact(arguments),
         Action::Protocol(arguments) => run_protocol(arguments),
         Action::Gallery(arguments) => run_gallery(arguments),
         Action::Completions(arguments) => {
-            emit_completions(arguments);
+            emit_completions(&arguments);
             Ok(())
         }
     }
 }
 
-fn emit_completions(arguments: CompletionsArgs) {
+fn emit_completions(arguments: &CompletionsArgs) {
     let mut command = Cli::command();
     generate(
         Shell::from(arguments.shell),
@@ -589,11 +588,11 @@ struct GalleryEntry {
 
 fn run_gallery(arguments: GalleryArgs) -> Result<(), CliError> {
     match arguments.action {
-        GalleryCommand::Prepare(arguments) => prepare_gallery(arguments),
+        GalleryCommand::Prepare(arguments) => prepare_gallery(&arguments),
     }
 }
 
-fn prepare_gallery(arguments: GalleryPrepareArgs) -> Result<(), CliError> {
+fn prepare_gallery(arguments: &GalleryPrepareArgs) -> Result<(), CliError> {
     validate_gallery_text(&arguments.title, "title", 100)?;
     validate_gallery_license(&arguments.license)?;
     ensure_output_absent(&arguments.output)?;
@@ -1055,8 +1054,8 @@ fn build_evidence(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> Reducti
 fn material_measurement(snapshot: &reprocut_workspace::ProjectSnapshot) -> MaterialMeasurement {
     let lines = snapshot.files().iter().fold(0_u64, |total, file| {
         let contents = file.contents();
-        let newlines = u64::try_from(contents.iter().filter(|&&byte| byte == b'\n').count())
-            .unwrap_or(u64::MAX);
+        let newlines =
+            u64::try_from(memchr::memchr_iter(b'\n', contents).count()).unwrap_or(u64::MAX);
         total.saturating_add(newlines).saturating_add(u64::from(
             !contents.is_empty() && contents.last() != Some(&b'\n'),
         ))

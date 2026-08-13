@@ -1002,6 +1002,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "clap_complete",
+ "memchr",
  "predicates",
  "reprocut-adapters",
  "reprocut-core",
