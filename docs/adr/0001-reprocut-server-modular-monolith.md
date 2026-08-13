@@ -47,6 +47,4 @@ hosts. Domain interfaces (`JobStore`, `ArtifactStore`, `SourceProvider`,
 `ChangeRequestPublisher`, and `WorkerBackend`) preserve a later migration path,
 but v0.1.0 does not implement unused distributed backends.
 
-The detailed invariants, state machines, security model, and release gates are
-normative in the
-[v0.1.0 release-lock design](../superpowers/specs/2026-08-13-reprocut-v0.1.0-release-lock-design.md).
+This ADR records the server boundary and migration constraints for v0.1.0.
