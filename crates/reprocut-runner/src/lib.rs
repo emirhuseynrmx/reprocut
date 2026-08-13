@@ -1,4 +1,4 @@
-//! Bounded child-process execution for ReproCut.
+//! Bounded child-process execution for `ReproCut`.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -45,6 +45,7 @@ impl CommandSpec {
     }
 
     /// Replaces the default inherited child-environment policy.
+    #[must_use]
     pub fn with_environment(mut self, environment: ChildEnvironment) -> Self {
         self.environment = environment;
         self
@@ -112,6 +113,7 @@ impl ChildEnvironment {
     }
 
     /// Sets one exact variable after inherited removals are applied.
+    #[must_use]
     pub fn set(mut self, name: impl Into<OsString>, value: impl Into<OsString>) -> Self {
         let name = name.into();
         self.remove.remove(&name);
@@ -120,6 +122,7 @@ impl ChildEnvironment {
     }
 
     /// Removes one exact variable and any earlier explicit setting for it.
+    #[must_use]
     pub fn remove(mut self, name: impl Into<OsString>) -> Self {
         let name = name.into();
         self.set.remove(&name);
@@ -128,6 +131,7 @@ impl ChildEnvironment {
     }
 
     /// Prepends one directory to PATH while retaining its policy-selected tail.
+    #[must_use]
     pub fn prepend_path(mut self, directory: impl Into<PathBuf>) -> Self {
         self.path_prepend.push(directory.into());
         self
@@ -193,6 +197,11 @@ pub struct ProcessRunner;
 
 impl ProcessRunner {
     /// Runs a command, drains both pipes, and always reaps its contained process group.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RunnerError`] when the child cannot be spawned, waited on, terminated, or read;
+    /// when a capture thread panics; or when the requested child environment is invalid.
     pub fn run(spec: &CommandSpec) -> Result<ExecutionObservation, RunnerError> {
         let mut command = Command::new(spec.program());
         command
@@ -219,26 +228,25 @@ impl ProcessRunner {
         let stdout_reader = thread::spawn(move || read_bounded(stdout, stdout_limit));
         let stderr_reader = thread::spawn(move || read_bounded(stderr, stderr_limit));
 
-        let (status, timed_out) =
-            match wait_until(&mut child, spec.timeout()).map_err(|source| RunnerError::Io {
+        let (status, timed_out) = if let Some(status) = wait_until(&mut child, spec.timeout())
+            .map_err(|source| RunnerError::Io {
                 operation: "wait for child",
                 source,
             })? {
-                Some(status) => (status, false),
-                None => {
-                    let status = child.terminate().map_err(|source| RunnerError::Io {
-                        operation: "terminate timed-out process group",
-                        source,
-                    })?;
-                    (status, true)
-                }
-            };
+            (status, false)
+        } else {
+            let status = child.terminate().map_err(|source| RunnerError::Io {
+                operation: "terminate timed-out process group",
+                source,
+            })?;
+            (status, true)
+        };
 
         let (stdout, stdout_truncated) = join_capture(stdout_reader, "stdout")?;
         let (stderr, stderr_truncated) = join_capture(stderr_reader, "stderr")?;
 
         Ok(ExecutionObservation::new_contained(
-            termination_reason(&status, timed_out),
+            termination_reason(status, timed_out),
             stdout,
             stderr,
             stdout_truncated || stderr_truncated,
@@ -402,17 +410,17 @@ fn join_capture(
 }
 
 #[cfg(unix)]
-fn exit_signal(status: &std::process::ExitStatus) -> Option<i32> {
+fn exit_signal(status: std::process::ExitStatus) -> Option<i32> {
     use std::os::unix::process::ExitStatusExt;
     status.signal()
 }
 
 #[cfg(not(unix))]
-const fn exit_signal(_status: &std::process::ExitStatus) -> Option<i32> {
+const fn exit_signal(_status: std::process::ExitStatus) -> Option<i32> {
     None
 }
 
-fn termination_reason(status: &std::process::ExitStatus, timed_out: bool) -> TerminationReason {
+fn termination_reason(status: std::process::ExitStatus, timed_out: bool) -> TerminationReason {
     if timed_out {
         TerminationReason::TimedOut
     } else if let Some(signal) = exit_signal(status) {
