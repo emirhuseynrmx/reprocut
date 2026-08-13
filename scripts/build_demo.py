@@ -134,7 +134,10 @@ use thiserror::Error;
 pub struct PythonIsolationRequest;
 impl PythonIsolationRequest {
     pub fn new(_: PathBuf, _: PathBuf) -> Self { Self }
-    pub fn with_extras(self, _: impl IntoIterator<Item=String>) -> Result<Self, PythonPreparationError> { Ok(self) }
+    pub fn with_extras(
+        self,
+        _: impl IntoIterator<Item=String>,
+    ) -> Result<Self, PythonPreparationError> { Ok(self) }
     pub fn with_prepare_spec(self, _: PathBuf) -> Self { self }
 }
 
@@ -144,15 +147,35 @@ pub struct PythonPreparationError;
 
 pub(crate) struct FrozenPythonPreparation;
 impl FrozenPythonPreparation {
-    pub(crate) fn capture(_: &PythonIsolationRequest, _: Duration, _: usize) -> Result<Self, PythonPreparationError> { Err(PythonPreparationError) }
+    pub(crate) fn capture(
+        _: &PythonIsolationRequest,
+        _: Duration,
+        _: usize,
+    ) -> Result<Self, PythonPreparationError> { Err(PythonPreparationError) }
     pub(crate) fn digest(&self) -> ContentDigest { ContentDigest::of(b"unavailable") }
-    pub(crate) fn validate_original_program(&self, _: &Path) -> Result<(), PythonPreparationError> { Err(PythonPreparationError) }
-    pub(crate) fn prepare(&self, _: &Path, _: Duration, _: usize) -> Result<Option<PreparedPythonCandidate>, PythonPreparationError> { Err(PythonPreparationError) }
+    pub(crate) fn validate_original_program(
+        &self,
+        _: &Path,
+    ) -> Result<(), PythonPreparationError> { Err(PythonPreparationError) }
+    pub(crate) fn prepare(
+        &self,
+        _: &Path,
+        _: Duration,
+        _: usize,
+    ) -> Result<Option<PreparedPythonCandidate>, PythonPreparationError> {
+        Err(PythonPreparationError)
+    }
 }
 
 pub(crate) struct PreparedPythonCandidate;
 impl PreparedPythonCandidate {
-    pub(crate) fn command_for(&self, _: &Path, _: &[OsString], _: Duration, _: usize) -> Result<CommandSpec, PythonPreparationError> { Err(PythonPreparationError) }
+    pub(crate) fn command_for(
+        &self,
+        _: &Path,
+        _: &[OsString],
+        _: Duration,
+        _: usize,
+    ) -> Result<CommandSpec, PythonPreparationError> { Err(PythonPreparationError) }
 }
 """
 
@@ -224,7 +247,9 @@ def remote_program() -> str:
     fixture_writes = "\n    ".join(writes)
     harness = f"""
 use std::{{ffi::OsString, fs, path::{{Path, PathBuf}}, time::Duration}};
-use crate::reprocut_engine::{{PreparationMode, ReductionEngine, ReductionOutcome, ReductionRequest, SessionMode}};
+use crate::reprocut_engine::{{
+    PreparationMode, ReductionEngine, ReductionOutcome, ReductionRequest, SessionMode,
+}};
 
 fn write_demo_file(root: &Path, relative: &str, contents: &str) {{
     let path = root.join(relative);
@@ -258,7 +283,10 @@ fn demo_evidence(outcome: &ReductionOutcome) -> serde_json::Value {{
     }})).collect::<Vec<_>>();
     let kept_files = outcome.snapshot().files().iter().map(|file| serde_json::json!({{
         "path": file.path(),
-        "observation": "Present in the final repeatedly verified snapshot; no semantic-causality claim is inferred.",
+        "observation": concat!(
+            "Present in the final repeatedly verified snapshot; ",
+            "no semantic-causality claim is inferred."
+        ),
     }})).collect::<Vec<_>>();
     let retained_lines = outcome.snapshot().files().iter().fold(0_u64, |total, file| {{
         let bytes = file.contents();
@@ -296,12 +324,25 @@ fn demo_evidence(outcome: &ReductionOutcome) -> serde_json::Value {{
             "limitations": [],
         }},
         "measurements": {{
-            "original": {{"files": outcome.original_files(), "bytes": outcome.original_bytes(), "lines": outcome.original_lines(), "syntax_nodes": null}},
-            "retained": {{"files": outcome.snapshot().files().len(), "bytes": outcome.snapshot().total_bytes(), "lines": retained_lines, "syntax_nodes": null}},
+            "original": {{
+                "files": outcome.original_files(),
+                "bytes": outcome.original_bytes(),
+                "lines": outcome.original_lines(),
+                "syntax_nodes": null,
+            }},
+            "retained": {{
+                "files": outcome.snapshot().files().len(),
+                "bytes": outcome.snapshot().total_bytes(),
+                "lines": retained_lines,
+                "syntax_nodes": null,
+            }},
             "elapsed_ms": outcome.elapsed().as_millis() as u64,
         }},
         "search": {{
-            "attempts": outcome.reduction().attempts().saturating_add(outcome.structured_attempts()),
+            "attempts": outcome
+                .reduction()
+                .attempts()
+                .saturating_add(outcome.structured_attempts()),
             "file_attempts": outcome.reduction().attempts(),
             "structured_attempts": outcome.structured_attempts(),
             "inconclusive_attempts": outcome.inconclusive_attempts(),
@@ -334,9 +375,19 @@ fn demo_evidence(outcome: &ReductionOutcome) -> serde_json::Value {{
         "attempts": attempts,
         "limitations": [
             "Elapsed time is one wall-clock observation, not a benchmark.",
-            "Retained paths are observations from the verified final snapshot, not claims of semantic necessity.",
-            "Syntax-node counts are omitted until a grammar-valid cross-language counter is available.",
-            "The official Playground host has no Python executable, so search used a content-equivalent shell oracle; the source and final project are independently executed three times by this builder's local Python runtime.",
+            concat!(
+                "Retained paths are observations from the verified final snapshot, ",
+                "not claims of semantic necessity."
+            ),
+            concat!(
+                "Syntax-node counts are omitted until a grammar-valid ",
+                "cross-language counter is available."
+            ),
+            concat!(
+                "The official Playground host has no Python executable, so search used ",
+                "a content-equivalent shell oracle; the source and final project are ",
+                "independently executed three times by this builder's local Python runtime."
+            ),
         ],
     }})
 }}

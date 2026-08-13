@@ -17,7 +17,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import BinaryIO, Literal, Optional, Union, cast
+from typing import BinaryIO, Literal, Union, cast
 
 PROTOCOL_VERSION = 1
 MAX_EVENT_BYTES = 1024 * 1024
@@ -64,14 +64,14 @@ class ReductionRequest:
     oracle_mode: OracleMode = "automatic"
     failure_patterns: tuple[str, ...] = ()
     reject_patterns: tuple[str, ...] = ()
-    python_executable: Optional[Path] = None
-    python_wheelhouse: Optional[Path] = None
+    python_executable: Path | None = None
+    python_wheelhouse: Path | None = None
     python_extras: tuple[str, ...] = ()
-    prepare_spec: Optional[Path] = None
-    flaky_runs: Optional[int] = None
-    flaky_required: Optional[int] = None
+    prepare_spec: Path | None = None
+    flaky_runs: int | None = None
+    flaky_required: int | None = None
     jobs: int = 0
-    state: Optional[Path] = None
+    state: Path | None = None
     restart: bool = False
 
     def __post_init__(self) -> None:
@@ -139,7 +139,8 @@ class ReductionRequest:
             not isolation_selected and isolation_fields
         ):
             raise ValueError(
-                "isolated_python requires python_executable and python_wheelhouse, and isolation fields require isolated_python"
+                "isolated_python requires python_executable and python_wheelhouse; "
+                "isolation fields require isolated_python"
             )
         if self.timeout_ms < 1 or self.max_output_bytes < 1 or self.jobs < 0:
             raise ValueError(
@@ -254,9 +255,9 @@ class ReductionResult:
 def reduce(
     request: ReductionRequest,
     *,
-    progress: Optional[Callable[[ProgressEvent], None]] = None,
-    executable: Optional[Executable] = None,
-    client_timeout_seconds: Optional[float] = None,
+    progress: Callable[[ProgressEvent], None] | None = None,
+    executable: Executable | None = None,
+    client_timeout_seconds: float | None = None,
 ) -> ReductionResult:
     """Run the shared Rust engine and validate its versioned JSONL evidence."""
     if client_timeout_seconds is not None and client_timeout_seconds <= 0:
@@ -278,7 +279,7 @@ def reduce(
         )
 
 
-def _resolve_command(executable: Optional[Executable]) -> tuple[str, ...]:
+def _resolve_command(executable: Executable | None) -> tuple[str, ...]:
     if executable is None:
         configured = os.environ.get("REPROCUT_BINARY")
         selected = configured or shutil.which("reprocut")
@@ -317,8 +318,8 @@ def _reject_console_recursion(candidate: Path) -> None:
 
 def _run_protocol(
     command: Sequence[str],
-    progress: Optional[Callable[[ProgressEvent], None]],
-    client_timeout_seconds: Optional[float],
+    progress: Callable[[ProgressEvent], None] | None,
+    client_timeout_seconds: float | None,
     expected_root: Path,
     expected_output: Path,
     expected_action: Action,
@@ -351,8 +352,8 @@ def _run_protocol(
     stdout_thread.start()
     stderr_thread.start()
     events: list[ProgressEvent] = []
-    completed: Optional[CompletedEvent] = None
-    baseline: Optional[BaselineStableEvent] = None
+    completed: CompletedEvent | None = None
+    baseline: BaselineStableEvent | None = None
     deadline = None if client_timeout_seconds is None else time.monotonic() + client_timeout_seconds
     try:
         while True:

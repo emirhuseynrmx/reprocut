@@ -40,7 +40,7 @@ def font(size: int, *, mono: bool = False, bold: bool = False) -> ImageFont.Free
         else (["DejaVuSans-Bold.ttf", "arialbd.ttf"] if bold else ["DejaVuSans.ttf", "arial.ttf"])
     )
     for name in names:
-        try:
+        try:  # noqa: PERF203 - each fallback font must be probed independently
             return ImageFont.truetype(name, size=size)
         except OSError:
             continue

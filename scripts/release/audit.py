@@ -8,7 +8,6 @@ import json
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional
 
 try:
     import tomllib
@@ -205,9 +204,11 @@ def dependency_lock_check(root: Path) -> Check:
             r"(?ms)^[ \t]*uses: PyO3/maturin-action@[^\r\n]+\r?\n"
             r"(?P<body>.*?)(?=^[ \t]*-[ \t]+(?:name:|uses:)|\Z)"
         )
-        for match in action.finditer(content):
-            if not re.search(r"(?m)^[ \t]*args:[^\r\n]*--locked", match.group("body")):
-                violations.append(f"{workflow.name}: maturin-action is not locked")
+        violations.extend(
+            f"{workflow.name}: maturin-action is not locked"
+            for match in action.finditer(content)
+            if not re.search(r"(?m)^[ \t]*args:[^\r\n]*--locked", match.group("body"))
+        )
     return check(
         "dependency-lock",
         not violations,
@@ -215,7 +216,7 @@ def dependency_lock_check(root: Path) -> Check:
     )
 
 
-def workflow_job(workflow: str, name: str) -> Optional[str]:
+def workflow_job(workflow: str, name: str) -> str | None:
     match = re.search(
         rf"(?ms)^  {re.escape(name)}:\r?\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:\r?\n|\Z)",
         workflow,

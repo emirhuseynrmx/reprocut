@@ -11,9 +11,9 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "release"))
 
-from build_manifest import build_manifest
-from package_binary import PackageRequest, package_binary
-from verify_archive import ArchiveError, verify_archive
+from build_manifest import build_manifest  # noqa: E402
+from package_binary import PackageRequest, package_binary  # noqa: E402
+from verify_archive import ArchiveError, verify_archive  # noqa: E402
 
 TARGET = "x86_64-unknown-linux-gnu"
 

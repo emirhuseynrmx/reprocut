@@ -6,16 +6,16 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import reprocut.cli as python_cli
 
 from reprocut.client import (
     BaselineStableEvent,
     CompletedEvent,
-    ReproCutError,
     ReductionRequest,
+    ReproCutError,
     StartedEvent,
     reduce,
 )
-import reprocut.cli as python_cli
 
 
 def test_typed_client_consumes_the_versioned_engine_protocol(tmp_path: Path) -> None:
@@ -186,22 +186,59 @@ import sys
 mode = {mode!r}
 request = json.loads(pathlib.Path(sys.argv[-1]).read_text(encoding="utf-8"))
 version = 7 if mode == "wrong_version" else 1
-print(json.dumps({{"type":"started","protocol_version":version,"action":request["action"],"root":request["root"]}}), flush=True)
+started = {{
+    "type": "started",
+    "protocol_version": version,
+    "action": request["action"],
+    "root": request["root"],
+}}
+print(json.dumps(started), flush=True)
 if mode == "wrong_version":
     raise SystemExit(0)
 if mode == "failure":
     print("diagnostic context", file=sys.stderr, flush=True)
-    print(json.dumps({{"type":"failed","protocol_version":1,"message":"baseline was unstable"}}), flush=True)
+    failed = {{
+        "type": "failed",
+        "protocol_version": 1,
+        "message": "baseline was unstable",
+    }}
+    print(json.dumps(failed), flush=True)
     raise SystemExit(1)
 output = pathlib.Path(request["output"])
 output.mkdir()
-evidence = {{"schema_version":3,"source_snapshot_sha256":"b" * 64,"preparation":{{"mode":"offline","contract_sha256":"c" * 64,"limitations":[]}},"failure":{{"same_failure":True,"fingerprint_sha256":"a" * 64,"oracle_spec_sha256":"d" * 64}}}}
+evidence = {{
+    "schema_version": 3,
+    "source_snapshot_sha256": "b" * 64,
+    "preparation": {{
+        "mode": "offline",
+        "contract_sha256": "c" * 64,
+        "limitations": [],
+    }},
+    "failure": {{
+        "same_failure": True,
+        "fingerprint_sha256": "a" * 64,
+        "oracle_spec_sha256": "d" * 64,
+    }},
+}}
 (output / "reduction.json").write_text(json.dumps(evidence), encoding="utf-8")
 (output / "report.html").write_text("report", encoding="utf-8")
 (output / "issue.md").write_text("issue", encoding="utf-8")
-print(json.dumps({{"type":"baseline_stable","protocol_version":1,"fingerprint_sha256":"a" * 64}}), flush=True)
+baseline = {{
+    "type": "baseline_stable",
+    "protocol_version": 1,
+    "fingerprint_sha256": "a" * 64,
+}}
+print(json.dumps(baseline), flush=True)
 event_output = output.parent / "elsewhere" if mode == "wrong_output" else output
-print(json.dumps({{"type":"completed","protocol_version":1,"output":str(event_output),"evidence":str(output / "reduction.json"),"report":str(output / "report.html"),"issue":str(output / "issue.md")}}), flush=True)
+completed = {{
+    "type": "completed",
+    "protocol_version": 1,
+    "output": str(event_output),
+    "evidence": str(output / "reduction.json"),
+    "report": str(output / "report.html"),
+    "issue": str(output / "issue.md"),
+}}
+print(json.dumps(completed), flush=True)
 """,
         encoding="utf-8",
     )

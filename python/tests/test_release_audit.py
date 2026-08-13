@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "release"))
 
-from audit import REQUIRED_CI_GATES, ci_checks, dependency_lock_check, static_checks
+from audit import REQUIRED_CI_GATES, ci_checks, dependency_lock_check, static_checks  # noqa: E402
 
 
 def test_static_release_contract_is_fully_encoded_and_current() -> None:

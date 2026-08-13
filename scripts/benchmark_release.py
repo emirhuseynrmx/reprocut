@@ -80,7 +80,7 @@ def process_tree_rss(root_process: Any, psutil_module: Any) -> int:
     except (psutil_module.NoSuchProcess, psutil_module.AccessDenied):
         processes = [root_process]
     for process in processes:
-        try:
+        try:  # noqa: PERF203 - descendants can disappear independently while sampled
             total += int(process.memory_info().rss)
         except (psutil_module.NoSuchProcess, psutil_module.AccessDenied):
             continue
@@ -252,6 +252,10 @@ def render_markdown(document: dict[str, Any]) -> str:
     oracle = summary["oracle_runs"]
     attempts = summary["candidate_attempts"]
     mib = 1024 * 1024
+    wall_range = f'{wall["min"]:.3f}-{wall["max"]:.3f}'
+    oracle_range = f'{oracle["min"]}-{oracle["max"]}'
+    attempt_range = f'{attempts["min"]}-{attempts["max"]}'
+    memory_range = f'{memory["min"] / mib:.2f}-{memory["max"] / mib:.2f}'
     return f"""# ReproCut 0.1 release benchmark
 
 This is a {document["measured_runs"]}-run measurement of the checked-in 312-file fixture on one
@@ -262,10 +266,10 @@ recorded machine. It is evidence for this environment, not a universal speed cla
 | Files | {original["files"]} | {retained["files"]} |
 | Bytes | {original["bytes"]} | {retained["bytes"]} |
 | Lines | {original["lines"]} | {retained["lines"]} |
-| End-to-end wall time | — | {wall["median"]:.3f} ms median ({wall["min"]:.3f}–{wall["max"]:.3f}) |
-| Oracle executions | — | {oracle["median"]} median ({oracle["min"]}–{oracle["max"]}) |
-| Candidate attempts | — | {attempts["median"]} median ({attempts["min"]}–{attempts["max"]}) |
-| Sampled process-tree peak RSS | — | {memory["median"] / mib:.2f} MiB median ({memory["min"] / mib:.2f}–{memory["max"] / mib:.2f}) |
+| End-to-end wall time | — | {wall["median"]:.3f} ms median ({wall_range}) |
+| Oracle executions | — | {oracle["median"]} median ({oracle_range}) |
+| Candidate attempts | — | {attempts["median"]} median ({attempt_range}) |
+| Sampled process-tree peak RSS | — | {memory["median"] / mib:.2f} MiB median ({memory_range}) |
 
 Failure fingerprint: `{summary["fingerprint_sha256"]}`
 

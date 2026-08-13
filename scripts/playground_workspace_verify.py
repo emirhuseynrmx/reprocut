@@ -380,7 +380,10 @@ pub enum SyntaxError {
     #[error("invalid UTF-8")] InvalidUtf8,
     #[error("grammar error")] Grammar,
 }
-pub fn deletion_transforms(_: SyntaxLanguage, _: &[u8]) -> Result<Vec<SyntaxTransform>, SyntaxError> {
+pub fn deletion_transforms(
+    _: SyntaxLanguage,
+    _: &[u8],
+) -> Result<Vec<SyntaxTransform>, SyntaxError> {
     Ok(Vec::new())
 }
 pub fn hoist_transforms(_: SyntaxLanguage, _: &[u8]) -> Result<Vec<SyntaxTransform>, SyntaxError> {

@@ -168,8 +168,8 @@ class FailureOracle:
         "_mode",
         "_oracle_spec_digest",
         "_reject_patterns",
-        "_required_regex",
         "_reject_regex",
+        "_required_regex",
     )
 
     def __init__(
