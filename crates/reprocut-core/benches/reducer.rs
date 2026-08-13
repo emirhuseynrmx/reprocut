@@ -1,6 +1,6 @@
 //! Reduction hot-path benchmarks.
 
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion, Throughput};
+use criterion::{black_box, BatchSize, Criterion, Throughput};
 use reprocut_core::{reduce, CandidateVerdict, ExecutionObservation, FailureOracle, ReductionUnit};
 
 fn benchmark_reducer(criterion: &mut Criterion) {
@@ -67,7 +67,9 @@ fn benchmark_oracle(criterion: &mut Criterion) {
     group.finish();
 }
 
-// Criterion 0.5 emits a public `BENCHES` static that cannot carry user-authored docs.
-#[allow(missing_docs)]
-criterion_group!(benches, benchmark_reducer, benchmark_oracle);
-criterion_main!(benches);
+fn main() {
+    let mut criterion = Criterion::default().configure_from_args();
+    benchmark_reducer(&mut criterion);
+    benchmark_oracle(&mut criterion);
+    criterion.final_summary();
+}

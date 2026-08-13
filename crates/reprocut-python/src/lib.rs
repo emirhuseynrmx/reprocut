@@ -248,10 +248,10 @@ const fn channel_name(channel: DiagnosticChannel) -> &'static str {
     }
 }
 
-fn termination_value<'py>(
-    py: Python<'py>,
+fn termination_value(
+    py: Python<'_>,
     termination: TerminationReason,
-) -> PyResult<Bound<'py, PyDict>> {
+) -> PyResult<Bound<'_, PyDict>> {
     let value = PyDict::new(py);
     match termination {
         TerminationReason::ExitCode(code) => {
