@@ -302,7 +302,7 @@
     ],
     "exit_code": 1,
     "failure_patterns": [],
-    "fingerprint_sha256": "b6b897ed734c446373d7b59f988edc50f8f13369f8438cc8b6d4756221f86415",
+    "fingerprint_sha256": "ede93e201979aa28529073122c522197f34c92be46742a726e54bc8ff3803fc8",
     "normalization_schema": 5,
     "oracle_mode": "automatic",
     "oracle_spec_sha256": "3015cdd3dcd09acb2c9e17736d828908ee6ccab62db68928f1de9e2c1468d142",

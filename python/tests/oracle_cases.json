@@ -52,7 +52,7 @@
       "reject_patterns": [],
       "normalization_schema": 5,
       "oracle_spec_sha256": "1c82610274183be423701b7037ec7605f66e3589b10ca57e49a663b53e0d9738",
-      "fingerprint_sha256": "45a8066b7d09683271e52f0d33449e442d2919185f38e88368e624aa4e76a8ab"
+      "fingerprint_sha256": "1b683ab4a3a583db2c8c1a702739703a88a75aff0c868948e543cb82af4c06b8"
     }
   },
   {
@@ -83,7 +83,7 @@
       "reject_patterns": [],
       "normalization_schema": 5,
       "oracle_spec_sha256": "1c82610274183be423701b7037ec7605f66e3589b10ca57e49a663b53e0d9738",
-      "fingerprint_sha256": "97974008587d3c6ea33adeef534b391dc3e191e9fe4b97bd24b500229b491239"
+      "fingerprint_sha256": "dd8080922909fe14a1f0984f8d88760faf5c1528cbef5c05b02e3e8fad47cba2"
     }
   },
   {

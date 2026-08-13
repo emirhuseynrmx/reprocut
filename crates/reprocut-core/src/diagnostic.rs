@@ -346,99 +346,32 @@ fn is_boilerplate(line: &str) -> bool {
 ///
 /// Panics only if one of the crate's compile-time regular-expression literals is invalid.
 pub fn normalize_diagnostic(input: &str) -> String {
-    static UUID: OnceLock<Regex> = OnceLock::new();
-    static ISO_TIMESTAMP: OnceLock<Regex> = OnceLock::new();
-    static UUID_FIELD: OnceLock<Regex> = OnceLock::new();
-    static TIMESTAMP_FIELD: OnceLock<Regex> = OnceLock::new();
-    static LOG_LEVEL: OnceLock<Regex> = OnceLock::new();
-    static UNIX_TEMP: OnceLock<Regex> = OnceLock::new();
-    static WINDOWS_TEMP: OnceLock<Regex> = OnceLock::new();
-    static ADDRESS: OnceLock<Regex> = OnceLock::new();
-    static PROCESS_ID: OnceLock<Regex> = OnceLock::new();
-    static LOOPBACK_PORT: OnceLock<Regex> = OnceLock::new();
-    static NAMED_PORT: OnceLock<Regex> = OnceLock::new();
-    static TELEMETRY_DURATION: OnceLock<Regex> = OnceLock::new();
-    static PATH_LOCATION: OnceLock<Regex> = OnceLock::new();
-    static NAMED_LOCATION: OnceLock<Regex> = OnceLock::new();
-    static HORIZONTAL_SPACE: OnceLock<Regex> = OnceLock::new();
-
-    let uuid = UUID.get_or_init(|| {
-        Regex::new(r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[1-5][0-9A-Fa-f]{3}-[89ABab][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}")
-            .expect("UUID regex is valid")
-    });
-    let timestamp = ISO_TIMESTAMP.get_or_init(|| {
-        Regex::new(r"[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})?")
-            .expect("timestamp regex is valid")
-    });
-    let uuid_field = UUID_FIELD.get_or_init(|| {
-        Regex::new(
-            r"(?i)(?:request|correlation|trace|span|invocation|run)(?:[_ -]?id)?[ \t]*[:=][ \t]*$",
-        )
-        .expect("UUID metadata-field regex is valid")
-    });
-    let timestamp_field = TIMESTAMP_FIELD.get_or_init(|| {
-        Regex::new(r"(?i)(?:timestamp|log[_ -]?time|logged[_ -]?at)[ \t]*[:=][ \t]*$")
-            .expect("timestamp metadata-field regex is valid")
-    });
-    let log_level = LOG_LEVEL.get_or_init(|| {
-        Regex::new(r"(?i)^[ \t\]]*(?:trace|debug|info|warn|warning|error|fatal)(?:[ \t:]|$)")
-            .expect("log-level regex is valid")
-    });
-    let unix_temp = UNIX_TEMP.get_or_init(|| {
-        Regex::new(r"/(?:tmp|var/tmp)(?:/[^ \t\r\n:]+)*")
-            .expect("Unix temporary path regex is valid")
-    });
-    let windows_temp = WINDOWS_TEMP.get_or_init(|| {
-        Regex::new(r"[A-Za-z]:\\(?:[Tt][Mm][Pp]|[Tt][Ee][Mm][Pp]|[Uu]sers\\[^\\ \t\r\n:]+\\[Aa]pp[Dd]ata\\[Ll]ocal\\[Tt]emp)(?:\\[^ \t\r\n:]+)*")
-            .expect("Windows temporary path regex is valid")
-    });
-    let address = ADDRESS.get_or_init(|| {
-        Regex::new(
-            r"(?:address|addr|pointer|ptr|Address|Pointer)[ \t]*[:=]?[ \t]*0x[0-9A-Fa-f]{7,}",
-        )
-        .expect("contextual address regex is valid")
-    });
-    let process_id = PROCESS_ID.get_or_init(|| {
-        Regex::new(r"(pid|PID|process[ \t]+[Ii][Dd]|thread[ \t]+[Ii][Dd]|thread|Thread)[ \t]*[:=#]?[ \t]*[0-9]+")
-            .expect("process identifier regex is valid")
-    });
-    let loopback_port = LOOPBACK_PORT.get_or_init(|| {
-        Regex::new(r"(localhost|LOCALHOST|127\.0\.0\.1|\[::1\]):[0-9]{1,5}")
-            .expect("loopback port regex is valid")
-    });
-    let named_port = NAMED_PORT.get_or_init(|| {
-        Regex::new(r"(?:port|Port|PORT)[ \t]*[:=]?[ \t]*[0-9]{1,5}").expect("port regex is valid")
-    });
-    let telemetry_duration = TELEMETRY_DURATION.get_or_init(|| {
-        Regex::new(r"(?i)(elapsed|took|duration|finished[ \t]+in)([ \t]*[:=]?[ \t]*)[0-9]+(?:\.[0-9]+)?[ \t]*(?:seconds|second|minutes|minute|secs|sec|mins|min|ms|ns|us|s)")
-            .expect("telemetry duration regex is valid")
-    });
-    let path_location = PATH_LOCATION.get_or_init(|| {
-        Regex::new(r"(?m)(?P<token>[^ \t\r\n:]+):[0-9]+(?::[0-9]+)?")
-            .expect("path location candidate regex is valid")
-    });
-    let named_location = NAMED_LOCATION.get_or_init(|| {
-        Regex::new(r"([Ll]ine|[Cc]olumn)[ \t]+[0-9]+").expect("named location regex is valid")
-    });
-    let horizontal_space = HORIZONTAL_SPACE
-        .get_or_init(|| Regex::new(r"[\t ]+").expect("horizontal whitespace regex is valid"));
+    let patterns = normalization_patterns();
 
     let mut text = input.replace("\r\n", "\n").replace('\r', "\n");
-    text = replace_contextual_matches(uuid, &text, "<uuid>", |input, start, _| {
-        uuid_field.is_match(current_line_prefix(input, start))
+    text = replace_contextual_matches(&patterns.uuid, &text, "<uuid>", |input, start, _| {
+        patterns.uuid_field.is_match(current_line_prefix(input, start))
     });
-    text = replace_contextual_matches(timestamp, &text, "<timestamp>", |input, start, end| {
-        timestamp_field.is_match(current_line_prefix(input, start))
-            || is_log_envelope_timestamp(input, start, end, log_level)
-    });
-    text = windows_temp.replace_all(&text, "<temp>").into_owned();
-    text = unix_temp.replace_all(&text, "<temp>").into_owned();
-    text = address.replace_all(&text, "address <address>").into_owned();
-    text = replace_lexically_bounded(process_id, &text, "$1 <id>");
-    text = loopback_port.replace_all(&text, "$1:<port>").into_owned();
-    text = replace_lexically_bounded(named_port, &text, "port <port>");
-    text = replace_lexically_bounded(telemetry_duration, &text, "$1$2<duration>");
-    text = path_location
+    text = replace_contextual_matches(
+        &patterns.timestamp,
+        &text,
+        "<timestamp>",
+        |input, start, end| {
+            patterns
+                .timestamp_field
+                .is_match(current_line_prefix(input, start))
+                || is_log_envelope_timestamp(input, start, end, &patterns.log_level)
+        },
+    );
+    text = patterns.windows_temp.replace_all(&text, "<temp>").into_owned();
+    text = patterns.unix_temp.replace_all(&text, "<temp>").into_owned();
+    text = patterns.address.replace_all(&text, "address <address>").into_owned();
+    text = replace_lexically_bounded(&patterns.process_id, &text, "$1 <id>");
+    text = patterns.loopback_port.replace_all(&text, "$1:<port>").into_owned();
+    text = replace_lexically_bounded(&patterns.named_port, &text, "port <port>");
+    text = replace_lexically_bounded(&patterns.telemetry_duration, &text, "$1$2<duration>");
+    text = patterns
+        .path_location
         .replace_all(&text, |captures: &regex::Captures<'_>| {
             let token = &captures["token"];
             let start = captures.get(0).map_or(0, |matched| matched.start());
@@ -454,12 +387,83 @@ pub fn normalize_diagnostic(input: &str) -> String {
             }
         })
         .into_owned();
-    text = replace_lexically_bounded(named_location, &text, "$1 <location>");
+    text = replace_lexically_bounded(&patterns.named_location, &text, "$1 <location>");
     text.lines()
-        .map(|line| horizontal_space.replace_all(line.trim(), " "))
+        .map(|line| patterns.horizontal_space.replace_all(line.trim(), " "))
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+struct NormalizationPatterns {
+    uuid: Regex,
+    timestamp: Regex,
+    uuid_field: Regex,
+    timestamp_field: Regex,
+    log_level: Regex,
+    unix_temp: Regex,
+    windows_temp: Regex,
+    address: Regex,
+    process_id: Regex,
+    loopback_port: Regex,
+    named_port: Regex,
+    telemetry_duration: Regex,
+    path_location: Regex,
+    named_location: Regex,
+    horizontal_space: Regex,
+}
+
+fn normalization_patterns() -> &'static NormalizationPatterns {
+    static PATTERNS: OnceLock<NormalizationPatterns> = OnceLock::new();
+    PATTERNS.get_or_init(|| NormalizationPatterns {
+        uuid: Regex::new(
+            r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[1-5][0-9A-Fa-f]{3}-[89ABab][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}",
+        )
+        .expect("UUID regex is valid"),
+        timestamp: Regex::new(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})?",
+        )
+        .expect("timestamp regex is valid"),
+        uuid_field: Regex::new(
+            r"(?i)(?:request|correlation|trace|span|invocation|run)(?:[_ -]?id)?[ \t]*[:=][ \t]*$",
+        )
+        .expect("UUID metadata-field regex is valid"),
+        timestamp_field: Regex::new(
+            r"(?i)(?:timestamp|log[_ -]?time|logged[_ -]?at)[ \t]*[:=][ \t]*$",
+        )
+        .expect("timestamp metadata-field regex is valid"),
+        log_level: Regex::new(
+            r"(?i)^[ \t\]]*(?:trace|debug|info|warn|warning|error|fatal)(?:[ \t:]|$)",
+        )
+        .expect("log-level regex is valid"),
+        unix_temp: Regex::new(r"/(?:tmp|var/tmp)(?:/[^ \t\r\n:]+)*")
+            .expect("Unix temporary path regex is valid"),
+        windows_temp: Regex::new(
+            r"[A-Za-z]:\\(?:[Tt][Mm][Pp]|[Tt][Ee][Mm][Pp]|[Uu]sers\\[^\\ \t\r\n:]+\\[Aa]pp[Dd]ata\\[Ll]ocal\\[Tt]emp)(?:\\[^ \t\r\n:]+)*",
+        )
+        .expect("Windows temporary path regex is valid"),
+        address: Regex::new(
+            r"(?:address|addr|pointer|ptr|Address|Pointer)[ \t]*[:=]?[ \t]*0x[0-9A-Fa-f]{7,}",
+        )
+        .expect("contextual address regex is valid"),
+        process_id: Regex::new(
+            r"(pid|PID|process[ \t]+[Ii][Dd]|thread[ \t]+[Ii][Dd]|thread|Thread)[ \t]*[:=#]?[ \t]*[0-9]+",
+        )
+        .expect("process identifier regex is valid"),
+        loopback_port: Regex::new(r"(localhost|LOCALHOST|127\.0\.0\.1|\[::1\]):[0-9]{1,5}")
+            .expect("loopback port regex is valid"),
+        named_port: Regex::new(r"(?:port|Port|PORT)[ \t]*[:=]?[ \t]*[0-9]{1,5}")
+            .expect("port regex is valid"),
+        telemetry_duration: Regex::new(
+            r"(?i)(elapsed|took|duration|finished[ \t]+in)([ \t]*[:=]?[ \t]*)[0-9]+(?:\.[0-9]+)?[ \t]*(?:seconds|second|minutes|minute|secs|sec|mins|min|ms|ns|us|s)",
+        )
+        .expect("telemetry duration regex is valid"),
+        path_location: Regex::new(r"(?m)(?P<token>[^ \t\r\n:]+):[0-9]+(?::[0-9]+)?")
+            .expect("path location candidate regex is valid"),
+        named_location: Regex::new(r"([Ll]ine|[Cc]olumn)[ \t]+[0-9]+")
+            .expect("named location regex is valid"),
+        horizontal_space: Regex::new(r"[\t ]+").expect("horizontal whitespace regex is valid"),
+    })
 }
 
 fn replace_lexically_bounded(pattern: &Regex, input: &str, replacement: &str) -> String {

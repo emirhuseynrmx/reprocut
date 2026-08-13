@@ -1,6 +1,6 @@
 # Minimal reproduction: TypeError: unsupported operand type(s) for +: 'decimal.Decimal' and 'str'
 
-> **Same failure verified.** Fingerprint `b6b897ed734c446373d7b59f988edc50f8f13369f8438cc8b6d4756221f86415` matched across 3 final execution(s).
+> **Same failure verified.** Fingerprint `ede93e201979aa28529073122c522197f34c92be46742a726e54bc8ff3803fc8` matched across 3 final execution(s).
 
 ## Reduction
 
