@@ -1,360 +1,44 @@
 {
-  "accepted_structured_edits": [],
-  "attempts": [
-    {
-      "candidate_sha256": "8b60432055e44afe029e625e8bb76e2cae1c4edde4d4e0f963fe6b49d2eec04b",
-      "completed_at_unix": 1786611927,
-      "event_id": 1,
-      "evidence": {
-        "decision": "preserved",
-        "inconclusive_runs": 0,
-        "observed_runs": 3,
-        "preserved_runs": 3,
-        "rejected_runs": 0,
-        "wilson_95": {
-          "lower": 0.4385029682449546,
-          "upper": 1.0
-        }
-      },
-      "inconclusive_runs": 0,
-      "observed_runs": 3,
-      "verdict": "preserved"
-    },
-    {
-      "candidate_sha256": "86a8cb2fad1dafc159dadba5442e95a9961bc6d7172e928b084f7d953722349a",
-      "completed_at_unix": 1786611927,
-      "event_id": 2,
-      "evidence": {
-        "decision": "preserved",
-        "inconclusive_runs": 0,
-        "observed_runs": 3,
-        "preserved_runs": 3,
-        "rejected_runs": 0,
-        "wilson_95": {
-          "lower": 0.4385029682449546,
-          "upper": 1.0
-        }
-      },
-      "inconclusive_runs": 0,
-      "observed_runs": 3,
-      "verdict": "preserved"
-    },
-    {
-      "candidate_sha256": "a5e9a4511fe82d0a7f2412e586395baeea0ab3c119b2aeaf4fb361cd0192e112",
-      "completed_at_unix": 1786611927,
-      "event_id": 3,
-      "evidence": {
-        "decision": "rejected",
-        "inconclusive_runs": 0,
-        "observed_runs": 1,
-        "preserved_runs": 0,
-        "rejected_runs": 1,
-        "wilson_95": {
-          "lower": 0.0,
-          "upper": 0.7934506856227626
-        }
-      },
-      "inconclusive_runs": 0,
-      "observed_runs": 1,
-      "verdict": "rejected"
-    },
-    {
-      "candidate_sha256": "f79a799d91e5be958ba6de68eb0697002a9d36132511acbe0402a8dd2d18b404",
-      "completed_at_unix": 1786611927,
-      "event_id": 4,
-      "evidence": {
-        "decision": "preserved",
-        "inconclusive_runs": 0,
-        "observed_runs": 3,
-        "preserved_runs": 3,
-        "rejected_runs": 0,
-        "wilson_95": {
-          "lower": 0.4385029682449546,
-          "upper": 1.0
-        }
-      },
-      "inconclusive_runs": 0,
-      "observed_runs": 3,
-      "verdict": "preserved"
-    },
-    {
-      "candidate_sha256": "e252eaa75c3a619700276a6fb778a46c0d0dc8d3215d5231f875ae38fbd97665",
-      "completed_at_unix": 1786611927,
-      "event_id": 5,
-      "evidence": {
-        "decision": "preserved",
-        "inconclusive_runs": 0,
-        "observed_runs": 3,
-        "preserved_runs": 3,
-        "rejected_runs": 0,
-        "wilson_95": {
-          "lower": 0.4385029682449546,
-          "upper": 1.0
-        }
-      },
-      "inconclusive_runs": 0,
-      "observed_runs": 3,
-      "verdict": "preserved"
-    },
-    {
-      "candidate_sha256": "ad7f2c855491cbe2f13df3cb5a402c77b9b048a8f36f2b834a8680e691f39c69",
-      "completed_at_unix": 1786611928,
-      "event_id": 6,
-      "evidence": {
-        "decision": "preserved",
-        "inconclusive_runs": 0,
-        "observed_runs": 3,
-        "preserved_runs": 3,
-        "rejected_runs": 0,
-        "wilson_95": {
-          "lower": 0.4385029682449546,
-          "upper": 1.0
-        }
-      },
-      "inconclusive_runs": 0,
-      "observed_runs": 3,
-      "verdict": "preserved"
-    },
-    {
-      "candidate_sha256": "f068168b4f9d45fe6bef78413ff6a42b54022a72371ece1086bfa6d83ffaad1a",
-      "completed_at_unix": 1786611928,
-      "event_id": 7,
-      "evidence": {
-        "decision": "rejected",
-        "inconclusive_runs": 0,
-        "observed_runs": 1,
-        "preserved_runs": 0,
-        "rejected_runs": 1,
-        "wilson_95": {
-          "lower": 0.0,
-          "upper": 0.7934506856227626
-        }
-      },
-      "inconclusive_runs": 0,
-      "observed_runs": 1,
-      "verdict": "rejected"
-    },
-    {
-      "candidate_sha256": "7b3529ace3528fd28b87ec6a26502b08e19d87d56e85f0f00d52a5742ff263de",
-      "completed_at_unix": 1786611928,
-      "event_id": 8,
-      "evidence": {
-        "decision": "rejected",
-        "inconclusive_runs": 0,
-        "observed_runs": 1,
-        "preserved_runs": 0,
-        "rejected_runs": 1,
-        "wilson_95": {
-          "lower": 0.0,
-          "upper": 0.7934506856227626
-        }
-      },
-      "inconclusive_runs": 0,
-      "observed_runs": 1,
-      "verdict": "rejected"
-    },
-    {
-      "candidate_sha256": "2104139cce8d84eb3c0775492a99671faa44bcfb600c59217dfeb943fcecddaa",
-      "completed_at_unix": 1786611928,
-      "event_id": 9,
-      "evidence": {
-        "decision": "rejected",
-        "inconclusive_runs": 0,
-        "observed_runs": 1,
-        "preserved_runs": 0,
-        "rejected_runs": 1,
-        "wilson_95": {
-          "lower": 0.0,
-          "upper": 0.7934506856227626
-        }
-      },
-      "inconclusive_runs": 0,
-      "observed_runs": 1,
-      "verdict": "rejected"
-    },
-    {
-      "candidate_sha256": "3bc175c7d6ee59875700e39f948111c25b4e5c6b7729ce1e4d55cf1e730e71be",
-      "completed_at_unix": 1786611928,
-      "event_id": 10,
-      "evidence": {
-        "decision": "rejected",
-        "inconclusive_runs": 0,
-        "observed_runs": 1,
-        "preserved_runs": 0,
-        "rejected_runs": 1,
-        "wilson_95": {
-          "lower": 0.0,
-          "upper": 0.7934506856227626
-        }
-      },
-      "inconclusive_runs": 0,
-      "observed_runs": 1,
-      "verdict": "rejected"
-    },
-    {
-      "candidate_sha256": "50fdc49db73d037aaf7ae01a07ba72cbbe760d67a17d0b2b2bd285e285d35e23",
-      "completed_at_unix": 1786611928,
-      "event_id": 11,
-      "evidence": {
-        "decision": "rejected",
-        "inconclusive_runs": 0,
-        "observed_runs": 1,
-        "preserved_runs": 0,
-        "rejected_runs": 1,
-        "wilson_95": {
-          "lower": 0.0,
-          "upper": 0.7934506856227626
-        }
-      },
-      "inconclusive_runs": 0,
-      "observed_runs": 1,
-      "verdict": "rejected"
-    },
-    {
-      "candidate_sha256": "a8600a5aa5d5bef7133a1ed416cd3841c3fca875c4c7c618ca2620ad73cc1761",
-      "completed_at_unix": 1786611928,
-      "event_id": 12,
-      "evidence": {
-        "decision": "rejected",
-        "inconclusive_runs": 0,
-        "observed_runs": 1,
-        "preserved_runs": 0,
-        "rejected_runs": 1,
-        "wilson_95": {
-          "lower": 0.0,
-          "upper": 0.7934506856227626
-        }
-      },
-      "inconclusive_runs": 0,
-      "observed_runs": 1,
-      "verdict": "rejected"
-    },
-    {
-      "candidate_sha256": "d4153178b1cc1ff9e8a48a919df3fdb427ea0ffa80e6296b4b95eaa4bae99f7f",
-      "completed_at_unix": 1786611928,
-      "event_id": 13,
-      "evidence": {
-        "decision": "preserved",
-        "inconclusive_runs": 0,
-        "observed_runs": 3,
-        "preserved_runs": 3,
-        "rejected_runs": 0,
-        "wilson_95": {
-          "lower": 0.4385029682449546,
-          "upper": 1.0
-        }
-      },
-      "inconclusive_runs": 0,
-      "observed_runs": 3,
-      "verdict": "preserved"
-    },
-    {
-      "candidate_sha256": "e119a53e443791c20838521ab7d094ca9e7d2567453a10394490d1a4aa2eeb22",
-      "completed_at_unix": 1786611928,
-      "event_id": 14,
-      "evidence": {
-        "decision": "rejected",
-        "inconclusive_runs": 0,
-        "observed_runs": 1,
-        "preserved_runs": 0,
-        "rejected_runs": 1,
-        "wilson_95": {
-          "lower": 0.0,
-          "upper": 0.7934506856227626
-        }
-      },
-      "inconclusive_runs": 0,
-      "observed_runs": 1,
-      "verdict": "rejected"
-    },
-    {
-      "candidate_sha256": "5207bfaaad6eed097d01ea0fcd9d0b9391f572431d31c74a4c41c8516270446d",
-      "completed_at_unix": 1786611928,
-      "event_id": 15,
-      "evidence": {
-        "decision": "rejected",
-        "inconclusive_runs": 0,
-        "observed_runs": 1,
-        "preserved_runs": 0,
-        "rejected_runs": 1,
-        "wilson_95": {
-          "lower": 0.0,
-          "upper": 0.7934506856227626
-        }
-      },
-      "inconclusive_runs": 0,
-      "observed_runs": 1,
-      "verdict": "rejected"
-    }
-  ],
+  "schema_version": 4,
+  "source_root": "demo/source",
+  "source_snapshot_sha256": "e6271f52f712d909b34912ae88b1120939d27d57fe1201e15bb85e0161121d2f",
+  "output": "demo/result",
   "command": [
     "python",
     "bug.py"
   ],
   "ecosystem": "python",
-  "failure": {
-    "anchor": "TypeError: unsupported operand type(s) for +: 'decimal.Decimal' and 'str'",
-    "anchors": [
-      {
-        "channel": "stderr",
-        "text": "TypeError: unsupported operand type(s) for +: 'decimal.Decimal' and 'str'"
-      }
-    ],
-    "exit_code": 1,
-    "failure_patterns": [],
-    "fingerprint_sha256": "ede93e201979aa28529073122c522197f34c92be46742a726e54bc8ff3803fc8",
-    "normalization_schema": 5,
-    "oracle_mode": "automatic",
-    "oracle_spec_sha256": "3015cdd3dcd09acb2c9e17736d828908ee6ccab62db68928f1de9e2c1468d142",
-    "oracle_stream": "auto",
-    "reject_patterns": [],
-    "same_failure": true,
-    "signal": null,
-    "termination": "exit 1"
+  "preparation": {
+    "mode": "none",
+    "contract_sha256": "43186a7b3c01e42e26c8da61a442cde7b8c25c26d1780f8290698dbf0cb3c728",
+    "limitations": []
   },
-  "kept_files": [
-    {
-      "observation": "Present in the final repeatedly verified snapshot; no semantic-causality claim is inferred.",
-      "path": "bug.py"
-    },
-    {
-      "observation": "Present in the final repeatedly verified snapshot; no semantic-causality claim is inferred.",
-      "path": "checkout.py"
-    },
-    {
-      "observation": "Present in the final repeatedly verified snapshot; no semantic-causality claim is inferred.",
-      "path": "fixtures/order.json"
-    }
-  ],
-  "limitations": [
-    "Elapsed time is one wall-clock observation, not a benchmark.",
-    "Retained paths are observations from the verified final snapshot, not claims of semantic necessity.",
-    "Syntax-node counts are omitted until a grammar-valid cross-language counter is available.",
-    "The official Playground host has no Python executable, so search used a content-equivalent shell oracle; the source and final project are independently executed three times by this builder's local Python runtime."
-  ],
   "measurements": {
-    "elapsed_ms": 557,
     "original": {
-      "bytes": 1669,
       "files": 18,
+      "bytes": 1669,
       "lines": 55,
       "syntax_nodes": null
     },
     "retained": {
-      "bytes": 675,
       "files": 3,
+      "bytes": 675,
       "lines": 28,
       "syntax_nodes": null
-    }
+    },
+    "elapsed_ms": 557
   },
-  "output": "demo/result",
-  "preparation": {
-    "contract_sha256": "43186a7b3c01e42e26c8da61a442cde7b8c25c26d1780f8290698dbf0cb3c728",
-    "limitations": [],
-    "mode": "none"
-  },
-  "schema_version": 4,
   "search": {
+    "attempts": 24,
+    "file_attempts": 24,
+    "structured_attempts": 0,
+    "inconclusive_attempts": 0,
+    "cache_hits": 7,
+    "baseline_runs": 3,
+    "final_verifications": 3,
+    "jobs": 1,
+    "state": null,
+    "resumed": false,
     "accepted_file_sizes": [
       18,
       16,
@@ -364,22 +48,413 @@
       4,
       3
     ],
-    "attempts": 24,
-    "baseline_runs": 3,
-    "cache_hits": 7,
     "evaluation_policy": {
       "mode": "strict",
-      "required": 3,
-      "runs": 3
-    },
-    "file_attempts": 24,
-    "final_verifications": 3,
-    "inconclusive_attempts": 0,
-    "jobs": 1,
-    "resumed": false,
-    "state": null,
-    "structured_attempts": 0
+      "runs": 3,
+      "required": 3
+    }
   },
-  "source_root": "demo/source",
-  "source_snapshot_sha256": "e6271f52f712d909b34912ae88b1120939d27d57fe1201e15bb85e0161121d2f"
+  "failure": {
+    "same_failure": true,
+    "fingerprint_sha256": "ede93e201979aa28529073122c522197f34c92be46742a726e54bc8ff3803fc8",
+    "exit_code": 1,
+    "signal": null,
+    "termination": "exit 1",
+    "oracle_stream": "auto",
+    "oracle_mode": "automatic",
+    "anchor": "TypeError: unsupported operand type(s) for +: 'decimal.Decimal' and 'str'",
+    "anchors": [
+      {
+        "channel": "stderr",
+        "text": "TypeError: unsupported operand type(s) for +: 'decimal.Decimal' and 'str'"
+      }
+    ],
+    "normalization_schema": 5,
+    "failure_patterns": [],
+    "reject_patterns": [],
+    "oracle_spec_sha256": "3015cdd3dcd09acb2c9e17736d828908ee6ccab62db68928f1de9e2c1468d142"
+  },
+  "kept_files": [
+    {
+      "path": "bug.py",
+      "observation": "Present in the final repeatedly verified snapshot; no semantic-causality claim is inferred."
+    },
+    {
+      "path": "checkout.py",
+      "observation": "Present in the final repeatedly verified snapshot; no semantic-causality claim is inferred."
+    },
+    {
+      "path": "fixtures/order.json",
+      "observation": "Present in the final repeatedly verified snapshot; no semantic-causality claim is inferred."
+    }
+  ],
+  "retained_manifest": {
+    "schema_version": 1,
+    "entries": [
+      {
+        "path": "bug.py",
+        "kind": "regular_file",
+        "sha256": "f4d655f6440fbb5c195bcf5bc87661a649b780c19a9ea69098717d0e7ba9f249",
+        "size_bytes": 287,
+        "executable_mask": 0,
+        "symlink_target": null
+      },
+      {
+        "path": "checkout.py",
+        "kind": "regular_file",
+        "sha256": "0dffdf745e82ddfaba4860d090754a0ada1fe7aa6c1dfbe8cdc22c0234e50d03",
+        "size_bytes": 308,
+        "executable_mask": 0,
+        "symlink_target": null
+      },
+      {
+        "path": "fixtures/order.json",
+        "kind": "regular_file",
+        "sha256": "496a694911f55b8f0130989f025b9a502a258f71c64f7bedce093ed7af2f539b",
+        "size_bytes": 80,
+        "executable_mask": 0,
+        "symlink_target": null
+      }
+    ],
+    "total_bytes": 675,
+    "manifest_sha256": "9605f23c6798ba6d313279660936ce91e521749c49a70a125fce2a0d227f4606"
+  },
+  "final_observations": [
+    {
+      "ordinal": 1,
+      "verdict": "preserved",
+      "termination": "exit 1",
+      "exit_code": 1,
+      "signal": null,
+      "timed_out": false,
+      "streams_truncated": false,
+      "containment": "direct_child",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_bytes": 0,
+      "stderr_sha256": "2329b51624a37824cefbb571d5406c303d0907cd2483763e8fe07b2175e7e21e",
+      "stderr_bytes": 470
+    },
+    {
+      "ordinal": 2,
+      "verdict": "preserved",
+      "termination": "exit 1",
+      "exit_code": 1,
+      "signal": null,
+      "timed_out": false,
+      "streams_truncated": false,
+      "containment": "direct_child",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_bytes": 0,
+      "stderr_sha256": "2329b51624a37824cefbb571d5406c303d0907cd2483763e8fe07b2175e7e21e",
+      "stderr_bytes": 470
+    },
+    {
+      "ordinal": 3,
+      "verdict": "preserved",
+      "termination": "exit 1",
+      "exit_code": 1,
+      "signal": null,
+      "timed_out": false,
+      "streams_truncated": false,
+      "containment": "direct_child",
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_bytes": 0,
+      "stderr_sha256": "2329b51624a37824cefbb571d5406c303d0907cd2483763e8fe07b2175e7e21e",
+      "stderr_bytes": 470
+    }
+  ],
+  "accepted_structured_edits": [],
+  "attempts": [
+    {
+      "event_id": 1,
+      "candidate_sha256": "8b60432055e44afe029e625e8bb76e2cae1c4edde4d4e0f963fe6b49d2eec04b",
+      "verdict": "preserved",
+      "observed_runs": 3,
+      "inconclusive_runs": 0,
+      "completed_at_unix": 1786611927,
+      "evidence": {
+        "decision": "preserved",
+        "inconclusive_runs": 0,
+        "observed_runs": 3,
+        "preserved_runs": 3,
+        "rejected_runs": 0,
+        "wilson_95": {
+          "lower": 0.4385029682449546,
+          "upper": 1
+        }
+      }
+    },
+    {
+      "event_id": 2,
+      "candidate_sha256": "86a8cb2fad1dafc159dadba5442e95a9961bc6d7172e928b084f7d953722349a",
+      "verdict": "preserved",
+      "observed_runs": 3,
+      "inconclusive_runs": 0,
+      "completed_at_unix": 1786611927,
+      "evidence": {
+        "decision": "preserved",
+        "inconclusive_runs": 0,
+        "observed_runs": 3,
+        "preserved_runs": 3,
+        "rejected_runs": 0,
+        "wilson_95": {
+          "lower": 0.4385029682449546,
+          "upper": 1
+        }
+      }
+    },
+    {
+      "event_id": 3,
+      "candidate_sha256": "a5e9a4511fe82d0a7f2412e586395baeea0ab3c119b2aeaf4fb361cd0192e112",
+      "verdict": "rejected",
+      "observed_runs": 1,
+      "inconclusive_runs": 0,
+      "completed_at_unix": 1786611927,
+      "evidence": {
+        "decision": "rejected",
+        "inconclusive_runs": 0,
+        "observed_runs": 1,
+        "preserved_runs": 0,
+        "rejected_runs": 1,
+        "wilson_95": {
+          "lower": 0,
+          "upper": 0.7934506856227626
+        }
+      }
+    },
+    {
+      "event_id": 4,
+      "candidate_sha256": "f79a799d91e5be958ba6de68eb0697002a9d36132511acbe0402a8dd2d18b404",
+      "verdict": "preserved",
+      "observed_runs": 3,
+      "inconclusive_runs": 0,
+      "completed_at_unix": 1786611927,
+      "evidence": {
+        "decision": "preserved",
+        "inconclusive_runs": 0,
+        "observed_runs": 3,
+        "preserved_runs": 3,
+        "rejected_runs": 0,
+        "wilson_95": {
+          "lower": 0.4385029682449546,
+          "upper": 1
+        }
+      }
+    },
+    {
+      "event_id": 5,
+      "candidate_sha256": "e252eaa75c3a619700276a6fb778a46c0d0dc8d3215d5231f875ae38fbd97665",
+      "verdict": "preserved",
+      "observed_runs": 3,
+      "inconclusive_runs": 0,
+      "completed_at_unix": 1786611927,
+      "evidence": {
+        "decision": "preserved",
+        "inconclusive_runs": 0,
+        "observed_runs": 3,
+        "preserved_runs": 3,
+        "rejected_runs": 0,
+        "wilson_95": {
+          "lower": 0.4385029682449546,
+          "upper": 1
+        }
+      }
+    },
+    {
+      "event_id": 6,
+      "candidate_sha256": "ad7f2c855491cbe2f13df3cb5a402c77b9b048a8f36f2b834a8680e691f39c69",
+      "verdict": "preserved",
+      "observed_runs": 3,
+      "inconclusive_runs": 0,
+      "completed_at_unix": 1786611928,
+      "evidence": {
+        "decision": "preserved",
+        "inconclusive_runs": 0,
+        "observed_runs": 3,
+        "preserved_runs": 3,
+        "rejected_runs": 0,
+        "wilson_95": {
+          "lower": 0.4385029682449546,
+          "upper": 1
+        }
+      }
+    },
+    {
+      "event_id": 7,
+      "candidate_sha256": "f068168b4f9d45fe6bef78413ff6a42b54022a72371ece1086bfa6d83ffaad1a",
+      "verdict": "rejected",
+      "observed_runs": 1,
+      "inconclusive_runs": 0,
+      "completed_at_unix": 1786611928,
+      "evidence": {
+        "decision": "rejected",
+        "inconclusive_runs": 0,
+        "observed_runs": 1,
+        "preserved_runs": 0,
+        "rejected_runs": 1,
+        "wilson_95": {
+          "lower": 0,
+          "upper": 0.7934506856227626
+        }
+      }
+    },
+    {
+      "event_id": 8,
+      "candidate_sha256": "7b3529ace3528fd28b87ec6a26502b08e19d87d56e85f0f00d52a5742ff263de",
+      "verdict": "rejected",
+      "observed_runs": 1,
+      "inconclusive_runs": 0,
+      "completed_at_unix": 1786611928,
+      "evidence": {
+        "decision": "rejected",
+        "inconclusive_runs": 0,
+        "observed_runs": 1,
+        "preserved_runs": 0,
+        "rejected_runs": 1,
+        "wilson_95": {
+          "lower": 0,
+          "upper": 0.7934506856227626
+        }
+      }
+    },
+    {
+      "event_id": 9,
+      "candidate_sha256": "2104139cce8d84eb3c0775492a99671faa44bcfb600c59217dfeb943fcecddaa",
+      "verdict": "rejected",
+      "observed_runs": 1,
+      "inconclusive_runs": 0,
+      "completed_at_unix": 1786611928,
+      "evidence": {
+        "decision": "rejected",
+        "inconclusive_runs": 0,
+        "observed_runs": 1,
+        "preserved_runs": 0,
+        "rejected_runs": 1,
+        "wilson_95": {
+          "lower": 0,
+          "upper": 0.7934506856227626
+        }
+      }
+    },
+    {
+      "event_id": 10,
+      "candidate_sha256": "3bc175c7d6ee59875700e39f948111c25b4e5c6b7729ce1e4d55cf1e730e71be",
+      "verdict": "rejected",
+      "observed_runs": 1,
+      "inconclusive_runs": 0,
+      "completed_at_unix": 1786611928,
+      "evidence": {
+        "decision": "rejected",
+        "inconclusive_runs": 0,
+        "observed_runs": 1,
+        "preserved_runs": 0,
+        "rejected_runs": 1,
+        "wilson_95": {
+          "lower": 0,
+          "upper": 0.7934506856227626
+        }
+      }
+    },
+    {
+      "event_id": 11,
+      "candidate_sha256": "50fdc49db73d037aaf7ae01a07ba72cbbe760d67a17d0b2b2bd285e285d35e23",
+      "verdict": "rejected",
+      "observed_runs": 1,
+      "inconclusive_runs": 0,
+      "completed_at_unix": 1786611928,
+      "evidence": {
+        "decision": "rejected",
+        "inconclusive_runs": 0,
+        "observed_runs": 1,
+        "preserved_runs": 0,
+        "rejected_runs": 1,
+        "wilson_95": {
+          "lower": 0,
+          "upper": 0.7934506856227626
+        }
+      }
+    },
+    {
+      "event_id": 12,
+      "candidate_sha256": "a8600a5aa5d5bef7133a1ed416cd3841c3fca875c4c7c618ca2620ad73cc1761",
+      "verdict": "rejected",
+      "observed_runs": 1,
+      "inconclusive_runs": 0,
+      "completed_at_unix": 1786611928,
+      "evidence": {
+        "decision": "rejected",
+        "inconclusive_runs": 0,
+        "observed_runs": 1,
+        "preserved_runs": 0,
+        "rejected_runs": 1,
+        "wilson_95": {
+          "lower": 0,
+          "upper": 0.7934506856227626
+        }
+      }
+    },
+    {
+      "event_id": 13,
+      "candidate_sha256": "d4153178b1cc1ff9e8a48a919df3fdb427ea0ffa80e6296b4b95eaa4bae99f7f",
+      "verdict": "preserved",
+      "observed_runs": 3,
+      "inconclusive_runs": 0,
+      "completed_at_unix": 1786611928,
+      "evidence": {
+        "decision": "preserved",
+        "inconclusive_runs": 0,
+        "observed_runs": 3,
+        "preserved_runs": 3,
+        "rejected_runs": 0,
+        "wilson_95": {
+          "lower": 0.4385029682449546,
+          "upper": 1
+        }
+      }
+    },
+    {
+      "event_id": 14,
+      "candidate_sha256": "e119a53e443791c20838521ab7d094ca9e7d2567453a10394490d1a4aa2eeb22",
+      "verdict": "rejected",
+      "observed_runs": 1,
+      "inconclusive_runs": 0,
+      "completed_at_unix": 1786611928,
+      "evidence": {
+        "decision": "rejected",
+        "inconclusive_runs": 0,
+        "observed_runs": 1,
+        "preserved_runs": 0,
+        "rejected_runs": 1,
+        "wilson_95": {
+          "lower": 0,
+          "upper": 0.7934506856227626
+        }
+      }
+    },
+    {
+      "event_id": 15,
+      "candidate_sha256": "5207bfaaad6eed097d01ea0fcd9d0b9391f572431d31c74a4c41c8516270446d",
+      "verdict": "rejected",
+      "observed_runs": 1,
+      "inconclusive_runs": 0,
+      "completed_at_unix": 1786611928,
+      "evidence": {
+        "decision": "rejected",
+        "inconclusive_runs": 0,
+        "observed_runs": 1,
+        "preserved_runs": 0,
+        "rejected_runs": 1,
+        "wilson_95": {
+          "lower": 0,
+          "upper": 0.7934506856227626
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "Elapsed time is one wall-clock observation, not a benchmark.",
+    "Retained paths are observations from the verified final snapshot, not claims of semantic necessity.",
+    "Syntax-node counts are omitted until a grammar-valid cross-language counter is available.",
+    "The official Playground host has no Python executable, so search used a content-equivalent shell oracle; the source and final project are independently executed three times by this builder's local Python runtime."
+  ]
 }

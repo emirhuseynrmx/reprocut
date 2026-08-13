@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 from dataclasses import asdict, dataclass
@@ -85,6 +86,18 @@ def static_checks(root: Path) -> list[Check]:
             len(evidence.get("preparation", {}).get("contract_sha256") or "") == 64
             or bool(evidence.get("preparation", {}).get("limitations"))
         )
+        and evidence.get("retained_manifest", {}).get("schema_version") == 1
+        and len(evidence.get("retained_manifest", {}).get("manifest_sha256", "")) == 64
+        and len(evidence.get("retained_manifest", {}).get("entries", [])) == 3
+        and len(evidence.get("final_observations", [])) == 3
+        and all(
+            observation.get("verdict") == "preserved"
+            and observation.get("timed_out") is False
+            and observation.get("streams_truncated") is False
+            and len(observation.get("stdout_sha256", "")) == 64
+            and len(observation.get("stderr_sha256", "")) == 64
+            for observation in evidence.get("final_observations", [])
+        )
     )
     checks.append(
         check(
@@ -102,6 +115,7 @@ def static_checks(root: Path) -> list[Check]:
             "checked-in JSONL matches evidence attempts",
         )
     )
+    checks.append(demo_artifact_manifest_check(root))
 
     corpus = json.loads((root / "benchmarks/upstream-corpus.json").read_text(encoding="utf-8"))
     cases = corpus.get("cases", corpus if isinstance(corpus, list) else [])
@@ -142,6 +156,13 @@ def static_checks(root: Path) -> list[Check]:
             "oracle-ci-coverage",
             oracle_job is not None and all(target in oracle_job for target in oracle_targets),
             "oracle contract, property, and adversarial Cargo targets are explicit",
+        )
+    )
+    checks.append(
+        check(
+            "demo-verifier-ci",
+            "cargo run --locked -p reprocut -- verify demo/result --json" in ci_workflow,
+            "checked-in demo passes the production verifier in CI",
         )
     )
     checks.append(dependency_lock_check(root))
@@ -185,6 +206,38 @@ def static_checks(root: Path) -> list[Check]:
         )
     )
     return checks
+
+
+def demo_artifact_manifest_check(root: Path) -> Check:
+    artifact = root / "demo" / "result"
+    envelope = artifact / "artifact-manifest.json"
+    if not envelope.is_file():
+        return check("demo-artifact-manifest", False, "artifact-manifest.json is missing")
+    try:
+        document = json.loads(envelope.read_text(encoding="utf-8"))
+        members = document["members"]
+    except (OSError, KeyError, TypeError, json.JSONDecodeError) as error:
+        return check("demo-artifact-manifest", False, f"invalid envelope: {error}")
+    if document.get("schema_version") != 1 or not isinstance(members, list):
+        return check("demo-artifact-manifest", False, "unsupported manifest shape")
+    actual: list[tuple[str, str, int]] = []
+    for path in sorted(item for item in artifact.rglob("*") if item.is_file()):
+        relative = path.relative_to(artifact).as_posix()
+        if relative == "artifact-manifest.json":
+            continue
+        contents = path.read_bytes()
+        actual.append((relative, hashlib.sha256(contents).hexdigest(), len(contents)))
+    declared = [
+        (member.get("path"), member.get("sha256"), member.get("size_bytes"))
+        for member in members
+        if isinstance(member, dict)
+    ]
+    passed = declared == actual and len(declared) == len(members)
+    return check(
+        "demo-artifact-manifest",
+        passed,
+        "all checked-in demo bytes are declared" if passed else "declared demo bytes differ",
+    )
 
 
 def dependency_lock_check(root: Path) -> Check:

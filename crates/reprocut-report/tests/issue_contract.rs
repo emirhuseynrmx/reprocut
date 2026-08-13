@@ -1,9 +1,9 @@
 //! Paste-ready issue rendering and escaping contracts.
 
 use reprocut_report::{
-    render_issue, EvaluationPolicyEvidence, FailureEvidence, MaterialMeasurement, MeasurementSet,
-    PreparationEvidence, ReductionEvidence, RetentionEvidence, SearchEvidence,
-    EVIDENCE_SCHEMA_VERSION,
+    render_issue, EvaluationPolicyEvidence, FailureEvidence, FinalObservationEvidence,
+    MaterialMeasurement, MeasurementSet, PreparationEvidence, ReductionEvidence, RetainedEntry,
+    RetainedManifest, RetentionEvidence, SearchEvidence, EVIDENCE_SCHEMA_VERSION,
 };
 
 #[test]
@@ -96,6 +96,29 @@ fn fixture(anchor: &str) -> ReductionEvidence {
             path: "bug.py".to_owned(),
             observation: "Present in the final verified snapshot.".to_owned(),
         }],
+        retained_manifest: RetainedManifest::new(vec![RetainedEntry::regular_file(
+            "bug.py",
+            &vec![0; 512],
+            0,
+        )
+        .expect("retained fixture")])
+        .expect("retained manifest"),
+        final_observations: (1..=3)
+            .map(|ordinal| FinalObservationEvidence {
+                ordinal,
+                verdict: "preserved".to_owned(),
+                termination: "exit 1".to_owned(),
+                exit_code: Some(1),
+                signal: None,
+                timed_out: false,
+                streams_truncated: false,
+                containment: "direct_child".to_owned(),
+                stdout_sha256: "1".repeat(64),
+                stdout_bytes: 0,
+                stderr_sha256: "2".repeat(64),
+                stderr_bytes: 20,
+            })
+            .collect(),
         accepted_structured_edits: Vec::new(),
         attempts: Vec::new(),
         limitations: vec!["Timing is wall-clock, not a benchmark.".to_owned()],

@@ -116,6 +116,7 @@ timeout, and capture budget are frozen into the preparation hash.
 ```text
 minimal/
 ├── project/          verified retained snapshot
+├── artifact-manifest.json   canonical identity of every artifact member
 ├── reduction.json   complete versioned evidence
 ├── attempts.jsonl   append-only candidate observations
 ├── report.html      portable report with no network dependency

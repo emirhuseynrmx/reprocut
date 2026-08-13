@@ -1,4 +1,4 @@
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot 'project')
-& python bug.py
+& 'python' 'bug.py'
 exit $LASTEXITCODE

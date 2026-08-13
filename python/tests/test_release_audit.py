@@ -7,7 +7,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "release"))
 
-from audit import REQUIRED_CI_GATES, ci_checks, dependency_lock_check, static_checks  # noqa: E402
+from audit import (  # noqa: E402
+    REQUIRED_CI_GATES,
+    ci_checks,
+    demo_artifact_manifest_check,
+    dependency_lock_check,
+    static_checks,
+)
 
 
 def test_static_release_contract_is_fully_encoded_and_current() -> None:
@@ -89,3 +95,31 @@ def test_dependency_lock_check_rejects_missing_lock_and_unlocked_graph_commands(
         encoding="utf-8",
     )
     assert not dependency_lock_check(tmp_path).passed
+
+
+def test_demo_artifact_manifest_rejects_changed_retained_bytes(tmp_path: Path) -> None:
+    artifact = tmp_path / "demo" / "result"
+    artifact.mkdir(parents=True)
+    (artifact / "bug.py").write_bytes(b"before")
+    digest = __import__("hashlib").sha256(b"before").hexdigest()
+    (artifact / "artifact-manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "artifact_id": "a" * 64,
+                "members": [
+                    {
+                        "path": "bug.py",
+                        "sha256": digest,
+                        "size_bytes": 6,
+                        "executable_mask": 0,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert demo_artifact_manifest_check(tmp_path).passed
+
+    (artifact / "bug.py").write_bytes(b"after")
+    assert not demo_artifact_manifest_check(tmp_path).passed

@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "artifact_id": "73050c78427bf26ff1f996cb4ddac5ea528fd5d7d540b869d20512f7b539ff3a",
+  "members": [
+    {
+      "path": "attempts.jsonl",
+      "sha256": "6ef93601d26191d294e3c86df55cf782785608754a0aee54f91536de1cdeb9f2",
+      "size_bytes": 5358,
+      "executable_mask": 0
+    },
+    {
+      "path": "issue.md",
+      "sha256": "11ccb1ab4773755e025847c59ce1b659129c415af4189cd22fa56639a0d8e3b1",
+      "size_bytes": 1997,
+      "executable_mask": 0
+    },
+    {
+      "path": "project/bug.py",
+      "sha256": "f4d655f6440fbb5c195bcf5bc87661a649b780c19a9ea69098717d0e7ba9f249",
+      "size_bytes": 287,
+      "executable_mask": 0
+    },
+    {
+      "path": "project/checkout.py",
+      "sha256": "0dffdf745e82ddfaba4860d090754a0ada1fe7aa6c1dfbe8cdc22c0234e50d03",
+      "size_bytes": 308,
+      "executable_mask": 0
+    },
+    {
+      "path": "project/fixtures/order.json",
+      "sha256": "496a694911f55b8f0130989f025b9a502a258f71c64f7bedce093ed7af2f539b",
+      "size_bytes": 80,
+      "executable_mask": 0
+    },
+    {
+      "path": "reduction.json",
+      "sha256": "03a6e449b9ae45ffb30d501fb87d48b09ea5aeccc35593a0c756a39e7cefa008",
+      "size_bytes": 13133,
+      "executable_mask": 0
+    },
+    {
+      "path": "report.html",
+      "sha256": "4ab03448d5b64e935f94a99e1ed8e376edff4108092b8e3e0afd551f7150a9d6",
+      "size_bytes": 26164,
+      "executable_mask": 0
+    },
+    {
+      "path": "reproduce.ps1",
+      "sha256": "a0a635883680ae1ff52ac3faddd676d8688c4834bec5a170ce1b8c286b6b2ef2",
+      "size_bytes": 120,
+      "executable_mask": 0
+    },
+    {
+      "path": "reproduce.sh",
+      "sha256": "fb7e01533328bd0ee15bd37e6d6c609cff40f38d451bf4ef2a71f39f52c79e3d",
+      "size_bytes": 84,
+      "executable_mask": 0
+    }
+  ]
+}

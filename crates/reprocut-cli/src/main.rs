@@ -15,9 +15,9 @@ use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{generate, Shell};
 use reprocut_adapters::{Adapter, AdapterError, Ecosystem, EcosystemSelection};
 use reprocut_core::{
-    CandidateVerdict, DiagnosticChannel, EvaluationPolicy, OracleError, OracleMode, OracleSpec,
-    PolicyError, ProgressEventV1, ProtocolAction, ProtocolError, ReductionRequestV1,
-    TerminationReason, PROTOCOL_VERSION,
+    CandidateVerdict, ContainmentMechanism, ContentDigest, DiagnosticChannel, EvaluationPolicy,
+    OracleError, OracleMode, OracleSpec, PolicyError, ProgressEventV1, ProtocolAction,
+    ProtocolError, ReductionRequestV1, TerminationReason, PROTOCOL_VERSION,
 };
 use reprocut_engine::{
     EngineError, PreparationMode, PythonIsolationRequest, PythonPreparationError, ReductionEngine,
@@ -25,10 +25,11 @@ use reprocut_engine::{
 };
 use reprocut_oci::{export_archive, Builder, OciError, OciRequest, RuntimeFamily};
 use reprocut_report::{
-    render_issue, render_report, write_attempts_jsonl, AttemptSummary, ChannelAnchor,
-    EvaluationPolicyEvidence, FailureEvidence, MaterialMeasurement, MeasurementSet,
-    PreparationEvidence, ReductionEvidence, ReportModel, RetentionEvidence, SearchEvidence,
-    EVIDENCE_SCHEMA_VERSION,
+    build_artifact_manifest, render_issue, render_report, render_reproduction_scripts,
+    verify_artifact, write_attempts_jsonl, AttemptSummary, ChannelAnchor, EvaluationPolicyEvidence,
+    FailureEvidence, FinalObservationEvidence, ManifestError, MaterialMeasurement, MeasurementSet,
+    PreparationEvidence, ReductionEvidence, ReportModel, RetainedEntry, RetainedManifest,
+    RetentionEvidence, SearchEvidence, VerificationError, EVIDENCE_SCHEMA_VERSION,
 };
 use reprocut_workspace::{ProjectInventory, ProjectSnapshot, WorkspaceError};
 use serde::Serialize;
@@ -60,6 +61,8 @@ enum Action {
     Reduce(ReduceArgs),
     /// Continue an exactly compatible interrupted reduction.
     Resume(ReduceArgs),
+    /// Independently verify one completed artifact's complete byte identity.
+    Verify(VerifyArgs),
     /// Export a completed artifact into a distribution format.
     Export(ExportArgs),
     /// Run the versioned JSONL integration protocol.
@@ -68,6 +71,17 @@ enum Action {
     Gallery(GalleryArgs),
     /// Write a shell completion script to standard output.
     Completions(CompletionsArgs),
+}
+
+#[derive(Debug, Args)]
+struct VerifyArgs {
+    /// Completed ReproCut artifact directory.
+    #[arg(value_name = "OUTPUT")]
+    output: PathBuf,
+
+    /// Emit one machine-readable result.
+    #[arg(long)]
+    json: bool,
 }
 
 #[derive(Debug, Args)]
@@ -408,6 +422,10 @@ enum CliError {
     PythonPreparation(#[from] PythonPreparationError),
     #[error(transparent)]
     Protocol(#[from] ProtocolError),
+    #[error(transparent)]
+    Manifest(#[from] ManifestError),
+    #[error(transparent)]
+    Verification(#[from] VerificationError),
     #[error("gallery submission is invalid: {0}")]
     Gallery(String),
     #[error("{0}")]
@@ -432,6 +450,7 @@ fn execute(cli: Cli) -> Result<(), CliError> {
     match cli.action {
         Action::Minimize(arguments) | Action::Reduce(arguments) => reduce_project(arguments, false),
         Action::Resume(arguments) => reduce_project(arguments, true),
+        Action::Verify(arguments) => verify_completed_artifact(arguments),
         Action::Export(arguments) => export_artifact(arguments),
         Action::Protocol(arguments) => run_protocol(arguments),
         Action::Gallery(arguments) => run_gallery(arguments),
@@ -440,6 +459,23 @@ fn execute(cli: Cli) -> Result<(), CliError> {
             Ok(())
         }
     }
+}
+
+fn verify_completed_artifact(arguments: VerifyArgs) -> Result<(), CliError> {
+    let verified = verify_artifact(&arguments.output)?;
+    if arguments.json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "artifact_id": verified.artifact_id(),
+                "artifact_manifest_schema": reprocut_report::ARTIFACT_MANIFEST_SCHEMA_VERSION,
+                "verified": true,
+            })
+        );
+    } else {
+        println!("verified artifact sha256:{}", verified.artifact_id());
+    }
+    Ok(())
 }
 
 fn emit_completions(arguments: &CompletionsArgs) {
@@ -572,6 +608,7 @@ fn emit_event(event: &ProgressEventV1) -> Result<(), CliError> {
 #[derive(Debug, Serialize)]
 struct GalleryEntry {
     schema_version: u16,
+    parent_artifact_id: String,
     slug: String,
     title: String,
     license: String,
@@ -597,7 +634,8 @@ fn prepare_gallery(arguments: &GalleryPrepareArgs) -> Result<(), CliError> {
     validate_gallery_license(&arguments.license)?;
     ensure_output_absent(&arguments.output)?;
 
-    let evidence_path = arguments.from.join("reduction.json");
+    let verified = verify_artifact(&arguments.from)?;
+    let evidence_path = verified.root().join("reduction.json");
     let bytes = fs::read(&evidence_path)
         .map_err(|source| io_error("read reduction evidence", &evidence_path, source))?;
     let evidence: ReductionEvidence = serde_json::from_slice(&bytes)?;
@@ -624,6 +662,7 @@ fn prepare_gallery(arguments: &GalleryPrepareArgs) -> Result<(), CliError> {
     let license = arguments.license.trim().to_owned();
     let entry = GalleryEntry {
         schema_version: 1,
+        parent_artifact_id: verified.artifact_id().to_owned(),
         slug: gallery_slug(&title, &evidence.failure.fingerprint_sha256),
         title,
         license,
@@ -673,11 +712,16 @@ fn prepare_gallery(arguments: &GalleryPrepareArgs) -> Result<(), CliError> {
         .as_bytes(),
     )?;
     if arguments.include_source {
-        let project = arguments.from.join("project");
+        let project = verified.root().join("project");
         let inventory = ProjectInventory::scan(&project)?;
         ProjectSnapshot::from_inventory(&inventory, inventory.units())?
             .copy_to(&submission.join("source"))?;
     }
+    let manifest = build_artifact_manifest(&submission)?;
+    write_file(
+        &submission.join("artifact-manifest.json"),
+        &serde_json::to_vec_pretty(&manifest)?,
+    )?;
 
     ensure_output_absent(&arguments.output)?;
     publish_staging(staging, &submission, &arguments.output)?;
@@ -776,7 +820,8 @@ fn export_artifact(arguments: ExportArgs) -> Result<(), CliError> {
 }
 
 fn export_oci(arguments: OciArgs) -> Result<(), CliError> {
-    let evidence_path = arguments.from.join("reduction.json");
+    let verified = verify_artifact(&arguments.from)?;
+    let evidence_path = verified.root().join("reduction.json");
     let bytes = fs::read(&evidence_path)
         .map_err(|source| io_error("read reduction evidence", &evidence_path, source))?;
     let evidence: ReductionEvidence = serde_json::from_slice(&bytes)?;
@@ -787,11 +832,12 @@ fn export_oci(arguments: OciArgs) -> Result<(), CliError> {
         _ => RuntimeFamily::Generic,
     };
     let mut request = OciRequest::new(
-        arguments.from,
+        verified.root().to_path_buf(),
         arguments.output,
         runtime,
         evidence.command,
         evidence.failure.fingerprint_sha256,
+        verified.artifact_id().to_owned(),
     );
     request = match arguments.builder {
         BuilderArg::Auto => request,
@@ -891,7 +937,7 @@ fn execute_reduction(
         );
     }
 
-    let evidence = build_evidence(&arguments, &outcome);
+    let evidence = build_evidence(&arguments, &outcome)?;
     evidence.validate().map_err(CliError::InvalidArguments)?;
     let json = serde_json::to_vec_pretty(&evidence)?;
     publish_artifact(&arguments, &outcome, &evidence, &json)?;
@@ -947,7 +993,10 @@ fn split_command(command: &[String]) -> (&str, &[String]) {
     (program, arguments)
 }
 
-fn build_evidence(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> ReductionEvidence {
+fn build_evidence(
+    arguments: &ReduceArgs,
+    outcome: &ReductionOutcome,
+) -> Result<ReductionEvidence, CliError> {
     let fingerprint = outcome.fingerprint();
     let attempts = outcome
         .attempt_events()
@@ -968,7 +1017,40 @@ fn build_evidence(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> Reducti
     accepted_file_sizes.push(outcome.original_files());
     accepted_file_sizes.extend_from_slice(outcome.reduction().accepted_sizes());
 
-    ReductionEvidence {
+    let retained_manifest = RetainedManifest::new(
+        outcome
+            .snapshot()
+            .files()
+            .iter()
+            .map(|file| {
+                RetainedEntry::regular_file(file.path(), file.contents(), file.executable_mask())
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+    )?;
+    let final_observations = outcome
+        .final_observations()
+        .iter()
+        .enumerate()
+        .map(|(index, final_observation)| {
+            let observation = final_observation.observation();
+            FinalObservationEvidence {
+                ordinal: u16::try_from(index.saturating_add(1)).unwrap_or(u16::MAX),
+                verdict: verdict_name(final_observation.verdict()).to_owned(),
+                termination: termination_name(observation.termination()),
+                exit_code: observation.exit_code(),
+                signal: observation.signal(),
+                timed_out: observation.timed_out(),
+                streams_truncated: observation.streams_truncated(),
+                containment: containment_name(observation.containment()).to_owned(),
+                stdout_sha256: ContentDigest::of(observation.stdout()).to_hex(),
+                stdout_bytes: u64::try_from(observation.stdout().len()).unwrap_or(u64::MAX),
+                stderr_sha256: ContentDigest::of(observation.stderr()).to_hex(),
+                stderr_bytes: u64::try_from(observation.stderr().len()).unwrap_or(u64::MAX),
+            }
+        })
+        .collect();
+
+    Ok(ReductionEvidence {
         schema_version: EVIDENCE_SCHEMA_VERSION,
         source_root: arguments.root.display().to_string(),
         source_snapshot_sha256: outcome.source_snapshot_digest().to_hex(),
@@ -1039,6 +1121,8 @@ fn build_evidence(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> Reducti
                     .to_owned(),
             })
             .collect(),
+        retained_manifest,
+        final_observations,
         accepted_structured_edits: outcome.accepted_structured_edits().to_vec(),
         attempts,
         limitations: vec![
@@ -1048,7 +1132,7 @@ fn build_evidence(arguments: &ReduceArgs, outcome: &ReductionOutcome) -> Reducti
             "Syntax-node counts are omitted until a grammar-valid cross-language counter is available."
                 .to_owned(),
         ],
-    }
+    })
 }
 
 fn material_measurement(snapshot: &reprocut_workspace::ProjectSnapshot) -> MaterialMeasurement {
@@ -1152,6 +1236,14 @@ const fn oracle_mode_name(mode: OracleMode) -> &'static str {
     }
 }
 
+const fn containment_name(containment: ContainmentMechanism) -> &'static str {
+    match containment {
+        ContainmentMechanism::DirectChild => "direct_child",
+        ContainmentMechanism::PosixProcessGroup => "posix_process_group",
+        ContainmentMechanism::WindowsJobObject => "windows_job_object",
+    }
+}
+
 fn publish_artifact(
     arguments: &ReduceArgs,
     outcome: &ReductionOutcome,
@@ -1186,6 +1278,10 @@ fn publish_artifact(
     // Windows forbids renaming a directory while a descendant file handle is open.
     drop(attempts_writer);
     write_reproduction_scripts(&artifact, &arguments.command)?;
+    let manifest = build_artifact_manifest(&artifact)?;
+    let manifest_json = serde_json::to_vec_pretty(&manifest)?;
+    write_file(&artifact.join("artifact-manifest.json"), &manifest_json)?;
+    let _verified = verify_artifact(&artifact)?;
 
     ensure_output_absent(&arguments.output)?;
     publish_staging(staging, &artifact, &arguments.output)
@@ -1196,35 +1292,14 @@ fn report_model(evidence: &ReductionEvidence) -> ReportModel {
 }
 
 fn write_reproduction_scripts(artifact: &Path, command: &[String]) -> Result<(), CliError> {
-    let shell = format!(
-        "#!/usr/bin/env sh\nset -eu\ncd -- \"$(dirname -- \"$0\")/project\"\nexec {}\n",
-        command
-            .iter()
-            .map(|argument| quote_shell(argument))
-            .collect::<Vec<_>>()
-            .join(" ")
-    );
+    let scripts = render_reproduction_scripts(command);
     let shell_path = artifact.join("reproduce.sh");
-    write_file(&shell_path, shell.as_bytes())?;
+    write_file(&shell_path, scripts.shell.as_bytes())?;
     make_executable(&shell_path)?;
-
-    let powershell = format!(
-        "$ErrorActionPreference = 'Stop'\nSet-Location (Join-Path $PSScriptRoot 'project')\n& {}\nexit $LASTEXITCODE\n",
-        command
-            .iter()
-            .map(|argument| quote_powershell(argument))
-            .collect::<Vec<_>>()
-            .join(" ")
-    );
-    write_file(&artifact.join("reproduce.ps1"), powershell.as_bytes())
-}
-
-fn quote_shell(argument: &str) -> String {
-    format!("'{}'", argument.replace('\'', "'\"'\"'"))
-}
-
-fn quote_powershell(argument: &str) -> String {
-    format!("'{}'", argument.replace('\'', "''"))
+    write_file(
+        &artifact.join("reproduce.ps1"),
+        scripts.powershell.as_bytes(),
+    )
 }
 
 fn ensure_output_absent(output: &Path) -> Result<(), CliError> {

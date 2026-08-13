@@ -42,6 +42,8 @@ jobs:
         run: cargo test --locked --workspace --all-targets
         env:
           TEST_PYTHON: python
+      - name: Verify checked-in canonical demo artifact
+        run: cargo run --locked -p reprocut -- verify demo/result --json
       - name: Compile benchmarks
         run: cargo bench --locked -p reprocut-core --bench reducer --no-run
       - name: Reject documentation warnings

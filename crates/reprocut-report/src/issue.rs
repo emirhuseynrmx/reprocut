@@ -187,7 +187,8 @@ fn render_included_evidence_and_limits(issue: &mut String, evidence: &ReductionE
     issue.push_str("- `reduction.json` — versioned shared evidence\n");
     issue.push_str("- `attempts.jsonl` — append-only candidate events\n");
     issue.push_str("- `report.html` — self-contained visual record\n");
-    issue.push_str("- `reproduce.sh` / `reproduce.ps1` — quoted argv launchers\n\n");
+    issue.push_str("- `reproduce.sh` / `reproduce.ps1` — quoted argv launchers\n");
+    issue.push_str("- `artifact-manifest.json` — complete non-circular artifact identity\n\n");
 
     issue.push_str("## Limits\n\n");
     for limitation in &evidence.limitations {

@@ -172,9 +172,9 @@ impl RetainedManifest {
     pub fn new(mut entries: Vec<RetainedEntry>) -> Result<Self, ManifestError> {
         entries.sort_unstable_by(|left, right| left.path.cmp(&right.path));
         validate_unique_entries(&entries)?;
-        let total_bytes = entries.iter().fold(0_u64, |total, entry| {
-            total.saturating_add(entry.size_bytes)
-        });
+        let total_bytes = entries
+            .iter()
+            .fold(0_u64, |total, entry| total.saturating_add(entry.size_bytes));
         let manifest_sha256 = retained_payload_digest(&entries, total_bytes).to_hex();
         Ok(Self {
             schema_version: ARTIFACT_MANIFEST_SCHEMA_VERSION,
@@ -216,9 +216,10 @@ impl RetainedManifest {
         {
             return Err(ManifestError::NonCanonicalOrder);
         }
-        let total_bytes = self.entries.iter().fold(0_u64, |total, entry| {
-            total.saturating_add(entry.size_bytes)
-        });
+        let total_bytes = self
+            .entries
+            .iter()
+            .fold(0_u64, |total, entry| total.saturating_add(entry.size_bytes));
         if total_bytes != self.total_bytes {
             return Err(ManifestError::TotalBytesMismatch);
         }
@@ -264,6 +265,32 @@ impl ArtifactMember {
             path,
             sha256: ContentDigest::of(contents).to_hex(),
             size_bytes: u64::try_from(contents.len()).map_err(|_| ManifestError::LengthOverflow)?,
+            executable_mask,
+        })
+    }
+
+    /// Creates a member from an already streamed content digest and exact byte length.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ManifestError`] for an unsafe or reserved path or an invalid execute mask.
+    pub fn from_digest(
+        path: impl Into<String>,
+        sha256: ContentDigest,
+        size_bytes: u64,
+        executable_mask: u8,
+    ) -> Result<Self, ManifestError> {
+        let path = checked_path(path.into())?;
+        if path == MANIFEST_ENVELOPE_PATH {
+            return Err(ManifestError::ReservedEnvelopeMember);
+        }
+        if executable_mask > 0b111 {
+            return Err(ManifestError::InvalidExecutableMask(executable_mask));
+        }
+        Ok(Self {
+            path,
+            sha256: sha256.to_hex(),
+            size_bytes,
             executable_mask,
         })
     }

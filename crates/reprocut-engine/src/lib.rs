@@ -253,6 +253,7 @@ pub struct ReductionOutcome {
     fingerprint: FailureFingerprint,
     baseline_runs: u16,
     final_verifications: u16,
+    final_observations: Vec<FinalVerificationObservation>,
     inconclusive_attempts: u64,
     cache_hits: u64,
     state_path: Option<PathBuf>,
@@ -308,6 +309,11 @@ impl ReductionOutcome {
     /// Returns the number of final verification executions.
     pub const fn final_verifications(&self) -> u16 {
         self.final_verifications
+    }
+
+    /// Returns each final execution and its oracle classification in observation order.
+    pub fn final_observations(&self) -> &[FinalVerificationObservation] {
+        &self.final_observations
     }
 
     /// Returns candidates not accepted because evidence was incomplete.
@@ -654,13 +660,21 @@ impl ReductionEngine {
         )?;
         let snapshot = structured_outcome.snapshot;
         let mut final_error = None;
+        let mut final_observations = Vec::with_capacity(usize::from(policy.runs()));
         let final_evidence = policy.aggregate(std::iter::from_fn(|| {
             if final_error.is_some() {
                 return None;
             }
             Some(
                 match run_snapshot_candidate(request, &snapshot, python_preparation.as_ref()) {
-                    Ok(CandidateExecution::Observed(observation)) => oracle.classify(&observation),
+                    Ok(CandidateExecution::Observed(observation)) => {
+                        let verdict = oracle.classify(&observation);
+                        final_observations.push(FinalVerificationObservation {
+                            observation,
+                            verdict,
+                        });
+                        verdict
+                    }
                     Ok(CandidateExecution::PreparationRejected) => CandidateVerdict::Rejected,
                     Err(error) => {
                         final_error = Some(error);
@@ -691,6 +705,7 @@ impl ReductionEngine {
             fingerprint: oracle.fingerprint().clone(),
             baseline_runs: u16::try_from(baselines.len()).unwrap_or(u16::MAX),
             final_verifications: final_evidence.observed_runs(),
+            final_observations,
             inconclusive_attempts: inconclusive_attempts.load(Ordering::Relaxed),
             cache_hits: cache_hits.load(Ordering::Relaxed),
             state_path,
@@ -701,6 +716,25 @@ impl ReductionEngine {
             elapsed: started.elapsed(),
             attempt_events,
         })
+    }
+}
+
+/// One individual command execution used by final same-failure verification.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FinalVerificationObservation {
+    observation: ExecutionObservation,
+    verdict: CandidateVerdict,
+}
+
+impl FinalVerificationObservation {
+    /// Returns the bounded process observation.
+    pub const fn observation(&self) -> &ExecutionObservation {
+        &self.observation
+    }
+
+    /// Returns the stabilized oracle's classification of this observation.
+    pub const fn verdict(&self) -> CandidateVerdict {
+        self.verdict
     }
 }
 

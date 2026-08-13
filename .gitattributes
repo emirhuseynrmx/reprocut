@@ -4,6 +4,7 @@ LICENSE-* text eol=lf
 *.cjs text eol=lf
 *.gif binary
 *.html text eol=lf
+*.jsonl text eol=lf
 *.json text eol=lf
 *.md text eol=lf
 *.ps1 text eol=lf

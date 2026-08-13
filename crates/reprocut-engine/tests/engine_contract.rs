@@ -11,7 +11,7 @@ use std::{
 };
 
 use reprocut_adapters::Ecosystem;
-use reprocut_core::ReductionUnit;
+use reprocut_core::{CandidateVerdict, ReductionUnit};
 use reprocut_engine::{EngineError, PreparationMode, ReductionEngine, ReductionRequest};
 
 #[test]
@@ -30,6 +30,16 @@ fn real_python_failure_is_stabilized_reduced_and_verified() {
 
     assert_eq!(outcome.baseline_runs(), 3);
     assert_eq!(outcome.final_verifications(), 3);
+    assert_eq!(outcome.final_observations().len(), 3);
+    assert!(outcome
+        .final_observations()
+        .iter()
+        .all(|final_observation| {
+            let observation = final_observation.observation();
+            final_observation.verdict() == CandidateVerdict::Preserved
+                && !observation.timed_out()
+                && !observation.streams_truncated()
+        }));
     assert_eq!(
         outcome
             .reduction()

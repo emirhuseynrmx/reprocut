@@ -3,6 +3,8 @@ use std::io::Write;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::{RetainedEntryKind, RetainedManifest};
+
 /// Current machine-readable reduction evidence schema.
 pub const EVIDENCE_SCHEMA_VERSION: u16 = reprocut_core::EVIDENCE_SCHEMA;
 
@@ -34,6 +36,10 @@ pub struct ReductionEvidence {
     pub failure: FailureEvidence,
     /// Files present in the final verified snapshot.
     pub kept_files: Vec<RetentionEvidence>,
+    /// Canonical byte and metadata identity for every retained entry.
+    pub retained_manifest: RetainedManifest,
+    /// Every individual execution used to authorize final publication.
+    pub final_observations: Vec<FinalObservationEvidence>,
     /// Canonical descriptions of accepted manifest or syntax edits.
     pub accepted_structured_edits: Vec<String>,
     /// Durable candidate observations in event order.
@@ -166,6 +172,35 @@ pub struct RetentionEvidence {
     pub observation: String,
 }
 
+/// One individual final same-failure execution.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct FinalObservationEvidence {
+    /// One-based observation order.
+    pub ordinal: u16,
+    /// `preserved`, `rejected`, or `inconclusive` oracle classification.
+    pub verdict: String,
+    /// Portable process termination description.
+    pub termination: String,
+    /// Process exit status when code-based.
+    pub exit_code: Option<i32>,
+    /// Unix signal number when signal-based.
+    pub signal: Option<i32>,
+    /// Whether the execution deadline elapsed.
+    pub timed_out: bool,
+    /// Whether either bounded stream was truncated.
+    pub streams_truncated: bool,
+    /// Process-tree ownership primitive used for cleanup.
+    pub containment: String,
+    /// SHA-256 identity of exact bounded standard-output bytes.
+    pub stdout_sha256: String,
+    /// Exact captured standard-output byte length.
+    pub stdout_bytes: u64,
+    /// SHA-256 identity of exact bounded standard-error bytes.
+    pub stderr_sha256: String,
+    /// Exact captured standard-error byte length.
+    pub stderr_bytes: u64,
+}
+
 /// One append-only aggregate candidate event, including retries.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AttemptSummary {
@@ -236,6 +271,55 @@ impl ReductionEvidence {
         if !self.failure.same_failure || self.search.final_verifications == 0 {
             return Err("same-failure evidence requires final verification");
         }
+        self.retained_manifest
+            .validate()
+            .map_err(|_| "invalid retained manifest")?;
+        let retained_file_entries = self
+            .retained_manifest
+            .entries()
+            .iter()
+            .filter(|entry| entry.kind == RetainedEntryKind::RegularFile)
+            .count();
+        let retained_paths = self
+            .retained_manifest
+            .entries()
+            .iter()
+            .filter(|entry| entry.kind == RetainedEntryKind::RegularFile)
+            .map(|entry| entry.path.as_str())
+            .collect::<Vec<_>>();
+        let kept_paths = self
+            .kept_files
+            .iter()
+            .map(|entry| entry.path.as_str())
+            .collect::<Vec<_>>();
+        if u64::try_from(retained_file_entries).unwrap_or(u64::MAX)
+            != self.measurements.retained.files
+            || self.retained_manifest.total_bytes() != self.measurements.retained.bytes
+            || retained_paths != kept_paths
+        {
+            return Err("retained manifest disagrees with measurements");
+        }
+        if usize::from(self.search.final_verifications) != self.final_observations.len()
+            || self
+                .final_observations
+                .iter()
+                .enumerate()
+                .any(|(index, observation)| {
+                    observation.ordinal
+                        != u16::try_from(index.saturating_add(1)).unwrap_or(u16::MAX)
+                        || observation.verdict != "preserved"
+                        || observation.timed_out
+                        || observation.streams_truncated
+                        || observation.containment != "direct_child"
+                            && observation.containment != "posix_process_group"
+                            && observation.containment != "windows_job_object"
+                        || !termination_fields_agree(observation)
+                        || !lower_sha256(&observation.stdout_sha256)
+                        || !lower_sha256(&observation.stderr_sha256)
+                })
+        {
+            return Err("final observations do not prove publication");
+        }
         match self.failure.oracle_mode.as_str() {
             "automatic"
                 if self.failure.failure_patterns.is_empty()
@@ -257,6 +341,19 @@ impl ReductionEvidence {
             _ => return Err("unsupported oracle evidence mode"),
         }
         Ok(())
+    }
+}
+
+fn termination_fields_agree(observation: &FinalObservationEvidence) -> bool {
+    match (
+        observation.termination.as_str(),
+        observation.exit_code,
+        observation.signal,
+    ) {
+        (termination, Some(exit_code), None) => termination == format!("exit {exit_code}"),
+        (termination, None, Some(signal)) => termination == format!("signal {signal}"),
+        ("timed out", None, None) | ("runner failure", None, None) => true,
+        _ => false,
     }
 }
 

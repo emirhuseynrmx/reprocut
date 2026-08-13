@@ -29,7 +29,11 @@ def read(path: str) -> str:
 
 
 def without_inner_attributes(source: str) -> str:
-    return "\n".join(line for line in source.splitlines() if not line.startswith("#!["))
+    return "\n".join(
+        line
+        for line in source.splitlines()
+        if not line.startswith("#![") and not line.startswith("//!")
+    )
 
 
 def wrap(name: str, source: str) -> str:
@@ -49,6 +53,9 @@ def workspace_source() -> str:
 def report_source() -> str:
     evidence = read("crates/reprocut-report/src/evidence.rs").replace(
         "reprocut_core::", "crate::reprocut_core::"
+    ).replace(
+        "use crate::{RetainedEntryKind, RetainedManifest};",
+        "use super::{RetainedEntryKind, RetainedManifest};",
     )
     manifest = read("crates/reprocut-report/src/manifest.rs").replace(
         "use reprocut_core::", "use crate::reprocut_core::"
@@ -56,11 +63,17 @@ def report_source() -> str:
     issue = read("crates/reprocut-report/src/issue.rs").replace(
         "use crate::ReductionEvidence;", "use super::ReductionEvidence;"
     )
+    verify = (
+        read("crates/reprocut-report/src/verify.rs")
+        .replace("use reprocut_core::", "use crate::reprocut_core::")
+        .replace("use crate::{", "use super::{", 1)
+    )
     return (
         read("crates/reprocut-report/src/lib.rs")
         .replace("mod evidence;", f"mod evidence {{ {evidence} }}")
         .replace("mod issue;", f"mod issue {{ {issue} }}")
         .replace("mod manifest;", f"mod manifest {{ {manifest} }}")
+        .replace("mod verify;", f"mod verify {{ {verify} }}")
     )
 
 
@@ -73,7 +86,7 @@ def compose_cli(
         runner_override=runner_override,
         python_isolation_override=python_isolation_override,
     ).removesuffix("fn main() {}")
-    report = report_source().replace("crate::reprocut_core::", "super::reprocut_core::")
+    report = report_source()
     oci = read("crates/reprocut-oci/src/lib.rs")
     completion_stub = r"""
 use std::io::Write;
@@ -175,7 +188,9 @@ def compose_workspace() -> str:
 
 def compose_state() -> str:
     core = compose_core().replace("fn main() {}\n", "")
-    schema = read("crates/reprocut-state/src/schema.rs")
+    schema = read("crates/reprocut-state/src/schema.rs").replace(
+        "reprocut_core::", "crate::reprocut_core::"
+    )
     state = (
         read("crates/reprocut-state/src/lib.rs")
         .replace("mod schema;", f"mod schema {{ {schema} }}")
@@ -230,7 +245,9 @@ def compose_engine(
 ) -> str:
     core = compose_core().replace("fn main() {}\n", "")
     workspace = workspace_source().replace("use reprocut_core::", "use crate::reprocut_core::")
-    schema = read("crates/reprocut-state/src/schema.rs")
+    schema = read("crates/reprocut-state/src/schema.rs").replace(
+        "reprocut_core::", "crate::reprocut_core::"
+    )
     state = (
         read("crates/reprocut-state/src/lib.rs")
         .replace("mod schema;", f"mod schema {{ {schema} }}")

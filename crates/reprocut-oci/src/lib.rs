@@ -74,6 +74,7 @@ pub struct OciRequest {
     runtime: RuntimeFamily,
     command: Vec<String>,
     fingerprint_sha256: String,
+    parent_artifact_id: String,
     builder: Option<Builder>,
 }
 
@@ -85,6 +86,7 @@ impl OciRequest {
         runtime: RuntimeFamily,
         command: Vec<String>,
         fingerprint_sha256: String,
+        parent_artifact_id: String,
     ) -> Self {
         Self {
             artifact_root,
@@ -92,6 +94,7 @@ impl OciRequest {
             runtime,
             command,
             fingerprint_sha256,
+            parent_artifact_id,
             builder: None,
         }
     }
@@ -198,10 +201,12 @@ pub fn export_archive(request: &OciRequest) -> Result<Builder, OciError> {
 fn render_dockerfile(request: &OciRequest) -> Result<Vec<u8>, OciError> {
     let entrypoint = serde_json::to_string(&request.command).map_err(OciError::Serialize)?;
     let label = serde_json::to_string(&request.fingerprint_sha256).map_err(OciError::Serialize)?;
+    let parent = serde_json::to_string(&request.parent_artifact_id).map_err(OciError::Serialize)?;
     Ok(format!(
-        "FROM {}\nWORKDIR /work\nCOPY project/ /work/\nLABEL org.reprocut.failure-fingerprint={}\nENTRYPOINT {}\n",
+        "FROM {}\nWORKDIR /work\nCOPY project/ /work/\nLABEL org.reprocut.failure-fingerprint={}\nLABEL org.reprocut.parent-artifact={}\nENTRYPOINT {}\n",
         request.runtime.base_image(),
         label,
+        parent,
         entrypoint,
     )
     .into_bytes())

@@ -14,8 +14,9 @@ import sys
 import tempfile
 import urllib.request
 from pathlib import Path
+from typing import Protocol, cast
 
-from playground_workspace_verify import ROOT, compose_engine, report_source, wrap
+from playground_workspace_verify import ROOT, compose_core, compose_engine, report_source, wrap
 from release.schema_versions import EVIDENCE_SCHEMA
 
 SOURCE = ROOT / "demo" / "source"
@@ -29,6 +30,22 @@ ISSUE_BEGIN = "__REPROCUT_ISSUE_BEGIN__"
 ISSUE_END = "__REPROCUT_ISSUE_END__"
 ATTEMPTS_BEGIN = "__REPROCUT_ATTEMPTS_BEGIN__"
 ATTEMPTS_END = "__REPROCUT_ATTEMPTS_END__"
+MANIFEST_ENVELOPE = "artifact-manifest.json"
+
+
+class DemoOracle(Protocol):
+    @property
+    def fingerprint(self) -> dict[str, object]: ...
+
+    def classify(
+        self,
+        exit_code: int,
+        diagnostic: str,
+        *,
+        stdout: str = "",
+        timed_out: bool = False,
+        truncated: bool = False,
+    ) -> str: ...
 
 # The official Playground image has no Python executable. This adapter lets the
 # real Rust search engine execute a content-equivalent shell property there.
@@ -208,14 +225,73 @@ def source_digest(root: Path) -> str:
     return digest.hexdigest()
 
 
-def stable_python_failure(root: Path) -> object:
+def executable_mask(path: Path) -> int:
+    mode = path.stat().st_mode
+    return (
+        (4 if mode & stat.S_IXUSR else 0)
+        | (2 if mode & stat.S_IXGRP else 0)
+        | (1 if mode & stat.S_IXOTH else 0)
+    )
+
+
+def length_delimited(value: bytes) -> bytes:
+    return len(value).to_bytes(8, "little", signed=False) + value
+
+
+def artifact_manifest(root: Path) -> dict[str, object]:
+    members: list[dict[str, object]] = []
+    for path in source_files(root):
+        relative = path.relative_to(root).as_posix()
+        if relative == MANIFEST_ENVELOPE:
+            continue
+        contents = path.read_bytes()
+        sha256 = hashlib.sha256(contents).hexdigest()
+        member_hash = hashlib.sha256()
+        member_hash.update(b"REPROCUT-ARTIFACT-MEMBER-V1\0")
+        member_hash.update(length_delimited(relative.encode("utf-8")))
+        member_hash.update(length_delimited(sha256.encode("ascii")))
+        member_hash.update(len(contents).to_bytes(8, "little", signed=False))
+        member_hash.update(bytes([executable_mask(path)]))
+        members.append(
+            {
+                "path": relative,
+                "sha256": sha256,
+                "size_bytes": len(contents),
+                "executable_mask": executable_mask(path),
+                "_canonical_digest": member_hash.digest(),
+            }
+        )
+    members.sort(key=lambda member: str(member["path"]))
+    payload = hashlib.sha256()
+    payload.update(b"REPROCUT-ARTIFACT-MANIFEST-V1\0")
+    payload.update((1).to_bytes(2, "little", signed=False))
+    payload.update(len(members).to_bytes(8, "little", signed=False))
+    for member in members:
+        payload.update(cast(bytes, member.pop("_canonical_digest")))
+    return {"schema_version": 1, "artifact_id": payload.hexdigest(), "members": members}
+
+
+def write_artifact_manifest(root: Path) -> None:
+    (root / MANIFEST_ENVELOPE).write_text(
+        json.dumps(artifact_manifest(root), indent=2, ensure_ascii=False),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def stable_python_failure(root: Path) -> DemoOracle:
     sys.path.insert(0, str(ROOT / "python"))
-    from reprocut import FailureOracle  # pylint: disable=import-outside-toplevel
+    from reprocut import FailureOracle  # pyright: ignore[reportMissingImports]  # pylint: disable=import-outside-toplevel
 
     runs = [execute_python_failure(root) for _ in range(3)]
     if any(run.returncode == 0 for run in runs):
         raise RuntimeError("demo command unexpectedly succeeded")
-    return FailureOracle.from_baselines([(run.returncode, run.stdout, run.stderr) for run in runs])
+    return cast(
+        DemoOracle,
+        FailureOracle.from_baselines(
+            [(run.returncode, run.stdout, run.stderr) for run in runs]
+        ),
+    )
 
 
 def execute_python_failure(root: Path) -> subprocess.CompletedProcess[str]:
@@ -251,6 +327,7 @@ use std::{{ffi::OsString, fs, path::{{Path, PathBuf}}, time::Duration}};
 use crate::reprocut_engine::{{
     PreparationMode, ReductionEngine, ReductionOutcome, ReductionRequest, SessionMode,
 }};
+use crate::reprocut_report::{{FinalObservationEvidence, RetainedEntry, RetainedManifest}};
 
 fn write_demo_file(root: &Path, relative: &str, contents: &str) {{
     let path = root.join(relative);
@@ -289,6 +366,43 @@ fn demo_evidence(outcome: &ReductionOutcome) -> serde_json::Value {{
             "no semantic-causality claim is inferred."
         ),
     }})).collect::<Vec<_>>();
+    let retained_manifest = RetainedManifest::new(
+        outcome.snapshot().files().iter().map(|file| {{
+            RetainedEntry::regular_file(file.path(), file.contents(), file.executable_mask())
+        }}).collect::<Result<Vec<_>, _>>().expect("valid retained demo entries")
+    ).expect("canonical retained demo manifest");
+    let final_observations = outcome.final_observations().iter().enumerate().map(
+        |(index, final_observation)| {{
+            let observation = final_observation.observation();
+            FinalObservationEvidence {{
+                ordinal: u16::try_from(index + 1).expect("bounded final observations"),
+                verdict: match final_observation.verdict() {{
+                    crate::reprocut_core::CandidateVerdict::Preserved => "preserved",
+                    crate::reprocut_core::CandidateVerdict::Rejected => "rejected",
+                    crate::reprocut_core::CandidateVerdict::Inconclusive => "inconclusive",
+                }}.to_owned(),
+                termination: match observation.termination() {{
+                    crate::reprocut_core::TerminationReason::ExitCode(code) => format!("exit {{code}}"),
+                    crate::reprocut_core::TerminationReason::UnixSignal(signal) => format!("signal {{signal}}"),
+                    crate::reprocut_core::TerminationReason::TimedOut => "timed out".to_owned(),
+                    crate::reprocut_core::TerminationReason::RunnerFailure => "runner failure".to_owned(),
+                }},
+                exit_code: observation.exit_code(),
+                signal: observation.signal(),
+                timed_out: observation.timed_out(),
+                streams_truncated: observation.streams_truncated(),
+                containment: match observation.containment() {{
+                    crate::reprocut_core::ContainmentMechanism::DirectChild => "direct_child",
+                    crate::reprocut_core::ContainmentMechanism::PosixProcessGroup => "posix_process_group",
+                    crate::reprocut_core::ContainmentMechanism::WindowsJobObject => "windows_job_object",
+                }}.to_owned(),
+                stdout_sha256: crate::reprocut_core::ContentDigest::of(observation.stdout()).to_hex(),
+                stdout_bytes: observation.stdout().len() as u64,
+                stderr_sha256: crate::reprocut_core::ContentDigest::of(observation.stderr()).to_hex(),
+                stderr_bytes: observation.stderr().len() as u64,
+            }}
+        }}
+    ).collect::<Vec<_>>();
     let retained_lines = outcome.snapshot().files().iter().fold(0_u64, |total, file| {{
         let bytes = file.contents();
         let lines = bytes.iter().filter(|&&byte| byte == b'\\n').count() as u64
@@ -372,6 +486,8 @@ fn demo_evidence(outcome: &ReductionOutcome) -> serde_json::Value {{
             "oracle_spec_sha256": fingerprint.oracle_spec_digest().to_hex(),
         }},
         "kept_files": kept_files,
+        "retained_manifest": retained_manifest,
+        "final_observations": final_observations,
         "accepted_structured_edits": outcome.accepted_structured_edits(),
         "attempts": attempts,
         "limitations": [
@@ -428,7 +544,7 @@ fn main() {{
         runner_override=DEMO_RUNNER,
         python_isolation_override=DEMO_PYTHON_ISOLATION,
     ).removesuffix("fn main() {}")
-    return code + "\n" + harness
+    return code + "\n" + wrap("reprocut_report", report_source()) + "\n" + harness
 
 
 def execute_remote_rust(code: str) -> str:
@@ -472,7 +588,15 @@ fn main() {{
     println!("{ISSUE_END}");
 }}
 '''
-    output = execute_remote_rust("\n".join([wrap("reprocut_report", report_source()), harness]))
+    output = execute_remote_rust(
+        "\n".join(
+            [
+                compose_core().removesuffix("fn main() {}\n"),
+                wrap("reprocut_report", report_source()),
+                harness,
+            ]
+        )
+    )
     return (
         between(output, HTML_BEGIN, HTML_END),
         between(output, ISSUE_BEGIN, ISSUE_END),
@@ -489,7 +613,7 @@ def between(output: str, start: str, end: str) -> str:
 def write_reproduction_scripts(artifact: Path) -> None:
     shell = artifact / "reproduce.sh"
     shell.write_text(
-        '#!/usr/bin/env sh\nset -eu\ncd -- "$(dirname -- "$0")/project"\nexec python bug.py\n',
+        '#!/usr/bin/env sh\nset -eu\ncd -- "$(dirname -- "$0")/project"\nexec \'python\' \'bug.py\'\n',
         encoding="utf-8",
         newline="\n",
     )
@@ -497,7 +621,7 @@ def write_reproduction_scripts(artifact: Path) -> None:
     (artifact / "reproduce.ps1").write_text(
         "$ErrorActionPreference = 'Stop'\n"
         "Set-Location (Join-Path $PSScriptRoot 'project')\n"
-        "& python bug.py\n"
+        "& 'python' 'bug.py'\n"
         "exit $LASTEXITCODE\n",
         encoding="utf-8",
         newline="\n",
@@ -580,16 +704,17 @@ def main(*, refresh: bool = False) -> int:
             shutil.copy2(SOURCE / relative, destination)
 
         (artifact / "reduction.json").write_text(
-            json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
+            json.dumps(metadata, indent=2, ensure_ascii=False),
             encoding="utf-8",
             newline="\n",
         )
-        (artifact / "report.html").write_text(report + "\n", encoding="utf-8", newline="\n")
-        (artifact / "issue.md").write_text(issue + "\n", encoding="utf-8", newline="\n")
+        (artifact / "report.html").write_text(report, encoding="utf-8", newline="\n")
+        (artifact / "issue.md").write_text(issue, encoding="utf-8", newline="\n")
         (artifact / "attempts.jsonl").write_text(
             attempts.rstrip("\r\n") + "\n", encoding="utf-8", newline="\n"
         )
         write_reproduction_scripts(artifact)
+        write_artifact_manifest(artifact)
 
         reduced_runs = [execute_python_failure(project) for _ in range(3)]
         if any(

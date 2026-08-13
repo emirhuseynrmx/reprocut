@@ -5,19 +5,55 @@
 mod evidence;
 mod issue;
 mod manifest;
+mod verify;
 
 use std::fmt::Write as _;
 
 pub use evidence::{
     display_command, write_attempts_jsonl, AttemptSummary, ChannelAnchor, EvaluationPolicyEvidence,
-    FailureEvidence, MaterialMeasurement, MeasurementSet, PreparationEvidence, ReductionEvidence,
-    RetentionEvidence, SearchEvidence, EVIDENCE_SCHEMA_VERSION, NORMALIZATION_SCHEMA_VERSION,
+    FailureEvidence, FinalObservationEvidence, MaterialMeasurement, MeasurementSet,
+    PreparationEvidence, ReductionEvidence, RetentionEvidence, SearchEvidence,
+    EVIDENCE_SCHEMA_VERSION, NORMALIZATION_SCHEMA_VERSION,
 };
 pub use issue::render_issue;
 pub use manifest::{
     ArtifactManifest, ArtifactMember, ManifestError, RetainedEntry, RetainedEntryKind,
     RetainedManifest, ARTIFACT_MANIFEST_SCHEMA_VERSION,
 };
+pub use verify::{
+    build_artifact_manifest, verify_artifact, VerificationError, VerifiedArtifact,
+};
+
+/// Exact platform launchers deterministically derived from one argv vector.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReproductionScripts {
+    /// POSIX shell launcher.
+    pub shell: String,
+    /// PowerShell launcher.
+    pub powershell: String,
+}
+
+/// Renders quoted launchers without granting a shell authority over the recorded argv model.
+pub fn render_reproduction_scripts(command: &[String]) -> ReproductionScripts {
+    let shell_command = command
+        .iter()
+        .map(|argument| format!("'{}'", argument.replace('\'', "'\"'\"'")))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let powershell_command = command
+        .iter()
+        .map(|argument| format!("'{}'", argument.replace('\'', "''")))
+        .collect::<Vec<_>>()
+        .join(" ");
+    ReproductionScripts {
+        shell: format!(
+            "#!/usr/bin/env sh\nset -eu\ncd -- \"$(dirname -- \"$0\")/project\"\nexec {shell_command}\n"
+        ),
+        powershell: format!(
+            "$ErrorActionPreference = 'Stop'\nSet-Location (Join-Path $PSScriptRoot 'project')\n& {powershell_command}\nexit $LASTEXITCODE\n"
+        ),
+    }
+}
 
 const REPORT_SHELL: &str = include_str!("../assets/report.html");
 const REPORT_CSS: &str = include_str!("../assets/report.css");

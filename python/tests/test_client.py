@@ -45,6 +45,17 @@ def test_typed_client_consumes_the_versioned_engine_protocol(tmp_path: Path) -> 
         result.evidence["schema_version"] = 9
 
 
+@pytest.mark.parametrize("mode", ["missing_manifest", "missing_final_observation"])
+def test_typed_client_rejects_incomplete_schema_4_evidence(
+    tmp_path: Path, mode: str
+) -> None:
+    fake = _write_fake_engine(tmp_path, mode=mode)
+    request = ReductionRequest(root=tmp_path, output=tmp_path / "minimal")
+
+    with pytest.raises(ReproCutError, match="retained manifest|final observations"):
+        reduce(request, executable=[sys.executable, fake])
+
+
 def test_failed_event_preserves_bounded_stderr_and_event_history(tmp_path: Path) -> None:
     fake = _write_fake_engine(tmp_path, mode="failure")
     request = ReductionRequest(root=tmp_path, output=tmp_path / "minimal")
@@ -218,7 +229,43 @@ evidence = {{
         "fingerprint_sha256": "a" * 64,
         "oracle_spec_sha256": "d" * 64,
     }},
+    "measurements": {{
+        "retained": {{"files": 1, "bytes": 1}},
+    }},
+    "search": {{"final_verifications": 1}},
+    "kept_files": [{{"path": "bug.py"}}],
+    "retained_manifest": {{
+        "schema_version": 1,
+        "entries": [{{
+            "path": "bug.py",
+            "kind": "regular_file",
+            "sha256": "e" * 64,
+            "size_bytes": 1,
+            "executable_mask": 0,
+            "symlink_target": None,
+        }}],
+        "total_bytes": 1,
+        "manifest_sha256": "f" * 64,
+    }},
+    "final_observations": [{{
+        "ordinal": 1,
+        "verdict": "preserved",
+        "termination": "exit 1",
+        "exit_code": 1,
+        "signal": None,
+        "timed_out": False,
+        "streams_truncated": False,
+        "containment": "direct_child",
+        "stdout_sha256": "1" * 64,
+        "stdout_bytes": 0,
+        "stderr_sha256": "2" * 64,
+        "stderr_bytes": 10,
+    }}],
 }}
+if mode == "missing_manifest":
+    evidence.pop("retained_manifest")
+if mode == "missing_final_observation":
+    evidence["final_observations"] = []
 (output / "reduction.json").write_text(json.dumps(evidence), encoding="utf-8")
 (output / "report.html").write_text("report", encoding="utf-8")
 (output / "issue.md").write_text("issue", encoding="utf-8")

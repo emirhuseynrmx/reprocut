@@ -564,7 +564,130 @@ def _load_evidence(path: Path, fingerprint: str) -> Mapping[str, object]:
         raise ReproCutError("completed evidence has an invalid preparation SHA-256")
     if preparation_digest is None and not (isinstance(limitations, list) and limitations):
         raise ReproCutError("missing preparation digest requires an explicit limitation")
+    _validate_retained_manifest(document)
+    _validate_final_observations(document)
     return cast(Mapping[str, object], _freeze_json(document))
+
+
+def _validate_retained_manifest(document: dict[str, object]) -> None:
+    manifest = document.get("retained_manifest")
+    kept = document.get("kept_files")
+    measurements = document.get("measurements")
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
+        raise ReproCutError("completed evidence omitted its schema-1 retained manifest")
+    entries = manifest.get("entries")
+    if not isinstance(entries, list):
+        raise ReproCutError("completed evidence has an invalid retained entry list")
+    paths: list[str] = []
+    total_bytes = 0
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise ReproCutError("completed evidence has an invalid retained entry")
+        entry_path = entry.get("path")
+        kind = entry.get("kind")
+        size = entry.get("size_bytes")
+        digest = entry.get("sha256")
+        mask = entry.get("executable_mask")
+        if (
+            not isinstance(entry_path, str)
+            or not _safe_relative_path(entry_path)
+            or kind != "regular_file"
+            or not isinstance(size, int)
+            or isinstance(size, bool)
+            or size < 0
+            or not isinstance(digest, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", digest)
+            or not isinstance(mask, int)
+            or isinstance(mask, bool)
+            or not 0 <= mask <= 0b111
+            or entry.get("symlink_target") is not None
+        ):
+            raise ReproCutError("completed evidence has an invalid retained entry")
+        paths.append(entry_path)
+        total_bytes += size
+    if paths != sorted(set(paths)):
+        raise ReproCutError("completed evidence retained paths are not canonical")
+    kept_paths = (
+        [item.get("path") for item in kept]
+        if isinstance(kept, list) and all(isinstance(item, dict) for item in kept)
+        else None
+    )
+    retained = measurements.get("retained") if isinstance(measurements, dict) else None
+    if (
+        kept_paths != paths
+        or not isinstance(retained, dict)
+        or retained.get("files") != len(paths)
+        or retained.get("bytes") != total_bytes
+        or manifest.get("total_bytes") != total_bytes
+        or not isinstance(manifest.get("manifest_sha256"), str)
+        or not re.fullmatch(r"[0-9a-f]{64}", cast(str, manifest["manifest_sha256"]))
+    ):
+        raise ReproCutError("completed evidence retained manifest disagrees with measurements")
+
+
+def _validate_final_observations(document: dict[str, object]) -> None:
+    observations = document.get("final_observations")
+    search = document.get("search")
+    expected = search.get("final_verifications") if isinstance(search, dict) else None
+    if (
+        not isinstance(observations, list)
+        or not isinstance(expected, int)
+        or isinstance(expected, bool)
+        or expected < 1
+        or len(observations) != expected
+    ):
+        raise ReproCutError("completed evidence omitted individual final observations")
+    for ordinal, observation in enumerate(observations, start=1):
+        if not isinstance(observation, dict):
+            raise ReproCutError("completed evidence has an invalid final observation")
+        termination = observation.get("termination")
+        exit_code = observation.get("exit_code")
+        signal = observation.get("signal")
+        termination_valid = (
+            isinstance(exit_code, int)
+            and not isinstance(exit_code, bool)
+            and signal is None
+            and termination == f"exit {exit_code}"
+        ) or (
+            exit_code is None
+            and isinstance(signal, int)
+            and not isinstance(signal, bool)
+            and termination == f"signal {signal}"
+        )
+        if (
+            observation.get("ordinal") != ordinal
+            or observation.get("verdict") != "preserved"
+            or observation.get("timed_out") is not False
+            or observation.get("streams_truncated") is not False
+            or observation.get("containment")
+            not in {"direct_child", "posix_process_group", "windows_job_object"}
+            or not termination_valid
+            or any(
+                not isinstance(observation.get(field), str)
+                or not re.fullmatch(r"[0-9a-f]{64}", cast(str, observation[field]))
+                for field in ("stdout_sha256", "stderr_sha256")
+            )
+            or any(
+                not isinstance(observation.get(field), int)
+                or isinstance(observation.get(field), bool)
+                or cast(int, observation[field]) < 0
+                for field in ("stdout_bytes", "stderr_bytes")
+            )
+        ):
+            raise ReproCutError("completed evidence has an invalid final observation")
+
+
+def _safe_relative_path(value: str) -> bool:
+    parts = value.split("/")
+    return (
+        bool(value)
+        and not value.startswith("/")
+        and not value.endswith("/")
+        and "\\" not in value
+        and "\x00" not in value
+        and not (len(value) > 1 and value[1] == ":")
+        and all(part not in {"", ".", ".."} for part in parts)
+    )
 
 
 def _freeze_json(value: object) -> object:

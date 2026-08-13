@@ -71,16 +71,74 @@ mod gallery_contract {
                 reject_patterns: Vec::new(),
                 oracle_spec_sha256: "b".repeat(64),
             },
-            kept_files: Vec::new(),
+            kept_files: vec![
+                RetentionEvidence {
+                    path: "a".to_owned(),
+                    observation: "retained".to_owned(),
+                },
+                RetentionEvidence {
+                    path: "b".to_owned(),
+                    observation: "retained".to_owned(),
+                },
+                RetentionEvidence {
+                    path: "c".to_owned(),
+                    observation: "retained".to_owned(),
+                },
+            ],
+            retained_manifest: RetainedManifest::new(vec![
+                RetainedEntry::regular_file("a", &vec![0; 510], 0).expect("entry"),
+                RetainedEntry::regular_file("b", &[0], 0).expect("entry"),
+                RetainedEntry::regular_file("c", &[0], 0).expect("entry"),
+            ])
+            .expect("retained manifest"),
+            final_observations: (1..=3)
+                .map(|ordinal| FinalObservationEvidence {
+                    ordinal,
+                    verdict: "preserved".to_owned(),
+                    termination: "exit 1".to_owned(),
+                    exit_code: Some(1),
+                    signal: None,
+                    timed_out: false,
+                    streams_truncated: false,
+                    containment: "direct_child".to_owned(),
+                    stdout_sha256: "1".repeat(64),
+                    stdout_bytes: 0,
+                    stderr_sha256: "2".repeat(64),
+                    stderr_bytes: 20,
+                })
+                .collect(),
             accepted_structured_edits: Vec::new(),
             attempts: Vec::new(),
             limitations: Vec::new(),
         };
+        let project = artifact.join("project");
+        fs::create_dir(&project).expect("project");
+        fs::write(project.join("a"), vec![0; 510]).expect("a");
+        fs::write(project.join("b"), [0]).expect("b");
+        fs::write(project.join("c"), [0]).expect("c");
         fs::write(
             artifact.join("reduction.json"),
-            serde_json::to_vec(&evidence).expect("JSON"),
+            serde_json::to_vec_pretty(&evidence).expect("JSON"),
         )
         .expect("evidence");
+        let mut attempts = Vec::new();
+        write_attempts_jsonl(&evidence.attempts, &mut attempts).expect("attempts");
+        fs::write(artifact.join("attempts.jsonl"), attempts).expect("attempts");
+        fs::write(
+            artifact.join("report.html"),
+            render_report(&ReportModel::from(&evidence)),
+        )
+        .expect("report");
+        fs::write(artifact.join("issue.md"), render_issue(&evidence)).expect("issue");
+        let scripts = render_reproduction_scripts(&evidence.command);
+        fs::write(artifact.join("reproduce.sh"), scripts.shell).expect("shell");
+        fs::write(artifact.join("reproduce.ps1"), scripts.powershell).expect("PowerShell");
+        let manifest = build_artifact_manifest(&artifact).expect("artifact manifest");
+        fs::write(
+            artifact.join("artifact-manifest.json"),
+            serde_json::to_vec_pretty(&manifest).expect("manifest JSON"),
+        )
+        .expect("manifest");
 
         prepare_gallery(GalleryPrepareArgs {
             from: artifact,

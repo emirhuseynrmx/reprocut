@@ -17,6 +17,7 @@ fn docker_buildx_emits_a_valid_oci_archive() {
         RuntimeFamily::Generic,
         vec!["/bin/true".to_owned()],
         "0123456789abcdef".repeat(4),
+        "fedcba9876543210".repeat(4),
     )
     .with_builder(Builder::DockerBuildx);
 

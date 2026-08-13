@@ -54,6 +54,7 @@ python bug.py
 - `attempts.jsonl` — append-only candidate events
 - `report.html` — self-contained visual record
 - `reproduce.sh` / `reproduce.ps1` — quoted argv launchers
+- `artifact-manifest.json` — complete non-circular artifact identity
 
 ## Limits
 

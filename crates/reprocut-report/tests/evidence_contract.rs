@@ -2,10 +2,10 @@
 
 use reprocut_report::{
     write_attempts_jsonl, ArtifactManifest, ArtifactMember, AttemptSummary, ChannelAnchor,
-    EvaluationPolicyEvidence, FailureEvidence, MaterialMeasurement, MeasurementSet,
-    PreparationEvidence, ReductionEvidence, RetainedEntry, RetainedEntryKind, RetentionEvidence,
-    SearchEvidence, ARTIFACT_MANIFEST_SCHEMA_VERSION, EVIDENCE_SCHEMA_VERSION,
-    NORMALIZATION_SCHEMA_VERSION,
+    EvaluationPolicyEvidence, FailureEvidence, FinalObservationEvidence, MaterialMeasurement,
+    MeasurementSet, PreparationEvidence, ReductionEvidence, RetainedEntry, RetainedEntryKind,
+    RetainedManifest, RetentionEvidence, SearchEvidence, ARTIFACT_MANIFEST_SCHEMA_VERSION,
+    EVIDENCE_SCHEMA_VERSION, NORMALIZATION_SCHEMA_VERSION,
 };
 use serde_json::json;
 
@@ -32,6 +32,37 @@ fn one_model_serializes_consistent_measurements_and_attempts() {
 }
 
 #[test]
+fn publication_requires_every_final_observation_and_exact_retained_identity() {
+    let mut missing_observation = fixture();
+    missing_observation.final_observations.pop();
+    assert_eq!(
+        missing_observation.validate(),
+        Err("final observations do not prove publication")
+    );
+
+    let mut rejected_observation = fixture();
+    rejected_observation.final_observations[1].verdict = "rejected".to_owned();
+    assert_eq!(
+        rejected_observation.validate(),
+        Err("final observations do not prove publication")
+    );
+
+    let mut contradictory_termination = fixture();
+    contradictory_termination.final_observations[0].exit_code = Some(9);
+    assert_eq!(
+        contradictory_termination.validate(),
+        Err("final observations do not prove publication")
+    );
+
+    let mut different_retained_path = fixture();
+    different_retained_path.kept_files[0].path = "other.py".to_owned();
+    assert_eq!(
+        different_retained_path.validate(),
+        Err("retained manifest disagrees with measurements")
+    );
+}
+
+#[test]
 fn display_command_is_derived_from_argv_without_shell_authority() {
     let evidence = fixture();
     assert_eq!(
@@ -42,18 +73,21 @@ fn display_command_is_derived_from_argv_without_shell_authority() {
 
 #[test]
 fn retained_manifest_binds_content_metadata_and_order() {
-    let executable = RetainedEntry::regular_file("bin/repro", b"failure\n", 0b101)
-        .expect("safe retained entry");
+    let executable =
+        RetainedEntry::regular_file("bin/repro", b"failure\n", 0b101).expect("safe retained entry");
     let changed_byte = RetainedEntry::regular_file("bin/repro", b"failure!\n", 0b101)
         .expect("safe retained entry");
-    let changed_mode = RetainedEntry::regular_file("bin/repro", b"failure\n", 0)
-        .expect("safe retained entry");
+    let changed_mode =
+        RetainedEntry::regular_file("bin/repro", b"failure\n", 0).expect("safe retained entry");
 
     assert_eq!(executable.kind, RetainedEntryKind::RegularFile);
     assert_eq!(executable.size_bytes, 8);
     assert_eq!(executable.executable_mask, Some(0b101));
     assert_ne!(executable.sha256, changed_byte.sha256);
-    assert_ne!(executable.canonical_digest(), changed_mode.canonical_digest());
+    assert_ne!(
+        executable.canonical_digest(),
+        changed_mode.canonical_digest()
+    );
 
     let source = RetainedEntry::regular_file("src/main.rs", b"fn main() {}\n", 0)
         .expect("safe retained entry");
@@ -66,8 +100,7 @@ fn retained_manifest_binds_content_metadata_and_order() {
 #[test]
 fn artifact_identity_excludes_its_own_envelope() {
     let members = vec![
-        ArtifactMember::from_bytes("reduction.json", b"{}", 0)
-            .expect("safe artifact member"),
+        ArtifactMember::from_bytes("reduction.json", b"{}", 0).expect("safe artifact member"),
         ArtifactMember::from_bytes("project/bug.py", b"raise ValueError\n", 0)
             .expect("safe artifact member"),
     ];
@@ -164,6 +197,14 @@ fn fixture() -> ReductionEvidence {
             path: "bug.py".to_owned(),
             observation: "Present in the final verified snapshot.".to_owned(),
         }],
+        retained_manifest: RetainedManifest::new(vec![RetainedEntry::regular_file(
+            "bug.py",
+            &vec![0; 512],
+            0,
+        )
+        .expect("retained fixture")])
+        .expect("retained manifest"),
+        final_observations: final_observations(),
         accepted_structured_edits: vec!["syntax:delete:bug.py:0..10".to_owned()],
         attempts: vec![AttemptSummary {
             event_id: 1,
@@ -176,4 +217,23 @@ fn fixture() -> ReductionEvidence {
         }],
         limitations: vec!["Timing is wall-clock, not a benchmark.".to_owned()],
     }
+}
+
+fn final_observations() -> Vec<FinalObservationEvidence> {
+    (1..=3)
+        .map(|ordinal| FinalObservationEvidence {
+            ordinal,
+            verdict: "preserved".to_owned(),
+            termination: "exit 1".to_owned(),
+            exit_code: Some(1),
+            signal: None,
+            timed_out: false,
+            streams_truncated: false,
+            containment: "direct_child".to_owned(),
+            stdout_sha256: "1".repeat(64),
+            stdout_bytes: 0,
+            stderr_sha256: "2".repeat(64),
+            stderr_bytes: 20,
+        })
+        .collect()
 }

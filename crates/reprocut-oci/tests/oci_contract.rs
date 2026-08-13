@@ -25,6 +25,7 @@ fn context_contains_only_verified_project_and_generated_dockerfile() {
             "two words".to_owned(),
         ],
         "abc123".to_owned(),
+        "def456".to_owned(),
     );
 
     let context = prepare_context(&request).expect("minimal context");
@@ -36,6 +37,7 @@ fn context_contains_only_verified_project_and_generated_dockerfile() {
     assert!(dockerfile.contains("FROM python:3.13-slim"));
     assert!(dockerfile.contains("ENTRYPOINT [\"python\",\"bug.py\",\"two words\"]"));
     assert!(dockerfile.contains("org.reprocut.failure-fingerprint=\"abc123\""));
+    assert!(dockerfile.contains("org.reprocut.parent-artifact=\"def456\""));
 }
 
 #[test]
@@ -51,6 +53,7 @@ fn existing_output_is_rejected_before_builder_detection() {
         RuntimeFamily::Generic,
         vec!["./bug".to_owned()],
         "abc123".to_owned(),
+        "def456".to_owned(),
     );
 
     let error = export_archive(&request).expect_err("no-clobber");
@@ -73,6 +76,7 @@ fn project_symlinks_are_refused_instead_of_followed() {
         RuntimeFamily::Generic,
         vec!["./bug".to_owned()],
         "abc123".to_owned(),
+        "def456".to_owned(),
     );
 
     assert!(matches!(
