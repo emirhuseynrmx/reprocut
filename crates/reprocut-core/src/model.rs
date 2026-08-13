@@ -22,7 +22,7 @@ pub enum TerminationReason {
     ExitCode(i32),
     /// A Unix host reported a terminating signal.
     UnixSignal(i32),
-    /// ReproCut terminated the process group after its deadline.
+    /// `ReproCut` terminated the process group after its deadline.
     TimedOut,
     /// The runner could not obtain a trustworthy process result.
     RunnerFailure,
@@ -207,7 +207,7 @@ pub enum OracleMode {
     ExitZero,
 }
 
-/// A stable, serializable identity for the failure ReproCut must preserve.
+/// A stable, serializable identity for the failure `ReproCut` must preserve.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct FailureFingerprint {
     mode: OracleMode,

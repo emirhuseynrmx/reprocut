@@ -1,4 +1,4 @@
-//! Correctness primitives for ReproCut.
+//! Correctness primitives for `ReproCut`.
 
 mod diagnostic;
 mod model;

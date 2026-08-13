@@ -280,7 +280,17 @@ jobs:
         run: python -m pip install maturin==1.14.1 twine==7.0.0
       - name: Package every publishable Rust crate
         run: |
-          cargo package --locked --workspace --exclude reprocut-python --no-verify
+          cargo package --locked --workspace --exclude reprocut-python --no-verify \
+            --config 'patch.crates-io.reprocut-core.path="crates/reprocut-core"' \
+            --config 'patch.crates-io.reprocut-report.path="crates/reprocut-report"' \
+            --config 'patch.crates-io.reprocut-oci.path="crates/reprocut-oci"' \
+            --config 'patch.crates-io.reprocut-workspace.path="crates/reprocut-workspace"' \
+            --config 'patch.crates-io.reprocut-runner.path="crates/reprocut-runner"' \
+            --config 'patch.crates-io.reprocut-state.path="crates/reprocut-state"' \
+            --config 'patch.crates-io.reprocut-syntax.path="crates/reprocut-syntax"' \
+            --config 'patch.crates-io.reprocut-adapters.path="crates/reprocut-adapters"' \
+            --config 'patch.crates-io.reprocut-engine.path="crates/reprocut-engine"' \
+            --config 'patch.crates-io.reprocut.path="crates/reprocut-cli"'
           mkdir -p dist/crates
           cp target/package/*.crate dist/crates/
       - name: Build ABI3 wheel and source distribution

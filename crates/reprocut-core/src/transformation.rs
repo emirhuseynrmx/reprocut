@@ -10,6 +10,11 @@ pub struct ProjectPath(String);
 
 impl ProjectPath {
     /// Validates a slash-separated project-relative path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for empty, absolute, drive-qualified, backslash-separated, or traversing
+    /// paths.
     pub fn new(path: impl Into<String>) -> Result<Self, TransformationError> {
         let path = path.into();
         let drive_prefix = path
@@ -45,6 +50,10 @@ pub struct ByteRange {
 
 impl ByteRange {
     /// Validates `start..end` as a non-empty interval.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `start` is not strictly less than `end`.
     pub const fn new(start: u64, end: u64) -> Result<Self, TransformationError> {
         if start >= end {
             return Err(TransformationError::InvalidByteRange);
@@ -206,6 +215,11 @@ pub struct Transformation {
 
 impl Transformation {
     /// Canonicalizes operations and rejects order-dependent conflicts.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for overlapping replacements, mixed delete/replace operations, range
+    /// encoding overflow, or another non-canonical operation set.
     pub fn new(mut operations: Vec<Operation>) -> Result<Self, TransformationError> {
         operations.sort_by(canonical_operation_order);
         operations.dedup();

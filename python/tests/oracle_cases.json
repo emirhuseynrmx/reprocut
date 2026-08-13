@@ -29,7 +29,7 @@
       "reject_patterns": [],
       "normalization_schema": 4,
       "oracle_spec_sha256": "3015cdd3dcd09acb2c9e17736d828908ee6ccab62db68928f1de9e2c1468d142",
-      "fingerprint_sha256": "877b37dab524c774f922dc7b158d3a349fc87e6a2ad6efe1a33cf3e478b8789c"
+      "fingerprint_sha256": "8b2c0d06a3fab090602a65e7b1db7af8f17abcd6bb097ac7f9b6530945b59e12"
     }
   },
   {
@@ -52,7 +52,7 @@
       "reject_patterns": [],
       "normalization_schema": 4,
       "oracle_spec_sha256": "1c82610274183be423701b7037ec7605f66e3589b10ca57e49a663b53e0d9738",
-      "fingerprint_sha256": "e2af67cde5128a0d8d9ca60bbef4faa602d16b932807692fc16f22c0eb1d5b6e"
+      "fingerprint_sha256": "5d0dd98cddfda26683fc2f1f064585ef82ec1c98e7ec1d7edb34cc2f297799a9"
     }
   },
   {
@@ -83,7 +83,7 @@
       "reject_patterns": [],
       "normalization_schema": 4,
       "oracle_spec_sha256": "1c82610274183be423701b7037ec7605f66e3589b10ca57e49a663b53e0d9738",
-      "fingerprint_sha256": "5796f57214f687364738aae3803368a22ed4cb9701c1ade49fed2549257c46a6"
+      "fingerprint_sha256": "9ee5e1864584d12f65889b418a789413fc4c2f27f4caa078b43d9e8d275fd41b"
     }
   },
   {
@@ -106,7 +106,7 @@
       "reject_patterns": ["PermissionError"],
       "normalization_schema": 4,
       "oracle_spec_sha256": "099cb6301757af57a751e13f73ad8e048d406ee7b10cc377a234441cda9d3f64",
-      "fingerprint_sha256": "5934048f25cb318e0db90101f027b65e4ee5af4bb666aa20e799444b41775dd6"
+      "fingerprint_sha256": "cba09230e0e5a74124cf9ae96f6d0c3b30dbfbb35a6b5292d72e6b31c6736435"
     }
   },
   {
@@ -140,7 +140,7 @@
       "reject_patterns": [],
       "normalization_schema": 4,
       "oracle_spec_sha256": "1ca9f6c384604e2e220eca1cc799b1f2c075943406d18a6a6476001187356643",
-      "fingerprint_sha256": "bcc29a5b378e51c8e7190ea8b34b3cfe55eb7c138ab89996a863dad884800e31"
+      "fingerprint_sha256": "4c56f66b74b7d0b8c47b3121f2f1f563c64342d4e27f4e31b89c8379270087e9"
     }
   }
 ]

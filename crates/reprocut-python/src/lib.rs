@@ -87,7 +87,7 @@ impl NativeFailureOracle {
         validate_mode_configuration(mode, &failure_patterns, &reject_patterns)?;
         let observations = extract_observations(baselines)?;
         let spec = OracleSpec::new(mode, channel, failure_patterns, reject_patterns)
-        .map_err(|error| PyValueError::new_err(error.to_string()))?;
+            .map_err(|error| PyValueError::new_err(error.to_string()))?;
         let inner = FailureOracle::from_spec_and_baselines(spec, &observations)
             .map_err(|error| PyValueError::new_err(error.to_string()))?;
         Ok(Self { inner })
@@ -218,11 +218,9 @@ fn validate_mode_configuration(
         OracleMode::Automatic if !failure_patterns.is_empty() => Err(PyValueError::new_err(
             "automatic mode does not accept failure patterns",
         )),
-        OracleMode::ExitZero if !failure_patterns.is_empty() || !reject_patterns.is_empty() => {
-            Err(PyValueError::new_err(
-                "exit_zero mode does not accept patterns",
-            ))
-        }
+        OracleMode::ExitZero if !failure_patterns.is_empty() || !reject_patterns.is_empty() => Err(
+            PyValueError::new_err("exit_zero mode does not accept patterns"),
+        ),
         OracleMode::Automatic | OracleMode::Regex | OracleMode::ExitZero => Ok(()),
     }
 }

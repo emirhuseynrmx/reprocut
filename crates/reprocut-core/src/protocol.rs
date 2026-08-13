@@ -26,7 +26,7 @@ pub struct ReductionRequestV1 {
     pub protocol_version: u16,
     /// New-session or resume operation.
     pub action: ProtocolAction,
-    /// Source project root; ReproCut never mutates it.
+    /// Source project root; `ReproCut` never mutates it.
     pub root: PathBuf,
     /// Destination for the verified reduction artifact.
     pub output: PathBuf,
@@ -78,7 +78,7 @@ pub struct ReductionRequestV1 {
     /// Maximum concurrent frontier evaluations; zero selects the engine default.
     #[serde(default)]
     pub jobs: usize,
-    /// Optional durable SQLite session path.
+    /// Optional durable `SQLite` session path.
     #[serde(default)]
     pub state: Option<PathBuf>,
     /// Discard incompatible state before a new session.
@@ -88,6 +88,11 @@ pub struct ReductionRequestV1 {
 
 impl ReductionRequestV1 {
     /// Refuses requests from incompatible protocol generations.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an unsupported protocol version or an inconsistent oracle,
+    /// isolation, resume, or restart configuration.
     pub fn validate(&self) -> Result<(), ProtocolError> {
         if self.protocol_version != PROTOCOL_VERSION {
             return Err(ProtocolError::UnsupportedVersion {

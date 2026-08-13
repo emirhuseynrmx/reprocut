@@ -27,6 +27,11 @@ impl EvaluationPolicy {
     }
 
     /// Validates and returns a bounded supermajority policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an even or out-of-range run count, or for a threshold that is not a
+    /// valid two-thirds supermajority.
     pub const fn flaky(runs: u16, required: u16) -> Result<Self, PolicyError> {
         if runs < MIN_FLAKY_RUNS || runs > MAX_FLAKY_RUNS {
             return Err(PolicyError::RunsOutOfRange);
@@ -103,7 +108,7 @@ pub enum PolicyError {
     /// The preservation threshold must fit inside the run budget.
     #[error("flaky required must be between 1 and runs")]
     RequiredOutOfRange,
-    /// ReproCut deliberately rejects chance-sensitive bare majorities.
+    /// `ReproCut` deliberately rejects chance-sensitive bare majorities.
     #[error("flaky required must be at least a two-thirds supermajority")]
     RequiredNotSupermajority,
 }
@@ -233,10 +238,11 @@ impl AggregateEvidence {
 
 /// Computes the display-only 95% Wilson score interval for binomial observations.
 pub fn wilson_interval(successes: u16, observations: u16) -> Option<ConfidenceInterval> {
+    const Z: f64 = 1.959_963_984_540_054;
+
     if observations == 0 || successes > observations {
         return None;
     }
-    const Z: f64 = 1.959_963_984_540_054;
     let n = f64::from(observations);
     let probability = f64::from(successes) / n;
     let z_squared = Z * Z;

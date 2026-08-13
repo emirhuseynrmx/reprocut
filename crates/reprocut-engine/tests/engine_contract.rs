@@ -85,7 +85,7 @@ fn syntax_fixpoint_removes_grammar_valid_noise_and_reverifies_the_snapshot() {
 
 #[test]
 fn native_language_grammars_reduce_inside_retained_files_without_compilers() {
-    const ORACLE: &str = "from pathlib import Path; import sys; text = Path(sys.argv[1]).read_text(encoding='utf-8'); failed = 'keep_failure' in text; sys.stderr.write('REPROCUT_SENTINEL\\n' if failed else ''); raise SystemExit(7 if failed else 0)";
+    const ORACLE: &str = "from pathlib import Path; import sys; text = Path(sys.argv[1]).read_text(encoding='utf-8'); failed = 'keep_failure' in text; sys.stderr.write('RuntimeError: REPROCUT_SENTINEL\\n' if failed else ''); raise SystemExit(7 if failed else 0)";
     let cases: [(&str, &[u8]); 4] = [
         (
             "bug.c",

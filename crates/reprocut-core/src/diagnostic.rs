@@ -341,6 +341,10 @@ fn is_boilerplate(line: &str) -> bool {
 }
 
 /// Removes only context-qualified volatile fragments from diagnostic text.
+///
+/// # Panics
+///
+/// Panics only if one of the crate's compile-time regular-expression literals is invalid.
 pub fn normalize_diagnostic(input: &str) -> String {
     static UUID: OnceLock<Regex> = OnceLock::new();
     static ISO_TIMESTAMP: OnceLock<Regex> = OnceLock::new();
