@@ -39,7 +39,7 @@ def test_typed_client_consumes_the_versioned_engine_protocol(tmp_path: Path) -> 
     ]
     assert result.fingerprint_sha256 == "a" * 64
     assert result.output == request.output
-    assert result.evidence["schema_version"] == 3
+    assert result.evidence["schema_version"] == 4
     assert result.evidence["failure"]["same_failure"] is True
     with pytest.raises(TypeError):
         result.evidence["schema_version"] = 9
@@ -206,7 +206,7 @@ if mode == "failure":
 output = pathlib.Path(request["output"])
 output.mkdir()
 evidence = {{
-    "schema_version": 3,
+    "schema_version": 4,
     "source_snapshot_sha256": "b" * 64,
     "preparation": {{
         "mode": "offline",

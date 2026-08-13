@@ -16,7 +16,7 @@
 - Oracle stream: `auto`
 - Oracle mode: `automatic`
 - Oracle spec SHA-256: `3015cdd3dcd09acb2c9e17736d828908ee6ccab62db68928f1de9e2c1468d142`
-- Normalization schema: `4`
+- Normalization schema: `5`
 
 ```text
 TypeError: unsupported operand type(s) for +: 'decimal.Decimal' and 'str'

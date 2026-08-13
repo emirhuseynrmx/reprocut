@@ -11,6 +11,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+from release.schema_versions import EVIDENCE_SCHEMA
+
 ROOT = Path(__file__).resolve().parent.parent
 EVIDENCE = ROOT / "demo" / "result" / "reduction.json"
 OUTPUT = ROOT / "assets" / "reprocut-demo.gif"
@@ -58,8 +60,11 @@ LABEL = font(14, mono=True, bold=True)
 
 def load_evidence() -> dict[str, object]:
     evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
-    if evidence["schema_version"] != 3 or evidence["failure"]["same_failure"] is not True:
-        raise RuntimeError("demo evidence is not a verified schema-3 reduction")
+    if (
+        evidence["schema_version"] != EVIDENCE_SCHEMA
+        or evidence["failure"]["same_failure"] is not True
+    ):
+        raise RuntimeError("demo evidence is not a verified schema-4 reduction")
     for digest in (
         evidence.get("source_snapshot_sha256"),
         evidence["failure"].get("fingerprint_sha256"),

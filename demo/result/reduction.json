@@ -353,7 +353,7 @@
     "limitations": [],
     "mode": "none"
   },
-  "schema_version": 3,
+  "schema_version": 4,
   "search": {
     "accepted_file_sizes": [
       18,

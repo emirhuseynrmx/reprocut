@@ -9,6 +9,8 @@ import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from schema_versions import CI_EVIDENCE_SCHEMA, EVIDENCE_SCHEMA, NORMALIZATION_SCHEMA
+
 try:
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover - Python 3.10 wheel job
@@ -69,9 +71,9 @@ def static_checks(root: Path) -> list[Check]:
 
     evidence = json.loads((root / "demo/result/reduction.json").read_text(encoding="utf-8"))
     demo_ok = (
-        evidence.get("schema_version") == 3
+        evidence.get("schema_version") == EVIDENCE_SCHEMA
         and evidence["failure"]["same_failure"] is True
-        and evidence["failure"].get("normalization_schema") == 5
+        and evidence["failure"].get("normalization_schema") == NORMALIZATION_SCHEMA
         and evidence["failure"].get("oracle_mode") in {"automatic", "regex", "exit_zero"}
         and evidence["search"]["final_verifications"] == 3
         and evidence["measurements"]["original"]["files"] == 18
@@ -88,7 +90,7 @@ def static_checks(root: Path) -> list[Check]:
         check(
             "demo-evidence",
             demo_ok,
-            "schema 3, bound digests, 18->3, same failure, final 3/3",
+            "schema 4, bound digests, 18->3, same failure, final 3/3",
         )
     )
     attempts = (root / "demo/result/attempts.jsonl").read_text(encoding="utf-8").splitlines()
@@ -243,7 +245,7 @@ def ci_checks(path: Path, expected_commit: str | None) -> list[Check]:
     evidence = json.loads(path.read_text(encoding="utf-8"))
     commit = evidence.get("commit", "")
     statuses = evidence.get("statuses", {})
-    schema_ok = evidence.get("schema_version") == 1
+    schema_ok = evidence.get("schema_version") == CI_EVIDENCE_SCHEMA
     statuses_ok = isinstance(statuses, dict)
     checks = [
         check(
@@ -283,7 +285,10 @@ def main() -> int:
     if arguments.json:
         print(
             json.dumps(
-                {"schema_version": 1, "checks": [asdict(item) for item in checks]},
+                {
+                    "schema_version": CI_EVIDENCE_SCHEMA,
+                    "checks": [asdict(item) for item in checks],
+                },
                 indent=2,
             )
         )

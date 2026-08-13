@@ -6,10 +6,11 @@ mod oracle;
 mod policy;
 mod protocol;
 mod reducer;
+mod schema;
 mod transformation;
 mod winner;
 
-pub use diagnostic::{normalize_diagnostic, NORMALIZATION_SCHEMA};
+pub use diagnostic::normalize_diagnostic;
 pub use model::{
     CandidateVerdict, ContainmentMechanism, DiagnosticAnchor, DiagnosticChannel,
     ExecutionObservation, FailureFingerprint, OracleMode, TerminationReason,
@@ -25,6 +26,10 @@ pub use protocol::{
 pub use reducer::{
     ordered_frontier, reduce, reduce_hierarchical, reduce_hierarchical_frontiers,
     FrontierPartition, ReductionResult, ReductionUnit,
+};
+pub use schema::{
+    ContractVersions, ARTIFACT_MANIFEST_SCHEMA, CI_EVIDENCE_SCHEMA, CONTRACT_VERSIONS,
+    EVIDENCE_SCHEMA, NORMALIZATION_SCHEMA, SERVER_DATABASE_SCHEMA, SESSION_SCHEMA,
 };
 pub use transformation::{
     ByteRange, CandidateRank, ContentDigest, ContentHasher, FrontierClass, Operation, ProjectPath,

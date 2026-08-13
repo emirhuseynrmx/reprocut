@@ -14,7 +14,7 @@ final verification runs agree.
 
 The checked-in demo is measured, not illustrative: **18 → 3 files**, **24
 candidate evaluations**, **3/3 strict final verification**, and a versioned
-same-failure fingerprint. Inspect the raw [schema-3 evidence](demo/result/reduction.json),
+same-failure fingerprint. Inspect the raw [schema-4 evidence](demo/result/reduction.json),
 [attempt ledger](demo/result/attempts.jsonl), or [self-contained report](demo/result/report.html).
 
 > ReproCut 0.1 is in release-candidate development. crates.io and PyPI artifacts
@@ -90,7 +90,7 @@ reprocut reduce --oracle-mode regex \
 reprocut reduce --oracle-mode exit-zero -- cargo test generated_property
 ```
 
-`automatic` is the default and intersects exact schema-3 normalized,
+`automatic` is the default and intersects exact schema-5 normalized,
 stream-qualified discriminators across repeated baselines. Regex mode requires
 every failure expression and lets any reject expression veto a candidate.
 Exit-zero mode ignores text and preserves only a successful exit.

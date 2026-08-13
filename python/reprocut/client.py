@@ -538,8 +538,8 @@ def _load_evidence(path: Path, fingerprint: str) -> Mapping[str, object]:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise ReproCutError(f"cannot read completed reduction evidence {path}: {error}") from error
-    if not isinstance(document, dict) or document.get("schema_version") != 3:
-        raise ReproCutError("completed reduction evidence must use schema version 3")
+    if not isinstance(document, dict) or document.get("schema_version") != 4:
+        raise ReproCutError("completed reduction evidence must use schema version 4")
     failure = document.get("failure")
     if not isinstance(failure, dict) or failure.get("same_failure") is not True:
         raise ReproCutError("completed evidence does not prove the same failure")

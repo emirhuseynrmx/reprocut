@@ -12,6 +12,7 @@ repository.workspace = true
 path = "src/lib.rs"
 
 [dependencies]
+reprocut-core = { version = "0.1.0", path = "../reprocut-core" }
 serde.workspace = true
 serde_json.workspace = true
 

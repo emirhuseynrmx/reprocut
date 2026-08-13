@@ -8,8 +8,6 @@ use regex::Regex;
 
 use crate::{DiagnosticAnchor, DiagnosticChannel, ExecutionObservation};
 
-/// Version of the diagnostic normalization contract included in fingerprints.
-pub const NORMALIZATION_SCHEMA: u16 = 5;
 const MAX_ANCHORS: usize = 4;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]

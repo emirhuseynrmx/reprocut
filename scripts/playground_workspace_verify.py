@@ -47,7 +47,9 @@ def workspace_source() -> str:
 
 
 def report_source() -> str:
-    evidence = read("crates/reprocut-report/src/evidence.rs")
+    evidence = read("crates/reprocut-report/src/evidence.rs").replace(
+        "reprocut_core::", "crate::reprocut_core::"
+    )
     issue = read("crates/reprocut-report/src/issue.rs").replace(
         "use crate::ReductionEvidence;", "use super::ReductionEvidence;"
     )
@@ -67,7 +69,7 @@ def compose_cli(
         runner_override=runner_override,
         python_isolation_override=python_isolation_override,
     ).removesuffix("fn main() {}")
-    report = report_source()
+    report = report_source().replace("crate::reprocut_core::", "super::reprocut_core::")
     oci = read("crates/reprocut-oci/src/lib.rs")
     completion_stub = r"""
 use std::io::Write;
@@ -98,7 +100,8 @@ pub fn generate(_: Shell, _: &mut clap::Command, _: &str, output: &mut dyn Write
 
 
 def compose_report() -> str:
-    return "\n".join([wrap("reprocut_report", report_source()), "fn main() {}"])
+    core = compose_core().replace("fn main() {}\n", "")
+    return "\n".join([core, wrap("reprocut_report", report_source()), "fn main() {}"])
 
 
 def compose_oci() -> str:
@@ -106,6 +109,7 @@ def compose_oci() -> str:
 
 
 def compose_core() -> str:
+    schema = read("crates/reprocut-core/src/schema.rs")
     diagnostic = read("crates/reprocut-core/src/diagnostic.rs").replace(
         "use crate::{", "use super::{", 1
     )
@@ -143,6 +147,7 @@ mod oracle {{ {oracle} }}
 mod policy {{ {policy} }}
 mod protocol {{ {protocol} }}
 mod reducer {{ {reducer} }}
+mod schema {{ {schema} }}
 mod winner {{ {winner} }}
 {transformation}
 pub use model::*;
@@ -151,6 +156,7 @@ pub use oracle::*;
 pub use policy::*;
 pub use protocol::*;
 pub use reducer::*;
+pub use schema::*;
 pub use winner::*;
 }}
 fn main() {{}}

@@ -1,0 +1,8 @@
+"""Authoritative machine-readable ReproCut v0.1 contract versions."""
+
+NORMALIZATION_SCHEMA = 5
+EVIDENCE_SCHEMA = 4
+SESSION_SCHEMA = 3
+CI_EVIDENCE_SCHEMA = 1
+ARTIFACT_MANIFEST_SCHEMA = 1
+SERVER_DATABASE_SCHEMA = 1

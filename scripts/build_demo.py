@@ -16,6 +16,7 @@ import urllib.request
 from pathlib import Path
 
 from playground_workspace_verify import ROOT, compose_engine, report_source, wrap
+from release.schema_versions import EVIDENCE_SCHEMA
 
 SOURCE = ROOT / "demo" / "source"
 RESULT = ROOT / "demo" / "result"
@@ -312,7 +313,7 @@ fn demo_evidence(outcome: &ReductionOutcome) -> serde_json::Value {{
         .chain(outcome.reduction().accepted_sizes().iter().copied())
         .collect::<Vec<_>>();
     serde_json::json!({{
-        "schema_version": 3,
+        "schema_version": {EVIDENCE_SCHEMA},
         "source_root": "demo/source",
         "source_snapshot_sha256": outcome.source_snapshot_digest().to_hex(),
         "output": "demo/result",
@@ -459,8 +460,8 @@ def render_remote_evidence(metadata: dict[str, object]) -> tuple[str, str]:
     harness = f'''
 fn main() {{
     let evidence: reprocut_report::ReductionEvidence = serde_json::from_str({raw_string(document)})
-        .expect("schema-3 demo evidence");
-    evidence.validate().expect("valid schema-3 demo evidence");
+        .expect("schema-4 demo evidence");
+    evidence.validate().expect("valid schema-4 demo evidence");
     let report = reprocut_report::render_report(&reprocut_report::ReportModel::from(&evidence));
     let issue = reprocut_report::render_issue(&evidence);
     println!("{HTML_BEGIN}");

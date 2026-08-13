@@ -16,6 +16,11 @@ import time
 from pathlib import Path
 from typing import Any
 
+try:
+    from release.schema_versions import EVIDENCE_SCHEMA
+except ModuleNotFoundError:  # loaded directly by focused unit tests
+    from scripts.release.schema_versions import EVIDENCE_SCHEMA
+
 FIXTURE_FILES = 312
 NOISE_FILES = FIXTURE_FILES - 3
 DEFAULT_RUN_TIMEOUT_SECONDS = 600
@@ -188,7 +193,7 @@ def run_once(
             raise BenchmarkError("protocol did not emit a completed terminal event")
         evidence = json.loads((output / "reduction.json").read_text(encoding="utf-8"))
         if (
-            evidence.get("schema_version") != 3
+            evidence.get("schema_version") != EVIDENCE_SCHEMA
             or evidence["failure"].get("same_failure") is not True
         ):
             raise BenchmarkError("run did not publish schema-v3 same-failure evidence")

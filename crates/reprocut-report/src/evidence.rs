@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Current machine-readable reduction evidence schema.
-pub const EVIDENCE_SCHEMA_VERSION: u16 = 3;
+pub const EVIDENCE_SCHEMA_VERSION: u16 = reprocut_core::EVIDENCE_SCHEMA;
 
 /// Diagnostic normalization contract accepted by this evidence schema.
-pub const NORMALIZATION_SCHEMA_VERSION: u16 = 5;
+pub const NORMALIZATION_SCHEMA_VERSION: u16 = reprocut_core::NORMALIZATION_SCHEMA;
 
 /// The single immutable model used by every publication surface.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
