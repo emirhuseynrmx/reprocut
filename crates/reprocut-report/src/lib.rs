@@ -4,6 +4,7 @@
 
 mod evidence;
 mod issue;
+mod manifest;
 
 use std::fmt::Write as _;
 
@@ -13,6 +14,10 @@ pub use evidence::{
     RetentionEvidence, SearchEvidence, EVIDENCE_SCHEMA_VERSION, NORMALIZATION_SCHEMA_VERSION,
 };
 pub use issue::render_issue;
+pub use manifest::{
+    ArtifactManifest, ArtifactMember, ManifestError, RetainedEntry, RetainedEntryKind,
+    RetainedManifest, ARTIFACT_MANIFEST_SCHEMA_VERSION,
+};
 
 const REPORT_SHELL: &str = include_str!("../assets/report.html");
 const REPORT_CSS: &str = include_str!("../assets/report.css");

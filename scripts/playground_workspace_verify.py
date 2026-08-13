@@ -50,6 +50,9 @@ def report_source() -> str:
     evidence = read("crates/reprocut-report/src/evidence.rs").replace(
         "reprocut_core::", "crate::reprocut_core::"
     )
+    manifest = read("crates/reprocut-report/src/manifest.rs").replace(
+        "use reprocut_core::", "use crate::reprocut_core::"
+    )
     issue = read("crates/reprocut-report/src/issue.rs").replace(
         "use crate::ReductionEvidence;", "use super::ReductionEvidence;"
     )
@@ -57,6 +60,7 @@ def report_source() -> str:
         read("crates/reprocut-report/src/lib.rs")
         .replace("mod evidence;", f"mod evidence {{ {evidence} }}")
         .replace("mod issue;", f"mod issue {{ {issue} }}")
+        .replace("mod manifest;", f"mod manifest {{ {manifest} }}")
     )
 
 
