@@ -56,6 +56,36 @@ fn transition_and_its_attempt_commit_atomically() {
 }
 
 #[test]
+fn material_output_identity_cannot_be_reused_by_a_later_transition() {
+    let temporary = tempfile::tempdir().expect("state directory");
+    let database = temporary.path().join("state.sqlite3");
+    let store = StateStore::create(&database, contract("unique-output")).expect("create state");
+    let writer = store.writer();
+    let first = attempt("first-output", CandidateVerdict::Preserved);
+    writer
+        .accept_transition(
+            first.clone(),
+            transition(0, "root", "material", "first-output"),
+        )
+        .expect("first material output");
+    let before = writer.snapshot().expect("snapshot");
+
+    let duplicate = attempt("duplicate-output", CandidateVerdict::Preserved);
+    writer
+        .accept_transition(
+            duplicate,
+            transition(1, "material", "material", "duplicate-output"),
+        )
+        .expect_err("a later transition cannot reuse a material output");
+
+    assert_eq!(
+        writer.snapshot().expect("snapshot"),
+        before,
+        "duplicate material output must roll back its attempt evidence"
+    );
+}
+
+#[test]
 fn resume_requires_the_exact_immutable_session_contract() {
     let temporary = tempfile::tempdir().expect("state directory");
     let database = temporary.path().join("state.sqlite3");

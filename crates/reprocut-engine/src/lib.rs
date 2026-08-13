@@ -496,7 +496,9 @@ impl ReductionEngine {
                 let mut unique_by_digest = HashMap::<ContentDigest, usize>::new();
                 let mut unique_plans = Vec::with_capacity(frontier.len());
                 let mut slot_to_unique = Vec::with_capacity(frontier.len());
-                let mut slot_digests = Vec::with_capacity(frontier.len());
+                let mut slot_cache_digests = Vec::with_capacity(frontier.len());
+                let mut slot_material_digests = Vec::with_capacity(frontier.len());
+                let mut slot_material_bytes = Vec::with_capacity(frontier.len());
 
                 for (slot, candidate) in frontier.iter().enumerate() {
                     let unit_ids = candidate.iter().map(|unit| unit.id()).collect::<Vec<_>>();
@@ -505,13 +507,16 @@ impl ReductionEngine {
                         set_error(&first_error, EngineError::InvalidCandidate);
                         return vec![None; frontier.len()];
                     };
-                    let digest = candidate_cache_digest(
-                        candidate_snapshot.digest(),
+                    let material_digest = candidate_snapshot.digest();
+                    let cache_digest = candidate_cache_digest(
+                        material_digest,
                         request.oracle_spec().digest(),
                         preparation_digest,
                     );
-                    slot_digests.push(digest);
-                    if let Some(&unique) = unique_by_digest.get(&digest) {
+                    slot_cache_digests.push(cache_digest);
+                    slot_material_digests.push(material_digest);
+                    slot_material_bytes.push(candidate_snapshot.total_bytes());
+                    if let Some(&unique) = unique_by_digest.get(&cache_digest) {
                         slot_to_unique.push(unique);
                         continue;
                     }
@@ -520,7 +525,7 @@ impl ReductionEngine {
                         return vec![None; frontier.len()];
                     };
                     let unique = unique_plans.len();
-                    unique_by_digest.insert(digest, unique);
+                    unique_by_digest.insert(cache_digest, unique);
                     slot_to_unique.push(unique);
                     unique_plans.push(CandidatePlan::new(
                         CandidateRank::new(
@@ -528,9 +533,12 @@ impl ReductionEngine {
                             u32::try_from(frontier.len()).unwrap_or(u32::MAX),
                             FrontierClass::Structured,
                             start,
-                            digest,
+                            cache_digest,
                         ),
-                        CandidatePayload { unit_ids, digest },
+                        CandidatePayload {
+                            unit_ids,
+                            digest: cache_digest,
+                        },
                     ));
                 }
 
@@ -564,10 +572,20 @@ impl ReductionEngine {
                     .map(|&unique| outcome.verdict(unique))
                     .collect::<Vec<_>>();
 
-                if let Some(winner) = earliest_terminal_preserved(&verdicts) {
+                let winner = loop {
+                    let Some(winner) = earliest_terminal_preserved(&verdicts) else {
+                        break None;
+                    };
+                    if slot_material_digests[winner] == from_digest {
+                        verdicts[winner] = Some(CandidateVerdict::Rejected);
+                        continue;
+                    }
+                    break Some(winner);
+                };
+                if let Some(winner) = winner {
                     if let Some(writer) = &writer {
                         let attempt = lock(&attempts_by_digest)
-                            .get(&slot_digests[winner])
+                            .get(&slot_cache_digests[winner])
                             .cloned();
                         let Some(attempt) = attempt else {
                             set_error(&first_error, EngineError::InvalidCandidate);
@@ -576,9 +594,9 @@ impl ReductionEngine {
                         let transition = TransitionRecord::new(
                             transition_ordinal,
                             from_digest,
-                            slot_digests[winner],
-                            slot_digests[winner],
-                            u64::try_from(frontier[winner].len()).unwrap_or(u64::MAX),
+                            slot_material_digests[winner],
+                            slot_cache_digests[winner],
+                            slot_material_bytes[winner],
                         );
                         if let Err(error) = writer.accept_transition(attempt, transition) {
                             set_error(&first_error, EngineError::State(error));
@@ -586,7 +604,7 @@ impl ReductionEngine {
                             return verdicts;
                         }
                     }
-                    from_digest = slot_digests[winner];
+                    from_digest = slot_material_digests[winner];
                     transition_ordinal = transition_ordinal.saturating_add(1);
                 }
                 verdicts
@@ -936,6 +954,7 @@ impl StructuredReductionContext<'_> {
         let evaluator = StructuredEvaluationContext {
             shared: self,
             realized: &realized,
+            current_digest: *from_digest,
         };
         let outcome = FrontierScheduler::evaluate(plans, self.request.jobs(), |payload| {
             evaluator.evaluate(payload)
@@ -1079,6 +1098,7 @@ enum StructuredExecution {
 struct StructuredEvaluationContext<'context, 'request> {
     shared: &'context StructuredReductionContext<'request>,
     realized: &'context Mutex<HashMap<ContentDigest, ProjectSnapshot>>,
+    current_digest: ContentDigest,
 }
 
 impl StructuredEvaluationContext<'_, '_> {
@@ -1134,8 +1154,13 @@ impl StructuredEvaluationContext<'_, '_> {
                         nondeterministic_preparation = true;
                         CandidateVerdict::Inconclusive
                     } else {
+                        let material_changed = current.digest() != self.current_digest;
                         realized = Some(current);
-                        self.shared.oracle.classify(&observation)
+                        if material_changed {
+                            self.shared.oracle.classify(&observation)
+                        } else {
+                            CandidateVerdict::Rejected
+                        }
                     }
                 }
                 Err(error) => {
