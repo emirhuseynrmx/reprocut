@@ -115,7 +115,7 @@ fn child_prints_environment() {
 #[test]
 #[ignore = "spawned by the descendant containment contract"]
 fn child_spawns_descendant() {
-    Command::new(env::current_exe().expect("test executable"))
+    let mut descendant = Command::new(env::current_exe().expect("test executable"))
         .args([
             "--exact",
             "descendant_writes_marker",
@@ -125,6 +125,7 @@ fn child_spawns_descendant() {
         .spawn()
         .expect("spawn descendant");
     thread::sleep(Duration::from_secs(5));
+    descendant.wait().expect("reap descendant");
 }
 
 #[test]
