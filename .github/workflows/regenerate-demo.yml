@@ -32,6 +32,7 @@ jobs:
       - name: Audit the regenerated static release contract
         run: python scripts/release/audit.py --static-only
       - name: Upload generated evidence without granting write credentials
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: reprocut-demo-evidence

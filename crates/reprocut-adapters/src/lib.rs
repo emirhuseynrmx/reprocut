@@ -1,4 +1,4 @@
-//! Ecosystem discovery and preparation contracts for ReproCut.
+//! Ecosystem discovery and preparation contracts for `ReproCut`.
 
 mod discovery;
 mod manifests;

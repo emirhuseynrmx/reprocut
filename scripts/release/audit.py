@@ -52,7 +52,9 @@ CARGO_GRAPH_COMMAND = re.compile(
     r"\bcargo(?: \+[^ \t]+)? (?:miri )?"
     r"(?:bench|build|clippy|doc|install|metadata|package|publish|run|test)\b"
 )
-MATURIN_GRAPH_COMMAND = re.compile(r"\bmaturin (?:build|sdist)\b")
+# `maturin build` and `develop` invoke Cargo dependency resolution. `maturin sdist`
+# only archives source (including the committed Cargo.lock) and has no --locked option.
+MATURIN_GRAPH_COMMAND = re.compile(r"\bmaturin (?:build|develop)\b")
 
 
 @dataclass(frozen=True)

@@ -76,7 +76,18 @@ def test_dependency_lock_check_rejects_missing_lock_and_unlocked_graph_commands(
     assert not dependency_lock_check(tmp_path).passed
 
     workflow.write_text(
-        "jobs:\n  quality:\n    steps:\n      - run: cargo test --locked\n",
+        "jobs:\n  quality:\n    steps:\n"
+        "      - run: cargo test --locked\n"
+        "      - run: maturin sdist --out dist\n",
         encoding="utf-8",
     )
     assert dependency_lock_check(tmp_path).passed
+
+    workflow.write_text(
+        "jobs:\n  quality:\n    steps:\n"
+        "      - run: cargo test --locked\n"
+        "      - run: maturin sdist --out dist\n"
+        "      - run: maturin build --release\n",
+        encoding="utf-8",
+    )
+    assert not dependency_lock_check(tmp_path).passed
