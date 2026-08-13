@@ -43,7 +43,11 @@ fn benchmark_reducer(criterion: &mut Criterion) {
 
 fn benchmark_oracle(criterion: &mut Criterion) {
     let diagnostic = (0..512)
-        .map(|index| format!("worker {index} at /tmp/build/module_{index}.rs address 0xDEADBEEF"))
+        .map(|index| {
+            format!(
+                "ValueError: worker dispatch failed at /tmp/build/module_{index}.rs address 0xDEADBEEF"
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n");
     let baseline = ExecutionObservation::new(
