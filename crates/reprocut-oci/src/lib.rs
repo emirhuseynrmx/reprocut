@@ -54,7 +54,7 @@ impl Builder {
     /// # Errors
     ///
     /// Returns [`OciError::BuilderUnavailable`] when neither Docker Buildx nor standalone
-    /// BuildKit can complete its version probe.
+    /// `BuildKit` can complete its version probe.
     pub fn detect() -> Result<Self, OciError> {
         if command_succeeds("docker", ["buildx", "version"]) {
             return Ok(Self::DockerBuildx);
