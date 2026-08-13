@@ -1,3 +1,5 @@
+//! Editor-protocol serialization contracts.
+
 use reprocut_core::{
     ProgressEventV1, ProtocolAction, ProtocolError, ReductionRequestV1, PROTOCOL_VERSION,
 };

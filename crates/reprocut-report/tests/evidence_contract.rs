@@ -1,7 +1,9 @@
+//! Versioned reduction-evidence contracts.
+
 use reprocut_report::{
     write_attempts_jsonl, AttemptSummary, ChannelAnchor, EvaluationPolicyEvidence, FailureEvidence,
     MaterialMeasurement, MeasurementSet, PreparationEvidence, ReductionEvidence, RetentionEvidence,
-    SearchEvidence, EVIDENCE_SCHEMA_VERSION,
+    SearchEvidence, EVIDENCE_SCHEMA_VERSION, NORMALIZATION_SCHEMA_VERSION,
 };
 use serde_json::json;
 
@@ -15,7 +17,7 @@ fn one_model_serializes_consistent_measurements_and_attempts() {
     assert_eq!(value["measurements"]["retained"]["bytes"], 512);
     assert_eq!(value["search"]["attempts"], 41);
     assert_eq!(value["failure"]["same_failure"], true);
-    evidence.validate().expect("schema-3 evidence is valid");
+    evidence.validate().expect("current evidence is valid");
 
     let mut jsonl = Vec::new();
     write_attempts_jsonl(&evidence.attempts, &mut jsonl).expect("attempt JSONL");
@@ -100,7 +102,7 @@ fn fixture() -> ReductionEvidence {
                 channel: "stderr".to_owned(),
                 text: "ValueError: sentinel".to_owned(),
             }],
-            normalization_schema: 3,
+            normalization_schema: NORMALIZATION_SCHEMA_VERSION,
             failure_patterns: Vec::new(),
             reject_patterns: Vec::new(),
             oracle_spec_sha256: "b".repeat(64),

@@ -1,3 +1,5 @@
+//! Frozen, offline Python preparation contracts.
+
 use std::{env, ffi::OsString, fs, path::Path, time::Duration};
 
 use reprocut_engine::{PythonIsolationRequest, ReductionEngine, ReductionRequest};
@@ -25,8 +27,16 @@ fn frozen_wheelhouse_is_used_for_every_python_reduction_phase() {
             .expect("retained manifest"),
     );
 
-    assert!(manifest.contains("required-dep"));
-    assert!(!manifest.contains("unused-dep"));
+    assert!(
+        manifest.contains("required-dep"),
+        "required dependency was lost; manifest={manifest:?}; accepted={:?}",
+        outcome.accepted_structured_edits()
+    );
+    assert!(
+        !manifest.contains("unused-dep"),
+        "unused dependency was retained; manifest={manifest:?}; accepted={:?}",
+        outcome.accepted_structured_edits()
+    );
     assert!(outcome
         .accepted_structured_edits()
         .iter()
@@ -42,9 +52,8 @@ fn fixture_root() -> std::path::PathBuf {
 }
 
 fn python_executable() -> std::path::PathBuf {
-    let requested: std::path::PathBuf = env::var_os("TEST_PYTHON")
-        .map(Into::into)
-        .unwrap_or_else(|| "python3".into());
+    let requested: std::path::PathBuf =
+        env::var_os("TEST_PYTHON").map_or_else(|| "python3".into(), Into::into);
     if requested.is_absolute() {
         return requested;
     }

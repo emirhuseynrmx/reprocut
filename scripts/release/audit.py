@@ -8,7 +8,6 @@ import json
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional
 
 try:
     import tomllib
@@ -52,7 +51,9 @@ CARGO_GRAPH_COMMAND = re.compile(
     r"\bcargo(?: \+[^ \t]+)? (?:miri )?"
     r"(?:bench|build|clippy|doc|install|metadata|package|publish|run|test)\b"
 )
-MATURIN_GRAPH_COMMAND = re.compile(r"\bmaturin (?:build|sdist)\b")
+# `maturin build` and `develop` invoke Cargo dependency resolution. `maturin sdist`
+# only archives source (including the committed Cargo.lock) and has no --locked option.
+MATURIN_GRAPH_COMMAND = re.compile(r"\bmaturin (?:build|develop)\b")
 
 
 @dataclass(frozen=True)
@@ -64,21 +65,14 @@ class Check:
 
 def static_checks(root: Path) -> list[Check]:
     checks: list[Check] = []
-    checks.append(
-        check(
-            "version", versions_are_consistent(root), "all package surfaces are 0.1.0"
-        )
-    )
+    checks.append(check("version", versions_are_consistent(root), "all package surfaces are 0.1.0"))
 
-    evidence = json.loads(
-        (root / "demo/result/reduction.json").read_text(encoding="utf-8")
-    )
+    evidence = json.loads((root / "demo/result/reduction.json").read_text(encoding="utf-8"))
     demo_ok = (
         evidence.get("schema_version") == 3
         and evidence["failure"]["same_failure"] is True
-        and evidence["failure"].get("normalization_schema") == 3
-        and evidence["failure"].get("oracle_mode")
-        in {"automatic", "regex", "exit_zero"}
+        and evidence["failure"].get("normalization_schema") == 4
+        and evidence["failure"].get("oracle_mode") in {"automatic", "regex", "exit_zero"}
         and evidence["search"]["final_verifications"] == 3
         and evidence["measurements"]["original"]["files"] == 18
         and evidence["measurements"]["retained"]["files"] == 3
@@ -97,9 +91,7 @@ def static_checks(root: Path) -> list[Check]:
             "schema 3, bound digests, 18->3, same failure, final 3/3",
         )
     )
-    attempts = (
-        (root / "demo/result/attempts.jsonl").read_text(encoding="utf-8").splitlines()
-    )
+    attempts = (root / "demo/result/attempts.jsonl").read_text(encoding="utf-8").splitlines()
     checks.append(
         check(
             "attempt-ledger",
@@ -109,13 +101,9 @@ def static_checks(root: Path) -> list[Check]:
         )
     )
 
-    corpus = json.loads(
-        (root / "benchmarks/upstream-corpus.json").read_text(encoding="utf-8")
-    )
+    corpus = json.loads((root / "benchmarks/upstream-corpus.json").read_text(encoding="utf-8"))
     cases = corpus.get("cases", corpus if isinstance(corpus, list) else [])
-    checks.append(
-        check("upstream-corpus", len(cases) == 24, "24 pinned upstream cases")
-    )
+    checks.append(check("upstream-corpus", len(cases) == 24, "24 pinned upstream cases"))
 
     required = [
         ".github/workflows/ci.yml",
@@ -150,16 +138,13 @@ def static_checks(root: Path) -> list[Check]:
     checks.append(
         check(
             "oracle-ci-coverage",
-            oracle_job is not None
-            and all(target in oracle_job for target in oracle_targets),
+            oracle_job is not None and all(target in oracle_job for target in oracle_targets),
             "oracle contract, property, and adversarial Cargo targets are explicit",
         )
     )
     checks.append(dependency_lock_check(root))
 
-    release_workflow = (root / ".github/workflows/release.yml").read_text(
-        encoding="utf-8"
-    )
+    release_workflow = (root / ".github/workflows/release.yml").read_text(encoding="utf-8")
     checks.append(
         check(
             "release-targets",
@@ -219,21 +204,19 @@ def dependency_lock_check(root: Path) -> Check:
             r"(?ms)^[ \t]*uses: PyO3/maturin-action@[^\r\n]+\r?\n"
             r"(?P<body>.*?)(?=^[ \t]*-[ \t]+(?:name:|uses:)|\Z)"
         )
-        for match in action.finditer(content):
-            if not re.search(r"(?m)^[ \t]*args:[^\r\n]*--locked", match.group("body")):
-                violations.append(f"{workflow.name}: maturin-action is not locked")
+        violations.extend(
+            f"{workflow.name}: maturin-action is not locked"
+            for match in action.finditer(content)
+            if not re.search(r"(?m)^[ \t]*args:[^\r\n]*--locked", match.group("body"))
+        )
     return check(
         "dependency-lock",
         not violations,
-        (
-            "committed lock and locked workflow graph"
-            if not violations
-            else "; ".join(violations)
-        ),
+        ("committed lock and locked workflow graph" if not violations else "; ".join(violations)),
     )
 
 
-def workflow_job(workflow: str, name: str) -> Optional[str]:
+def workflow_job(workflow: str, name: str) -> str | None:
     match = re.search(
         rf"(?ms)^  {re.escape(name)}:\r?\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:\r?\n|\Z)",
         workflow,
@@ -246,9 +229,7 @@ def versions_are_consistent(root: Path) -> bool:
         return True
     cargo = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
     python = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
-    editor = json.loads(
-        (root / "editors/vscode/package.json").read_text(encoding="utf-8")
-    )
+    editor = json.loads((root / "editors/vscode/package.json").read_text(encoding="utf-8"))
     gallery = json.loads((root / "gallery/package.json").read_text(encoding="utf-8"))
     return {
         cargo["workspace"]["package"]["version"],
@@ -276,9 +257,7 @@ def ci_checks(path: Path, expected_commit: str | None) -> list[Check]:
     )
     checks.append(check("ci-commit", commit_ok, f"commit={commit or '<missing>'}"))
     for gate in sorted(REQUIRED_CI_GATES):
-        status = (
-            statuses.get(gate, "missing") if statuses_ok else "invalid statuses object"
-        )
+        status = statuses.get(gate, "missing") if statuses_ok else "invalid statuses object"
         checks.append(check(f"ci:{gate}", status == "success", status))
     return checks
 
@@ -299,9 +278,7 @@ def main() -> int:
     if arguments.ci_evidence:
         checks.extend(ci_checks(arguments.ci_evidence, arguments.expected_commit))
     elif not arguments.static_only:
-        checks.append(
-            check("ci-evidence", False, "pass --ci-evidence from the clean release run")
-        )
+        checks.append(check("ci-evidence", False, "pass --ci-evidence from the clean release run"))
 
     if arguments.json:
         print(

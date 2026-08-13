@@ -56,11 +56,7 @@ def main() -> int:
     parser.add_argument("paths", nargs="*", type=Path)
     arguments = parser.parse_args()
     changed: list[tuple[Path, str]] = []
-    sources = (
-        [path.resolve() for path in arguments.paths]
-        if arguments.paths
-        else rust_sources()
-    )
+    sources = [path.resolve() for path in arguments.paths] if arguments.paths else rust_sources()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         for path, formatted in executor.map(format_source, sources):

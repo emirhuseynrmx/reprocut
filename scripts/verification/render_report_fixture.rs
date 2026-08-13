@@ -25,7 +25,7 @@ fn main() {
         source_snapshot_sha256: "2".repeat(64),
         preparation_mode: "offline".to_owned(),
         preparation_contract: "3".repeat(64),
-        normalization_schema: 3,
+        normalization_schema: 4,
         anchors: vec![ChannelAnchor {
             channel: "stderr".to_owned(),
             text: "ValueError: unstable <input>".to_owned(),

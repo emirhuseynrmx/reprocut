@@ -32,7 +32,7 @@ ATTEMPTS_END = "__REPROCUT_ATTEMPTS_END__"
 # The official Playground image has no Python executable. This adapter lets the
 # real Rust search engine execute a content-equivalent shell property there.
 # The builder separately runs both Python trees three times before publication.
-DEMO_RUNNER = r'''
+DEMO_RUNNER = r"""
 use std::{
     ffi::OsString,
     io,
@@ -119,12 +119,12 @@ fn bounded(mut value: Vec<u8>, limit: usize) -> (Vec<u8>, bool) {
 pub const fn containment_mechanism() -> ContainmentMechanism {
     ContainmentMechanism::DirectChild
 }
-'''
+"""
 
 # The checked-in demo never selects isolated Python. Keeping this API-compatible
 # fail-closed stub out of the remote code avoids making Playground compile an
 # unreachable virtual-environment implementation under its tight memory limit.
-DEMO_PYTHON_ISOLATION = r'''
+DEMO_PYTHON_ISOLATION = r"""
 use std::{ffi::OsString, path::{Path, PathBuf}, time::Duration};
 use crate::reprocut_core::ContentDigest;
 use crate::reprocut_runner::CommandSpec;
@@ -134,7 +134,10 @@ use thiserror::Error;
 pub struct PythonIsolationRequest;
 impl PythonIsolationRequest {
     pub fn new(_: PathBuf, _: PathBuf) -> Self { Self }
-    pub fn with_extras(self, _: impl IntoIterator<Item=String>) -> Result<Self, PythonPreparationError> { Ok(self) }
+    pub fn with_extras(
+        self,
+        _: impl IntoIterator<Item=String>,
+    ) -> Result<Self, PythonPreparationError> { Ok(self) }
     pub fn with_prepare_spec(self, _: PathBuf) -> Self { self }
 }
 
@@ -144,17 +147,37 @@ pub struct PythonPreparationError;
 
 pub(crate) struct FrozenPythonPreparation;
 impl FrozenPythonPreparation {
-    pub(crate) fn capture(_: &PythonIsolationRequest, _: Duration, _: usize) -> Result<Self, PythonPreparationError> { Err(PythonPreparationError) }
+    pub(crate) fn capture(
+        _: &PythonIsolationRequest,
+        _: Duration,
+        _: usize,
+    ) -> Result<Self, PythonPreparationError> { Err(PythonPreparationError) }
     pub(crate) fn digest(&self) -> ContentDigest { ContentDigest::of(b"unavailable") }
-    pub(crate) fn validate_original_program(&self, _: &Path) -> Result<(), PythonPreparationError> { Err(PythonPreparationError) }
-    pub(crate) fn prepare(&self, _: &Path, _: Duration, _: usize) -> Result<Option<PreparedPythonCandidate>, PythonPreparationError> { Err(PythonPreparationError) }
+    pub(crate) fn validate_original_program(
+        &self,
+        _: &Path,
+    ) -> Result<(), PythonPreparationError> { Err(PythonPreparationError) }
+    pub(crate) fn prepare(
+        &self,
+        _: &Path,
+        _: Duration,
+        _: usize,
+    ) -> Result<Option<PreparedPythonCandidate>, PythonPreparationError> {
+        Err(PythonPreparationError)
+    }
 }
 
 pub(crate) struct PreparedPythonCandidate;
 impl PreparedPythonCandidate {
-    pub(crate) fn command_for(&self, _: &Path, _: &[OsString], _: Duration, _: usize) -> Result<CommandSpec, PythonPreparationError> { Err(PythonPreparationError) }
+    pub(crate) fn command_for(
+        &self,
+        _: &Path,
+        _: &[OsString],
+        _: Duration,
+        _: usize,
+    ) -> Result<CommandSpec, PythonPreparationError> { Err(PythonPreparationError) }
 }
-'''
+"""
 
 
 def source_files(root: Path) -> list[Path]:
@@ -191,9 +214,7 @@ def stable_python_failure(root: Path) -> object:
     runs = [execute_python_failure(root) for _ in range(3)]
     if any(run.returncode == 0 for run in runs):
         raise RuntimeError("demo command unexpectedly succeeded")
-    return FailureOracle.from_baselines(
-        [(run.returncode, run.stdout, run.stderr) for run in runs]
-    )
+    return FailureOracle.from_baselines([(run.returncode, run.stdout, run.stderr) for run in runs])
 
 
 def execute_python_failure(root: Path) -> subprocess.CompletedProcess[str]:
@@ -213,14 +234,12 @@ def remote_program() -> str:
     for path in source_files(SOURCE):
         relative = path.relative_to(SOURCE).as_posix()
         contents = path.read_text(encoding="utf-8")
-        writes.append(
-            f"write_demo_file(&source, {raw_string(relative)}, {raw_string(contents)});"
-        )
+        writes.append(f"write_demo_file(&source, {raw_string(relative)}, {raw_string(contents)});")
 
     shell_oracle = (
         "if grep -q quote_total bug.py 2>/dev/null && "
         "grep -q 'subtotal + currency' checkout.py 2>/dev/null && "
-        "grep -q '\"currency\": \"TRY\"' fixtures/order.json 2>/dev/null; then "
+        'grep -q \'"currency": "TRY"\' fixtures/order.json 2>/dev/null; then '
         'printf "%s\\n" "TypeError: unsupported operand type(s) for +: '
         "'decimal.Decimal' and 'str'\" >&2; exit 1; "
         'fi; printf "%s\\n" "required demo material missing" >&2; exit 2'
@@ -228,7 +247,9 @@ def remote_program() -> str:
     fixture_writes = "\n    ".join(writes)
     harness = f"""
 use std::{{ffi::OsString, fs, path::{{Path, PathBuf}}, time::Duration}};
-use crate::reprocut_engine::{{PreparationMode, ReductionEngine, ReductionOutcome, ReductionRequest, SessionMode}};
+use crate::reprocut_engine::{{
+    PreparationMode, ReductionEngine, ReductionOutcome, ReductionRequest, SessionMode,
+}};
 
 fn write_demo_file(root: &Path, relative: &str, contents: &str) {{
     let path = root.join(relative);
@@ -262,7 +283,10 @@ fn demo_evidence(outcome: &ReductionOutcome) -> serde_json::Value {{
     }})).collect::<Vec<_>>();
     let kept_files = outcome.snapshot().files().iter().map(|file| serde_json::json!({{
         "path": file.path(),
-        "observation": "Present in the final repeatedly verified snapshot; no semantic-causality claim is inferred.",
+        "observation": concat!(
+            "Present in the final repeatedly verified snapshot; ",
+            "no semantic-causality claim is inferred."
+        ),
     }})).collect::<Vec<_>>();
     let retained_lines = outcome.snapshot().files().iter().fold(0_u64, |total, file| {{
         let bytes = file.contents();
@@ -300,12 +324,25 @@ fn demo_evidence(outcome: &ReductionOutcome) -> serde_json::Value {{
             "limitations": [],
         }},
         "measurements": {{
-            "original": {{"files": outcome.original_files(), "bytes": outcome.original_bytes(), "lines": outcome.original_lines(), "syntax_nodes": null}},
-            "retained": {{"files": outcome.snapshot().files().len(), "bytes": outcome.snapshot().total_bytes(), "lines": retained_lines, "syntax_nodes": null}},
+            "original": {{
+                "files": outcome.original_files(),
+                "bytes": outcome.original_bytes(),
+                "lines": outcome.original_lines(),
+                "syntax_nodes": null,
+            }},
+            "retained": {{
+                "files": outcome.snapshot().files().len(),
+                "bytes": outcome.snapshot().total_bytes(),
+                "lines": retained_lines,
+                "syntax_nodes": null,
+            }},
             "elapsed_ms": outcome.elapsed().as_millis() as u64,
         }},
         "search": {{
-            "attempts": outcome.reduction().attempts().saturating_add(outcome.structured_attempts()),
+            "attempts": outcome
+                .reduction()
+                .attempts()
+                .saturating_add(outcome.structured_attempts()),
             "file_attempts": outcome.reduction().attempts(),
             "structured_attempts": outcome.structured_attempts(),
             "inconclusive_attempts": outcome.inconclusive_attempts(),
@@ -338,9 +375,19 @@ fn demo_evidence(outcome: &ReductionOutcome) -> serde_json::Value {{
         "attempts": attempts,
         "limitations": [
             "Elapsed time is one wall-clock observation, not a benchmark.",
-            "Retained paths are observations from the verified final snapshot, not claims of semantic necessity.",
-            "Syntax-node counts are omitted until a grammar-valid cross-language counter is available.",
-            "The official Playground host has no Python executable, so search used a content-equivalent shell oracle; the source and final project are independently executed three times by this builder's local Python runtime.",
+            concat!(
+                "Retained paths are observations from the verified final snapshot, ",
+                "not claims of semantic necessity."
+            ),
+            concat!(
+                "Syntax-node counts are omitted until a grammar-valid ",
+                "cross-language counter is available."
+            ),
+            concat!(
+                "The official Playground host has no Python executable, so search used ",
+                "a content-equivalent shell oracle; the source and final project are ",
+                "independently executed three times by this builder's local Python runtime."
+            ),
         ],
     }})
 }}
@@ -456,9 +503,7 @@ def write_reproduction_scripts(artifact: Path) -> None:
     )
 
 
-def format_summary(
-    *, output: str, original_files: int, retained_files: int, attempts: int
-) -> str:
+def format_summary(*, output: str, original_files: int, retained_files: int, attempts: int) -> str:
     return f"built {output}: {original_files} -> {retained_files} files, {attempts} candidates"
 
 
@@ -538,12 +583,8 @@ def main(*, refresh: bool = False) -> int:
             encoding="utf-8",
             newline="\n",
         )
-        (artifact / "report.html").write_text(
-            report + "\n", encoding="utf-8", newline="\n"
-        )
-        (artifact / "issue.md").write_text(
-            issue + "\n", encoding="utf-8", newline="\n"
-        )
+        (artifact / "report.html").write_text(report + "\n", encoding="utf-8", newline="\n")
+        (artifact / "issue.md").write_text(issue + "\n", encoding="utf-8", newline="\n")
         (artifact / "attempts.jsonl").write_text(
             attempts.rstrip("\r\n") + "\n", encoding="utf-8", newline="\n"
         )

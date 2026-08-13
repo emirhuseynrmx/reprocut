@@ -1,0 +1,41 @@
+name: Regenerate verified demo evidence
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: regenerate-demo-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evidence:
+    name: Rebuild reduction record and GIF
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install the deterministic image dependency
+        run: python -m pip install Pillow==12.3.0
+      - name: Rebuild evidence through the real Rust reduction engine
+        run: python scripts/build_demo.py --refresh
+      - name: Bind the demo animation to the new failure fingerprint
+        run: python scripts/capture_demo.py
+      - name: Audit the regenerated static release contract
+        run: python scripts/release/audit.py --static-only
+      - name: Upload generated evidence without granting write credentials
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reprocut-demo-evidence
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            demo/result
+            assets/reprocut-demo.gif
+            assets/reprocut-banner.svg

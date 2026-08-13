@@ -1,3 +1,5 @@
+//! Aggregate evaluation-policy contracts.
+
 use reprocut_core::{AggregateDecision, CandidateVerdict, EvaluationPolicy, PolicyError};
 
 #[test]

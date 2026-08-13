@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "release"))
 
-from audit import REQUIRED_CI_GATES, ci_checks, dependency_lock_check, static_checks
+from audit import REQUIRED_CI_GATES, ci_checks, dependency_lock_check, static_checks  # noqa: E402
 
 
 def test_static_release_contract_is_fully_encoded_and_current() -> None:
@@ -21,9 +21,7 @@ def test_static_release_contract_is_fully_encoded_and_current() -> None:
     assert len(checks) >= 8
     assert "oracle-ci-coverage" in {item.name for item in checks}
     assert "dependency-lock" in {item.name for item in checks}
-    assert all(item.passed for item in checks), [
-        item for item in checks if not item.passed
-    ]
+    assert all(item.passed for item in checks), [item for item in checks if not item.passed]
 
 
 def test_ci_evidence_is_schema_versioned_and_bound_to_the_expected_commit(
@@ -76,7 +74,18 @@ def test_dependency_lock_check_rejects_missing_lock_and_unlocked_graph_commands(
     assert not dependency_lock_check(tmp_path).passed
 
     workflow.write_text(
-        "jobs:\n  quality:\n    steps:\n      - run: cargo test --locked\n",
+        "jobs:\n  quality:\n    steps:\n"
+        "      - run: cargo test --locked\n"
+        "      - run: maturin sdist --out dist\n",
         encoding="utf-8",
     )
     assert dependency_lock_check(tmp_path).passed
+
+    workflow.write_text(
+        "jobs:\n  quality:\n    steps:\n"
+        "      - run: cargo test --locked\n"
+        "      - run: maturin sdist --out dist\n"
+        "      - run: maturin build --release\n",
+        encoding="utf-8",
+    )
+    assert not dependency_lock_check(tmp_path).passed

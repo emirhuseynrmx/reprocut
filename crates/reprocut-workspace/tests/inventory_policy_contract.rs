@@ -1,3 +1,5 @@
+//! Nested inventory-policy contracts.
+
 use std::fs;
 
 use reprocut_workspace::{InventoryPolicy, ProjectInventory};

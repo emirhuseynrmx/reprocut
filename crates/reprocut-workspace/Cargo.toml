@@ -9,6 +9,7 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+memchr.workspace = true
 reprocut-core = { path = "../reprocut-core", version = "0.1.0" }
 tempfile.workspace = true
 thiserror.workspace = true

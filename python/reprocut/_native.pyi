@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from typing import Literal, Union
+from typing import Literal
 
 Verdict = Literal["preserved", "rejected", "inconclusive"]
 Channel = Literal["auto", "stderr", "stdout", "combined"]
@@ -21,14 +21,13 @@ class FailureOracle:
     @classmethod
     def from_baselines(
         cls,
-        baselines: Sequence[Union[tuple[int, str], tuple[int, str, str]]],
+        baselines: Sequence[tuple[int, str] | tuple[int, str, str]],
         *,
         mode: Mode = "automatic",
         channel: Channel = "auto",
         failure_patterns: Sequence[str] | None = None,
         reject_patterns: Sequence[str] | None = None,
     ) -> FailureOracle: ...
-
     def classify(
         self,
         exit_code: int,
@@ -38,6 +37,5 @@ class FailureOracle:
         timed_out: bool = False,
         truncated: bool = False,
     ) -> Verdict: ...
-
     @property
     def fingerprint(self) -> dict[str, object]: ...

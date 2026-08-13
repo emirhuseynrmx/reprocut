@@ -200,7 +200,10 @@ where
     while position < active.len() {
         let plan = FrontierPartition {
             class: FrontierClass::Complement,
-            positions: position..position + 1,
+            positions: Range {
+                start: position,
+                end: position.saturating_add(1),
+            },
         };
         fill_partition(
             units,

@@ -6,7 +6,6 @@ from pathlib import Path
 import pytest
 from reprocut import FailureOracle
 
-
 CASES = json.loads((Path(__file__).with_name("oracle_cases.json")).read_text("utf-8"))
 BY_NAME = {case["name"]: case for case in CASES}
 

@@ -1,3 +1,5 @@
+//! Byte-stable report golden contracts.
+
 use reprocut_report::{render_report, ChannelAnchor, ReportModel, RetentionEvidence};
 
 fn fixture_model() -> ReportModel {
@@ -25,7 +27,7 @@ fn fixture_model() -> ReportModel {
         source_snapshot_sha256: "2".repeat(64),
         preparation_mode: "offline".to_owned(),
         preparation_contract: "3".repeat(64),
-        normalization_schema: 3,
+        normalization_schema: 4,
         anchors: vec![ChannelAnchor {
             channel: "stderr".to_owned(),
             text: "ValueError: unstable <input>".to_owned(),

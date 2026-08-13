@@ -1,3 +1,5 @@
+//! Transformation identity and ordering contracts.
+
 use reprocut_core::{
     ByteRange, ContentDigest, ContentHasher, Operation, ProjectPath, Transformation,
     TransformationError,

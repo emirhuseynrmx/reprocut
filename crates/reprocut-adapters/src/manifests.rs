@@ -124,6 +124,10 @@ pub struct CargoManifest {
 
 impl CargoManifest {
     /// Parses one Cargo manifest without resolving or executing it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ManifestError::Toml`] when `source` is not a valid editable TOML document.
     pub fn parse(source: &str) -> Result<Self, ManifestError> {
         Ok(Self {
             document: source.parse()?,
@@ -205,6 +209,11 @@ impl CargoManifest {
     }
 
     /// Removes exactly one entry previously enumerated from this document.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ManifestError::StaleEntry`] when the document changed after enumeration, or
+    /// [`ManifestError::WrongManifestKind`] when `entry` belongs to another ecosystem.
     pub fn remove(&mut self, entry: &ManifestEntry) -> Result<(), ManifestError> {
         match &entry.locator {
             EntryLocator::CargoTable { prefix, table, key } => {
@@ -286,6 +295,10 @@ pub struct PythonManifest {
 
 impl PythonManifest {
     /// Parses pyproject.toml without importing the project.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ManifestError::Toml`] when `source` is not a valid editable TOML document.
     pub fn parse(source: &str) -> Result<Self, ManifestError> {
         Ok(Self {
             document: source.parse()?,
@@ -347,6 +360,11 @@ impl PythonManifest {
     }
 
     /// Removes one entry; callers must provide isolation for dependency edits.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ManifestError::StaleEntry`] when the document changed after enumeration, or
+    /// [`ManifestError::WrongManifestKind`] when `entry` belongs to another ecosystem.
     pub fn remove(&mut self, entry: &ManifestEntry) -> Result<(), ManifestError> {
         let project = self
             .document
@@ -393,6 +411,11 @@ pub struct NpmManifest {
 
 impl NpmManifest {
     /// Parses JSON and requires an object root.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ManifestError::Json`] for invalid JSON and
+    /// [`ManifestError::NonObjectPackage`] when the root is not an object.
     pub fn parse(source: &str) -> Result<Self, ManifestError> {
         let document: JsonValue = serde_json::from_str(source)?;
         if !document.is_object() {
@@ -463,6 +486,11 @@ impl NpmManifest {
     }
 
     /// Removes exactly one JSON entry.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ManifestError::StaleEntry`] when the document changed after enumeration, or
+    /// [`ManifestError::WrongManifestKind`] when `entry` belongs to another ecosystem.
     pub fn remove(&mut self, entry: &ManifestEntry) -> Result<(), ManifestError> {
         match &entry.locator {
             EntryLocator::NpmTable { table, key } => {
@@ -489,6 +517,10 @@ impl NpmManifest {
     }
 
     /// Returns canonical pretty JSON with a trailing newline.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ManifestError::Json`] if the in-memory JSON value cannot be serialized.
     pub fn render(&self) -> Result<String, ManifestError> {
         let mut output = serde_json::to_string_pretty(&self.document)?;
         output.push('\n');

@@ -1,3 +1,5 @@
+//! Grammar-validated source-reduction contracts.
+
 use reprocut_syntax::{deletion_transforms, hoist_transforms, parse_valid, SyntaxLanguage};
 
 #[test]

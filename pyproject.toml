@@ -38,7 +38,11 @@ Changelog = "https://github.com/emirhuseynrmx/reprocut/blob/main/CHANGELOG.md"
 reprocut-py = "reprocut.cli:main"
 
 [project.optional-dependencies]
-test = ["Pillow==12.2.0", "pytest==8.4.2", "ruff==0.16.2"]
+test = [
+  "Pillow==12.3.0; python_version >= '3.10'",
+  "pytest==8.4.2",
+  "ruff==0.16.2",
+]
 benchmark = ["psutil==7.2.2"]
 
 [tool.maturin]

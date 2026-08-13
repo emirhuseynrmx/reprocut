@@ -1,3 +1,5 @@
+//! Ecosystem discovery and default-command contracts.
+
 use std::{ffi::OsStr, fs};
 
 use reprocut_adapters::{Adapter, AdapterError, Ecosystem, EcosystemSelection};

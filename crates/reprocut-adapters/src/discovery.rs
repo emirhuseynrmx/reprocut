@@ -67,6 +67,11 @@ pub struct Adapter {
 
 impl Adapter {
     /// Detects markers without executing project code or following links.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AdapterError`] when `root` is invalid, automatic detection is ambiguous or
+    /// unsupported, or an npm manifest cannot be read and validated.
     pub fn detect(root: &Path, selection: EcosystemSelection) -> Result<Self, AdapterError> {
         if !root.is_dir() {
             return Err(AdapterError::InvalidRoot(root.to_path_buf()));

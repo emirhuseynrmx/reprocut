@@ -1002,6 +1002,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "clap_complete",
+ "memchr",
  "predicates",
  "reprocut-adapters",
  "reprocut-core",
@@ -1123,6 +1124,7 @@ dependencies = [
 name = "reprocut-workspace"
 version = "0.1.0"
 dependencies = [
+ "memchr",
  "reprocut-core",
  "tempfile",
  "thiserror",

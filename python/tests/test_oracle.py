@@ -32,9 +32,7 @@ def test_unstable_or_too_small_baseline_is_a_value_error() -> None:
     with pytest.raises(ValueError, match="at least two"):
         FailureOracle.from_baselines([(1, "TypeError: currency")])
     with pytest.raises(ValueError, match="unstable"):
-        FailureOracle.from_baselines(
-            [(1, "TypeError: currency"), (2, "TypeError: currency")]
-        )
+        FailureOracle.from_baselines([(1, "TypeError: currency"), (2, "TypeError: currency")])
 
 
 def test_fingerprint_is_an_immutable_plain_value() -> None:
@@ -52,7 +50,7 @@ def test_fingerprint_is_an_immutable_plain_value() -> None:
         "anchors": [{"channel": "stderr", "text": "TypeError: currency"}],
         "failure_patterns": [],
         "reject_patterns": [],
-        "normalization_schema": 3,
+        "normalization_schema": 4,
         "oracle_spec_sha256": "<digest>",
         "fingerprint_sha256": "<digest>",
     }
@@ -92,9 +90,7 @@ def test_volatile_paths_and_ids_do_not_change_failure_identity() -> None:
         ("RuntimeError: shard:12", "RuntimeError: shard:99"),
     ],
 )
-def test_semantic_colon_numbers_are_not_source_locations(
-    baseline: str, candidate: str
-) -> None:
+def test_semantic_colon_numbers_are_not_source_locations(baseline: str, candidate: str) -> None:
     oracle = FailureOracle.from_baselines([(1, baseline), (1, baseline)])
 
     assert oracle.classify(1, candidate) == "rejected"
@@ -151,18 +147,50 @@ def test_auto_reserves_each_error_bearing_stream_under_anchor_pressure() -> None
     ("baseline", "candidate"),
     [
         ("HTTPError: GET /api/v1:404", "HTTPError: GET /api/v1:500"),
+        ("HTTPError at /api/v1:404", "HTTPError at /api/v1:500"),
         (
             "HTTPError: https://example.com/v1:404",
             "HTTPError: https://example.com/v1:500",
         ),
     ],
 )
-def test_api_routes_and_urls_retain_semantic_status_values(
-    baseline: str, candidate: str
-) -> None:
+def test_api_routes_and_urls_retain_semantic_status_values(baseline: str, candidate: str) -> None:
     oracle = FailureOracle.from_baselines([(1, baseline), (1, baseline)])
 
     assert oracle.classify(1, candidate) == "rejected"
+
+
+@pytest.mark.parametrize(
+    ("baseline", "candidate"),
+    [
+        ("RuntimeError: support 404", "RuntimeError: support 500"),
+        ("RuntimeError: rapid 123", "RuntimeError: rapid 999"),
+        ("RuntimeError: pipeline 123", "RuntimeError: pipeline 999"),
+        ("RuntimeError: 12msisdn", "RuntimeError: 13msisdn"),
+    ],
+)
+def test_volatile_labels_do_not_match_inside_semantic_words(baseline: str, candidate: str) -> None:
+    oracle = FailureOracle.from_baselines([(1, baseline), (1, baseline)])
+
+    assert oracle.classify(1, candidate) == "rejected"
+
+
+@pytest.mark.parametrize(
+    ("baseline", "candidate"),
+    [
+        ("RuntimeError: port 404", "RuntimeError: port 500"),
+        ("RuntimeError: PID 123", "RuntimeError: PID 999"),
+        ("RuntimeError: line 12", "RuntimeError: line 99"),
+        (
+            "RuntimeError: failed after 10 seconds",
+            "RuntimeError: failed after 20 seconds",
+        ),
+    ],
+)
+def test_lexically_bounded_volatile_values_remain_normalized(baseline: str, candidate: str) -> None:
+    oracle = FailureOracle.from_baselines([(1, baseline), (1, baseline)])
+
+    assert oracle.classify(1, candidate) == "preserved"
 
 
 @pytest.mark.parametrize(
@@ -207,15 +235,11 @@ def test_auto_requires_stable_stdout_and_stderr_when_both_exist() -> None:
         channel="auto",
     )
     assert (
-        oracle.classify(
-            1, "TypeError: currency", stdout="FAILED tests/a.py::test_total"
-        )
+        oracle.classify(1, "TypeError: currency", stdout="FAILED tests/a.py::test_total")
         == "preserved"
     )
     assert (
-        oracle.classify(
-            1, "TypeError: currency", stdout="FAILED tests/b.py::test_total"
-        )
+        oracle.classify(1, "TypeError: currency", stdout="FAILED tests/b.py::test_total")
         == "rejected"
     )
     assert oracle.fingerprint["anchors"] == [

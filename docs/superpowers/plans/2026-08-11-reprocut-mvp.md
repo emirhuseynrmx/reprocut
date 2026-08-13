@@ -548,20 +548,24 @@ from reprocut import FailureOracle
 
 
 def test_same_failure_is_preserved() -> None:
-    oracle = FailureOracle.from_baselines([
-        (1, "TypeError: currency"),
-        (1, "TypeError: currency"),
-        (1, "TypeError: currency"),
-    ])
+    oracle = FailureOracle.from_baselines(
+        [
+            (1, "TypeError: currency"),
+            (1, "TypeError: currency"),
+            (1, "TypeError: currency"),
+        ]
+    )
     assert oracle.classify(1, "TypeError: currency") == "preserved"
 
 
 def test_different_failure_is_rejected() -> None:
-    oracle = FailureOracle.from_baselines([
-        (1, "TypeError: currency"),
-        (1, "TypeError: currency"),
-        (1, "TypeError: currency"),
-    ])
+    oracle = FailureOracle.from_baselines(
+        [
+            (1, "TypeError: currency"),
+            (1, "TypeError: currency"),
+            (1, "TypeError: currency"),
+        ]
+    )
     assert oracle.classify(1, "ModuleNotFoundError") == "rejected"
 ~~~
 

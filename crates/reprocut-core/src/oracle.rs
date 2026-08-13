@@ -64,6 +64,11 @@ pub struct OracleSpec {
 
 impl OracleSpec {
     /// Validates and canonicalizes one complete oracle contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when pattern limits, mode-specific fields, or regular expressions are
+    /// invalid.
     pub fn new(
         mode: OracleMode,
         channel: DiagnosticChannel,
@@ -113,7 +118,11 @@ impl OracleSpec {
         })
     }
 
-    /// Returns automatic schema-3 inference for one stream policy.
+    /// Returns automatic schema-4 inference for one stream policy.
+    ///
+    /// # Panics
+    ///
+    /// Panics only if the crate's built-in empty automatic configuration becomes invalid.
     pub fn automatic(channel: DiagnosticChannel) -> Self {
         Self::new(OracleMode::Automatic, channel, Vec::new(), Vec::new())
             .expect("the built-in automatic oracle spec is valid")
@@ -156,11 +165,19 @@ pub struct FailureOracle {
 
 impl FailureOracle {
     /// Builds an automatic oracle from repeated observations of the original failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the baselines are incomplete, unstable, or lack a discriminator.
     pub fn from_baselines(baselines: &[ExecutionObservation]) -> Result<Self, OracleError> {
         Self::from_baselines_with_channel(DiagnosticChannel::Auto, baselines)
     }
 
     /// Builds an automatic oracle under an explicit stream policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the baselines are incomplete, unstable, or lack a discriminator.
     pub fn from_baselines_with_channel(
         channel: DiagnosticChannel,
         baselines: &[ExecutionObservation],
@@ -169,6 +186,11 @@ impl FailureOracle {
     }
 
     /// Builds an oracle from a fully validated contract and repeated baselines.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when baselines violate the selected mode, termination, pattern, or
+    /// diagnostic-stability contract.
     pub fn from_spec_and_baselines(
         spec: OracleSpec,
         baselines: &[ExecutionObservation],

@@ -3,7 +3,6 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 WORKSPACE_SCRIPT = ROOT / "scripts" / "playground_workspace_verify.py"
 SINGLE_FILE_SCRIPT = ROOT / "scripts" / "playground_verify.py"

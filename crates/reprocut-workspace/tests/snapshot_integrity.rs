@@ -1,3 +1,5 @@
+//! Immutable snapshot integrity contracts.
+
 use std::fs;
 
 use reprocut_core::{ByteRange, Operation, ProjectPath, Transformation};
@@ -69,8 +71,8 @@ fn set_mask(path: std::path::PathBuf, mask: u8) {
     use std::os::unix::fs::PermissionsExt;
 
     let mut permissions = fs::metadata(&path).expect("metadata").permissions();
-    let execute = (u32::from(mask & 0b100) >> 2) * 0o100
-        | (u32::from(mask & 0b010) >> 1) * 0o010
+    let execute = ((u32::from(mask & 0b100) >> 2) * 0o100)
+        | ((u32::from(mask & 0b010) >> 1) * 0o010)
         | u32::from(mask & 0b001);
     permissions.set_mode((permissions.mode() & !0o111) | execute);
     fs::set_permissions(path, permissions).expect("permissions");
@@ -84,8 +86,8 @@ fn read_mask(path: std::path::PathBuf) -> u8 {
     use std::os::unix::fs::PermissionsExt;
 
     let mode = fs::metadata(path).expect("metadata").permissions().mode();
-    u8::from(mode & 0o100 != 0) << 2
-        | u8::from(mode & 0o010 != 0) << 1
+    (u8::from(mode & 0o100 != 0) << 2)
+        | (u8::from(mode & 0o010 != 0) << 1)
         | u8::from(mode & 0o001 != 0)
 }
 

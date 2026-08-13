@@ -1,6 +1,6 @@
 # Minimal reproduction: TypeError: unsupported operand type(s) for +: 'decimal.Decimal' and 'str'
 
-> **Same failure verified.** Fingerprint `48ebabae825720ad781c82ce1da9dbf43f33aceac71b34d140c9a7fc40562b00` matched across 3 final execution(s).
+> **Same failure verified.** Fingerprint `6df461b40d60bdb6a81c7214e641aec7a063702c9f82b201486482cee26b1e1b` matched across 3 final execution(s).
 
 ## Reduction
 
@@ -16,7 +16,7 @@
 - Oracle stream: `auto`
 - Oracle mode: `automatic`
 - Oracle spec SHA-256: `3015cdd3dcd09acb2c9e17736d828908ee6ccab62db68928f1de9e2c1468d142`
-- Normalization schema: `3`
+- Normalization schema: `4`
 
 ```text
 TypeError: unsupported operand type(s) for +: 'decimal.Decimal' and 'str'
@@ -45,7 +45,7 @@ python bug.py
 - Candidate attempts: 24
 - Cache reuses: 7
 - Inconclusive candidates: 0
-- Wall time: 274 ms
+- Wall time: 557 ms
 
 ## Included evidence
 

@@ -1,4 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion, Throughput};
+//! Reduction hot-path benchmarks.
+
+use criterion::{black_box, BatchSize, Criterion, Throughput};
 use reprocut_core::{reduce, CandidateVerdict, ExecutionObservation, FailureOracle, ReductionUnit};
 
 fn benchmark_reducer(criterion: &mut Criterion) {
@@ -41,7 +43,11 @@ fn benchmark_reducer(criterion: &mut Criterion) {
 
 fn benchmark_oracle(criterion: &mut Criterion) {
     let diagnostic = (0..512)
-        .map(|index| format!("worker {index} at /tmp/build/module_{index}.rs address 0xDEADBEEF"))
+        .map(|index| {
+            format!(
+                "ValueError: worker dispatch failed at /tmp/build/module_{index}.rs address 0xDEADBEEF"
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n");
     let baseline = ExecutionObservation::new(
@@ -65,5 +71,9 @@ fn benchmark_oracle(criterion: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, benchmark_reducer, benchmark_oracle);
-criterion_main!(benches);
+fn main() {
+    let mut criterion = Criterion::default().configure_from_args();
+    benchmark_reducer(&mut criterion);
+    benchmark_oracle(&mut criterion);
+    criterion.final_summary();
+}

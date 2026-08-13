@@ -6,8 +6,8 @@ import argparse
 import json
 import os
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence
 
 from .client import (
     BaselineStableEvent,
@@ -72,7 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     failure_command = tuple(args.command[1:] if args.command[:1] == ["--"] else args.command)
     try:

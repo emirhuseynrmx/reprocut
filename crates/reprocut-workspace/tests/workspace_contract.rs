@@ -1,3 +1,5 @@
+//! Candidate-workspace materialization contracts.
+
 use std::fs;
 
 use reprocut_core::ReductionUnit;

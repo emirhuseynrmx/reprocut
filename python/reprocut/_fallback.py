@@ -15,7 +15,7 @@ LegacyBaseline = tuple[int, str]
 StreamBaseline = tuple[int, str, str]
 Baseline = Union[LegacyBaseline, StreamBaseline]
 
-NORMALIZATION_SCHEMA = 3
+NORMALIZATION_SCHEMA = 4
 MAX_PATTERNS = 16
 MAX_PATTERN_BYTES = 4096
 COMBINED_DELIMITER = "\n--- REPROCUT STREAM ---\n"
@@ -46,7 +46,7 @@ _LOOPBACK_PORT = re.compile(r"(localhost|LOCALHOST|127\.0\.0\.1|\[::1\]):[0-9]{1
 _NAMED_PORT = re.compile(r"(?:port|Port|PORT)[ \t]*[:=]?[ \t]*[0-9]{1,5}")
 _DURATION = re.compile(
     r"[0-9]+(?:\.[0-9]+)?[ \t]*(?:seconds|second|minutes|minute|secs|sec|"
-    r"mins|min|ms|ns|us|s|m)"
+    r"mins|min|ms|ns|us|s)"
 )
 _PATH_LOCATION = re.compile(r"(?P<token>[^ \t\r\n:]+):[0-9]+(?::[0-9]+)?")
 _SOURCE_EXTENSIONS = frozenset(
@@ -89,19 +89,13 @@ _SOURCE_EXTENSIONS = frozenset(
         "zsh",
     }
 )
-_EXTENSIONLESS_SOURCE_FILES = frozenset(
-    {"BUILD", "Dockerfile", "Makefile", "WORKSPACE"}
-)
+_EXTENSIONLESS_SOURCE_FILES = frozenset({"BUILD", "Dockerfile", "Makefile", "WORKSPACE"})
 _CHANNEL_ORDER = {"stdout": 0, "stderr": 1}
 _NAMED_LOCATION = re.compile(r"([Ll]ine|[Cc]olumn)[ \t]+[0-9]+")
 _HORIZONTAL_SPACE = re.compile(r"[\t ]+")
 _PYTEST = re.compile(r"^(?:failed|error)[ \t]+[^ \t\r\n]+(?:::[^ \t\r\n]+)+")
-_COMPILER = re.compile(
-    r"(?:error\[[a-z][0-9]{2,}\]|(?:fatal )?error[ \t]+[a-z]{1,5}[0-9]{2,})"
-)
-_ROOT = re.compile(
-    r"(?:[a-z_][a-z0-9_.]*(?:error|exception)|panicked at|^panic:|^fatal:)"
-)
+_COMPILER = re.compile(r"(?:error\[[a-z][0-9]{2,}\]|(?:fatal )?error[ \t]+[a-z]{1,5}[0-9]{2,})")
+_ROOT = re.compile(r"(?:[a-z_][a-z0-9_.]*(?:error|exception)|panicked at|^panic:|^fatal:)")
 _ASSERTION = re.compile(r"(?:assert(?:ion)?|expected|actual|left.*right)")
 _MESSAGE = re.compile(r"(?:error|failed|failure|panic|exception|fatal)")
 _SUMMARY = re.compile(
@@ -123,9 +117,7 @@ class EvaluationPolicy:
 
     __slots__ = ("_mode", "_required", "_runs")
 
-    def __init__(
-        self, mode: str, runs: int, required: int, *, _factory: bool = False
-    ) -> None:
+    def __init__(self, mode: str, runs: int, required: int, *, _factory: bool = False) -> None:
         if not _factory:
             raise TypeError("use EvaluationPolicy.strict() or EvaluationPolicy.flaky()")
         object.__setattr__(self, "_mode", mode)
@@ -149,9 +141,7 @@ class EvaluationPolicy:
         if not 1 <= required <= runs:
             raise ValueError("flaky required must be between 1 and runs")
         if required * 3 < runs * 2:
-            raise ValueError(
-                "flaky required must be at least a two-thirds supermajority"
-            )
+            raise ValueError("flaky required must be at least a two-thirds supermajority")
         return cls("flaky", runs, required, _factory=True)
 
     @property
@@ -178,8 +168,8 @@ class FailureOracle:
         "_mode",
         "_oracle_spec_digest",
         "_reject_patterns",
-        "_required_regex",
         "_reject_regex",
+        "_required_regex",
     )
 
     def __init__(
@@ -203,12 +193,8 @@ class FailureOracle:
         object.__setattr__(self, "_failure_patterns", failure_patterns)
         object.__setattr__(self, "_reject_patterns", reject_patterns)
         object.__setattr__(self, "_oracle_spec_digest", oracle_spec_digest)
-        object.__setattr__(
-            self, "_required_regex", tuple(map(re.compile, failure_patterns))
-        )
-        object.__setattr__(
-            self, "_reject_regex", tuple(map(re.compile, reject_patterns))
-        )
+        object.__setattr__(self, "_required_regex", tuple(map(re.compile, failure_patterns)))
+        object.__setattr__(self, "_reject_regex", tuple(map(re.compile, reject_patterns)))
 
     def __setattr__(self, name: str, value: object) -> None:
         del name, value
@@ -233,9 +219,7 @@ class FailureOracle:
         first_exit = observations[0][0]
         if mode == "exit_zero":
             if any(exit_code != 0 for exit_code, _, _ in observations):
-                raise ValueError(
-                    "exit-zero mode requires every baseline to exit with code zero"
-                )
+                raise ValueError("exit-zero mode requires every baseline to exit with code zero")
             anchors: tuple[tuple[str, str], ...] = ()
         else:
             if any(exit_code != first_exit for exit_code, _, _ in observations[1:]):
@@ -244,32 +228,20 @@ class FailureOracle:
             reject = tuple(map(re.compile, canonical_reject))
             if mode == "regex":
                 for observation in observations:
-                    diagnostic = _diagnostic_view(
-                        channel, observation[1], observation[2]
-                    )
+                    diagnostic = _diagnostic_view(channel, observation[1], observation[2])
                     if any(pattern.search(diagnostic) for pattern in reject):
-                        raise ValueError(
-                            "a reject expression matches an original baseline"
-                        )
+                        raise ValueError("a reject expression matches an original baseline")
                     if not all(pattern.search(diagnostic) for pattern in required):
-                        raise ValueError(
-                            "a required expression does not match every baseline"
-                        )
+                        raise ValueError("a required expression does not match every baseline")
                 anchors = ()
             else:
                 for observation in observations:
-                    diagnostic = _diagnostic_view(
-                        channel, observation[1], observation[2]
-                    )
+                    diagnostic = _diagnostic_view(channel, observation[1], observation[2])
                     if any(pattern.search(diagnostic) for pattern in reject):
-                        raise ValueError(
-                            "a reject expression matches an original baseline"
-                        )
+                        raise ValueError("a reject expression matches an original baseline")
                 anchors = _stable_discriminators(channel, observations)
                 if not anchors:
-                    raise ValueError(
-                        "baseline diagnostic has no stable discriminative anchor"
-                    )
+                    raise ValueError("baseline diagnostic has no stable discriminative anchor")
         spec_digest = _spec_digest(mode, channel, canonical_failure, canonical_reject)
         return cls(
             first_exit,
@@ -310,16 +282,13 @@ class FailureOracle:
             )
         streams = {"stdout": _normalize(stdout), "stderr": _normalize(diagnostic)}
         matches = all(
-            text in streams[anchor_channel].splitlines()
-            for anchor_channel, text in self._anchors
+            text in streams[anchor_channel].splitlines() for anchor_channel, text in self._anchors
         )
         return "preserved" if matches else "rejected"
 
     @property
     def fingerprint(self) -> dict[str, object]:
-        anchors = [
-            {"channel": channel, "text": text} for channel, text in self._anchors
-        ]
+        anchors = [{"channel": channel, "text": text} for channel, text in self._anchors]
         fingerprint_digest = _fingerprint_digest(
             self._mode,
             self._exit_code,
@@ -381,12 +350,12 @@ def _normalize(diagnostic: str) -> str:
     value = _WINDOWS_TEMP.sub("<temp>", value)
     value = _UNIX_TEMP.sub("<temp>", value)
     value = _ADDRESS.sub("address <address>", value)
-    value = _PROCESS_ID.sub(r"\1 <id>", value)
+    value = _bounded_sub(_PROCESS_ID, r"\1 <id>", value)
     value = _LOOPBACK_PORT.sub(r"\1:<port>", value)
-    value = _NAMED_PORT.sub("port <port>", value)
-    value = _DURATION.sub("<duration>", value)
+    value = _bounded_sub(_NAMED_PORT, "port <port>", value)
+    value = _bounded_sub(_DURATION, "<duration>", value)
     value = _PATH_LOCATION.sub(_normalize_source_location, value)
-    value = _NAMED_LOCATION.sub(r"\1 <location>", value)
+    value = _bounded_sub(_NAMED_LOCATION, r"\1 <location>", value)
     lines = (_HORIZONTAL_SPACE.sub(" ", line.strip()) for line in value.splitlines())
     return "\n".join(line for line in lines if line)
 
@@ -397,7 +366,8 @@ def _normalize_source_location(match: re.Match[str]) -> str:
     extension = token.rpartition(".")[2].lower()
     if (
         token == "<temp>"
-        or _has_explicit_source_context(match)
+        or _has_compiler_source_context(match)
+        or _has_source_tree_root(token)
         or basename in _EXTENSIONLESS_SOURCE_FILES
         or extension in _SOURCE_EXTENSIONS
     ):
@@ -405,9 +375,49 @@ def _normalize_source_location(match: re.Match[str]) -> str:
     return match.group(0)
 
 
-def _has_explicit_source_context(match: re.Match[str]) -> bool:
+def _bounded_sub(pattern: re.Pattern[str], replacement: str, value: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        return (
+            match.expand(replacement)
+            if _has_lexical_boundaries(value, match.start(), match.end())
+            else match.group(0)
+        )
+
+    return pattern.sub(replace, value)
+
+
+def _has_lexical_boundaries(value: str, start: int, end: int) -> bool:
+    return (start == 0 or not _is_lexical_character(value[start - 1])) and (
+        end == len(value) or not _is_lexical_character(value[end])
+    )
+
+
+def _is_lexical_character(character: str) -> bool:
+    return character.isalnum() or character == "_"
+
+
+def _has_compiler_source_context(match: re.Match[str]) -> bool:
     line_prefix = match.string[: match.start()].rsplit("\n", 1)[-1].rstrip(" \t")
-    return line_prefix.endswith("-->") or line_prefix.rsplit(maxsplit=1)[-1:] == ["at"]
+    return line_prefix.endswith("-->")
+
+
+def _has_source_tree_root(token: str) -> bool:
+    source_tree_roots = {
+        "app",
+        "apps",
+        "benches",
+        "crates",
+        "examples",
+        "lib",
+        "packages",
+        "src",
+        "test",
+        "tests",
+    }
+    relative = token[2:] if token.startswith(("./", ".\\")) else token
+    if relative.startswith(("/", "\\")):
+        return False
+    return re.split(r"[/\\]", relative, maxsplit=1)[0] in source_tree_roots
 
 
 def _stable_discriminators(
@@ -419,22 +429,18 @@ def _stable_discriminators(
         values = [item[1] if stream == "stdout" else item[2] for item in observations]
         first = _eligible_lines(stream, _normalize(values[0]))
         intersections = [
-            {line[4] for line in _eligible_lines(stream, _normalize(value))}
-            for value in values[1:]
+            {line[4] for line in _eligible_lines(stream, _normalize(value))} for value in values[1:]
         ]
         candidates.extend(
             line for line in first if all(line[4] in lines for lines in intersections)
         )
     if channel == "combined" and not all(
-        any(candidate[3] == stream for candidate in candidates)
-        for stream in ("stdout", "stderr")
+        any(candidate[3] == stream for candidate in candidates) for stream in ("stdout", "stderr")
     ):
         return ()
     if channel == "auto":
         candidates = [candidate for candidate in candidates if candidate[0] < 4]
-    candidates.sort(
-        key=lambda line: (line[0], -line[1], line[2], _CHANNEL_ORDER[line[3]], line[4])
-    )
+    candidates.sort(key=lambda line: (line[0], -line[1], line[2], _CHANNEL_ORDER[line[3]], line[4]))
     selected: list[tuple[int, int, int, str, str]] = []
     if channel == "combined":
         selected.extend(
@@ -468,9 +474,7 @@ def _stable_discriminators(
     return tuple((line[3], line[4]) for line in selected)
 
 
-def _eligible_lines(
-    stream: str, diagnostic: str
-) -> list[tuple[int, int, int, str, str]]:
+def _eligible_lines(stream: str, diagnostic: str) -> list[tuple[int, int, int, str, str]]:
     result = []
     for position, line in enumerate(diagnostic.splitlines()):
         kind = _discriminator_kind(line)
@@ -510,9 +514,7 @@ def _is_boilerplate(line: str) -> bool:
     }:
         return True
     return bool(
-        _SUMMARY.search(lowercase)
-        or _LOCATION.search(lowercase)
-        or _LIFECYCLE.search(lowercase)
+        _SUMMARY.search(lowercase) or _LOCATION.search(lowercase) or _LIFECYCLE.search(lowercase)
     )
 
 

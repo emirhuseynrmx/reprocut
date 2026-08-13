@@ -1,8 +1,8 @@
-//! End-to-end reduction orchestration for ReproCut.
+//! End-to-end reduction orchestration for `ReproCut`.
 
-mod scheduler;
 mod pipeline;
 mod python_isolation;
+mod scheduler;
 
 pub use python_isolation::{PythonIsolationRequest, PythonPreparationError};
 pub use scheduler::{CandidatePlan, FrontierOutcome, FrontierScheduler, SchedulerError};
@@ -13,7 +13,7 @@ use pipeline::{
 use python_isolation::{FrozenPythonPreparation, PreparedPythonCandidate};
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     ffi::OsString,
     path::{Path, PathBuf},
     sync::{
@@ -114,6 +114,7 @@ impl ReductionRequest {
     }
 
     /// Returns a request using an explicit failure channel and aggregate policy.
+    #[must_use]
     pub fn with_evaluation(
         mut self,
         diagnostic_channel: DiagnosticChannel,
@@ -126,6 +127,7 @@ impl ReductionRequest {
     }
 
     /// Returns a request using one prevalidated oracle contract.
+    #[must_use]
     pub fn with_oracle(mut self, oracle_spec: OracleSpec) -> Self {
         self.diagnostic_channel = oracle_spec.channel();
         self.oracle_spec = oracle_spec;
@@ -133,6 +135,7 @@ impl ReductionRequest {
     }
 
     /// Returns a request with bounded parallelism and an explicit state policy.
+    #[must_use]
     pub fn with_runtime(mut self, jobs: usize, session_mode: SessionMode) -> Self {
         self.jobs = jobs;
         self.session_mode = session_mode;
@@ -140,12 +143,14 @@ impl ReductionRequest {
     }
 
     /// Returns a request using exact nested-directory inventory exclusions.
+    #[must_use]
     pub fn with_inventory_policy(mut self, inventory_policy: InventoryPolicy) -> Self {
         self.inventory_policy = inventory_policy;
         self
     }
 
     /// Enables ecosystem-aware preparation and structured reducer selection.
+    #[must_use]
     pub fn with_ecosystem(
         mut self,
         ecosystem: Ecosystem,
@@ -157,6 +162,7 @@ impl ReductionRequest {
     }
 
     /// Enables frozen-wheelhouse Python isolation for every execution phase.
+    #[must_use]
     pub fn with_python_isolation(mut self, isolation: PythonIsolationRequest) -> Self {
         self.ecosystem = Ecosystem::Python;
         self.preparation_mode = PreparationMode::IsolatedPython;
@@ -412,6 +418,11 @@ pub struct ReductionEngine;
 
 impl ReductionEngine {
     /// Stabilizes, minimizes, and re-verifies one failing command.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError`] when inventory, isolation, process execution, oracle
+    /// stabilization, candidate reduction, durable state, or final verification fails.
     #[allow(clippy::too_many_lines)]
     pub fn run(request: &ReductionRequest) -> Result<ReductionOutcome, EngineError> {
         let started = Instant::now();
@@ -433,20 +444,20 @@ impl ReductionEngine {
                 )
             })
             .transpose()?;
-        if let Some(preparation) = &python_preparation {
-            preparation.validate_original_program(request.program())?;
+        if python_preparation.is_some() {
+            FrozenPythonPreparation::validate_original_program(request.program())?;
         }
         if request.preparation_mode() == PreparationMode::IsolatedPython
             && python_preparation.is_none()
         {
             return Err(EngineError::MissingPythonIsolation);
         }
-        let preparation_digest = python_preparation
-            .as_ref()
-            .map(FrozenPythonPreparation::digest)
-            .unwrap_or_else(|| builtin_preparation_digest(request));
+        let preparation_digest = python_preparation.as_ref().map_or_else(
+            || builtin_preparation_digest(request),
+            FrozenPythonPreparation::digest,
+        );
         let contract = session_contract(request, source_digest, preparation_digest);
-        let (state, resumed) = open_state(request.session_mode(), contract)?;
+        let (state, resumed) = open_state(request.session_mode(), &contract)?;
         let state_path = state.as_ref().map(|store| store.path().to_path_buf());
         let writer = state.as_ref().map(StateStore::writer);
         let all_units = inventory.units().iter().collect::<Vec<_>>();
@@ -481,6 +492,7 @@ impl ReductionEngine {
         let inconclusive_attempts = AtomicU64::new(0);
         let cache_hits = AtomicU64::new(0);
         let mut from_digest = source_digest;
+        let mut accepted_material_digests = HashSet::from([source_digest]);
         let mut transition_ordinal = 0_u64;
         let mut frontier_phase = 0_u16;
 
@@ -496,22 +508,31 @@ impl ReductionEngine {
                 let mut unique_by_digest = HashMap::<ContentDigest, usize>::new();
                 let mut unique_plans = Vec::with_capacity(frontier.len());
                 let mut slot_to_unique = Vec::with_capacity(frontier.len());
-                let mut slot_digests = Vec::with_capacity(frontier.len());
+                let mut slot_cache_digests = Vec::with_capacity(frontier.len());
+                let mut slot_material_digests = Vec::with_capacity(frontier.len());
+                let mut slot_material_bytes = Vec::with_capacity(frontier.len());
 
                 for (slot, candidate) in frontier.iter().enumerate() {
-                    let unit_ids = candidate.iter().map(|unit| unit.id()).collect::<Vec<_>>();
+                    let unit_ids = candidate
+                        .iter()
+                        .copied()
+                        .map(ReductionUnit::id)
+                        .collect::<Vec<_>>();
                     let Ok(candidate_snapshot) = source_snapshot.subset(candidate.iter().copied())
                     else {
                         set_error(&first_error, EngineError::InvalidCandidate);
                         return vec![None; frontier.len()];
                     };
-                    let digest = candidate_cache_digest(
-                        candidate_snapshot.digest(),
+                    let material_digest = candidate_snapshot.digest();
+                    let cache_digest = candidate_cache_digest(
+                        material_digest,
                         request.oracle_spec().digest(),
                         preparation_digest,
                     );
-                    slot_digests.push(digest);
-                    if let Some(&unique) = unique_by_digest.get(&digest) {
+                    slot_cache_digests.push(cache_digest);
+                    slot_material_digests.push(material_digest);
+                    slot_material_bytes.push(candidate_snapshot.total_bytes());
+                    if let Some(&unique) = unique_by_digest.get(&cache_digest) {
                         slot_to_unique.push(unique);
                         continue;
                     }
@@ -520,7 +541,7 @@ impl ReductionEngine {
                         return vec![None; frontier.len()];
                     };
                     let unique = unique_plans.len();
-                    unique_by_digest.insert(digest, unique);
+                    unique_by_digest.insert(cache_digest, unique);
                     slot_to_unique.push(unique);
                     unique_plans.push(CandidatePlan::new(
                         CandidateRank::new(
@@ -528,9 +549,12 @@ impl ReductionEngine {
                             u32::try_from(frontier.len()).unwrap_or(u32::MAX),
                             FrontierClass::Structured,
                             start,
-                            digest,
+                            cache_digest,
                         ),
-                        CandidatePayload { unit_ids, digest },
+                        CandidatePayload {
+                            unit_ids,
+                            digest: cache_digest,
+                        },
                     ));
                 }
 
@@ -564,10 +588,20 @@ impl ReductionEngine {
                     .map(|&unique| outcome.verdict(unique))
                     .collect::<Vec<_>>();
 
-                if let Some(winner) = earliest_terminal_preserved(&verdicts) {
+                let winner = loop {
+                    let Some(winner) = earliest_terminal_preserved(&verdicts) else {
+                        break None;
+                    };
+                    if accepted_material_digests.contains(&slot_material_digests[winner]) {
+                        verdicts[winner] = Some(CandidateVerdict::Rejected);
+                        continue;
+                    }
+                    break Some(winner);
+                };
+                if let Some(winner) = winner {
                     if let Some(writer) = &writer {
                         let attempt = lock(&attempts_by_digest)
-                            .get(&slot_digests[winner])
+                            .get(&slot_cache_digests[winner])
                             .cloned();
                         let Some(attempt) = attempt else {
                             set_error(&first_error, EngineError::InvalidCandidate);
@@ -576,9 +610,9 @@ impl ReductionEngine {
                         let transition = TransitionRecord::new(
                             transition_ordinal,
                             from_digest,
-                            slot_digests[winner],
-                            slot_digests[winner],
-                            u64::try_from(frontier[winner].len()).unwrap_or(u64::MAX),
+                            slot_material_digests[winner],
+                            slot_cache_digests[winner],
+                            slot_material_bytes[winner],
                         );
                         if let Err(error) = writer.accept_transition(attempt, transition) {
                             set_error(&first_error, EngineError::State(error));
@@ -586,7 +620,8 @@ impl ReductionEngine {
                             return verdicts;
                         }
                     }
-                    from_digest = slot_digests[winner];
+                    from_digest = slot_material_digests[winner];
+                    accepted_material_digests.insert(from_digest);
                     transition_ordinal = transition_ordinal.saturating_add(1);
                 }
                 verdicts
@@ -615,6 +650,7 @@ impl ReductionEngine {
             &mut frontier_phase,
             &mut transition_ordinal,
             &mut from_digest,
+            &mut accepted_material_digests,
         )?;
         let snapshot = structured_outcome.snapshot;
         let mut final_error = None;
@@ -653,8 +689,7 @@ impl ReductionEngine {
             original_lines: original_measurements.lines(),
             reduction,
             fingerprint: oracle.fingerprint().clone(),
-            baseline_runs: u16::try_from(baselines.len())
-                .expect("evaluation policy run count is represented by u16"),
+            baseline_runs: u16::try_from(baselines.len()).unwrap_or(u16::MAX),
             final_verifications: final_evidence.observed_runs(),
             inconclusive_attempts: inconclusive_attempts.load(Ordering::Relaxed),
             cache_hits: cache_hits.load(Ordering::Relaxed),
@@ -703,14 +738,10 @@ fn stabilize_oracle(
                     candidate.classify(observation) == CandidateVerdict::Preserved
                 })
                 .count();
-            let score = u16::try_from(score_count)
-                .expect("evaluation policy run count is represented by u16");
-            let replace = best
-                .as_ref()
-                .map(|(best_score, best_index, _)| {
-                    score > *best_score || (score == *best_score && left < *best_index)
-                })
-                .unwrap_or(true);
+            let score = u16::try_from(score_count).unwrap_or(u16::MAX);
+            let replace = best.as_ref().is_none_or(|(best_score, best_index, _)| {
+                score > *best_score || (score == *best_score && left < *best_index)
+            });
             if replace {
                 best = Some((score, left, candidate));
             }
@@ -853,6 +884,7 @@ impl StructuredReductionContext<'_> {
         frontier_phase: &mut u16,
         transition_ordinal: &mut u64,
         from_digest: &mut ContentDigest,
+        accepted_material_digests: &mut HashSet<ContentDigest>,
     ) -> Result<StructuredReductionOutcome, EngineError> {
         let mut attempts = 0_u64;
         let mut accepted = Vec::new();
@@ -862,8 +894,13 @@ impl StructuredReductionContext<'_> {
                 self.request.ecosystem(),
                 self.request.preparation_mode(),
             )?;
-            let manifest_outcome =
-                self.evaluate_frontier(manifests, frontier_phase, transition_ordinal, from_digest)?;
+            let manifest_outcome = self.evaluate_frontier(
+                manifests,
+                frontier_phase,
+                transition_ordinal,
+                from_digest,
+                accepted_material_digests,
+            )?;
             attempts = attempts.saturating_add(manifest_outcome.attempts);
             if let Some((key, next)) = manifest_outcome.accepted {
                 accepted.push(key);
@@ -878,6 +915,7 @@ impl StructuredReductionContext<'_> {
                     frontier_phase,
                     transition_ordinal,
                     from_digest,
+                    accepted_material_digests,
                 )?;
                 attempts = attempts.saturating_add(syntax_outcome.attempts);
                 if let Some((key, next)) = syntax_outcome.accepted {
@@ -901,6 +939,7 @@ impl StructuredReductionContext<'_> {
         frontier_phase: &mut u16,
         transition_ordinal: &mut u64,
         from_digest: &mut ContentDigest,
+        accepted_material_digests: &mut HashSet<ContentDigest>,
     ) -> Result<StructuredFrontierOutcome, EngineError> {
         if candidates.is_empty() {
             return Ok(StructuredFrontierOutcome {
@@ -936,6 +975,8 @@ impl StructuredReductionContext<'_> {
         let evaluator = StructuredEvaluationContext {
             shared: self,
             realized: &realized,
+            current_digest: *from_digest,
+            accepted_material_digests,
         };
         let outcome = FrontierScheduler::evaluate(plans, self.request.jobs(), |payload| {
             evaluator.evaluate(payload)
@@ -966,6 +1007,12 @@ impl StructuredReductionContext<'_> {
                 .map(|prepared| prepared.snapshot)
                 .ok_or(EngineError::StructuredRealizationFailed)?,
         };
+        if accepted_material_digests.contains(&realized.digest()) {
+            return Ok(StructuredFrontierOutcome {
+                accepted: None,
+                attempts: observed,
+            });
+        }
         if let Some(writer) = self.writer {
             let attempt = lock(self.attempts_by_digest)
                 .get(&payload.digest)
@@ -983,6 +1030,7 @@ impl StructuredReductionContext<'_> {
             )?;
         }
         *from_digest = realized.digest();
+        accepted_material_digests.insert(*from_digest);
         *transition_ordinal = transition_ordinal.saturating_add(1);
         Ok(StructuredFrontierOutcome {
             accepted: Some((payload.candidate.key().to_owned(), realized)),
@@ -1079,39 +1127,53 @@ enum StructuredExecution {
 struct StructuredEvaluationContext<'context, 'request> {
     shared: &'context StructuredReductionContext<'request>,
     realized: &'context Mutex<HashMap<ContentDigest, ProjectSnapshot>>,
+    current_digest: ContentDigest,
+    accepted_material_digests: &'context HashSet<ContentDigest>,
 }
 
 impl StructuredEvaluationContext<'_, '_> {
+    fn cached_verdict(&self, payload: &StructuredPayload) -> Option<CandidateVerdict> {
+        if let Some(record) = lock(self.shared.memory_cache).get(&payload.digest).cloned() {
+            self.shared.cache_hits.fetch_add(1, Ordering::Relaxed);
+            lock(self.shared.attempts_by_digest).insert(payload.digest, record.clone());
+            return Some(record.verdict());
+        }
+        let writer = self.shared.writer?;
+        match writer.lookup_cache(payload.digest) {
+            Ok(Some(cached)) => {
+                let record = AttemptRecord::new(
+                    payload.digest,
+                    cached.verdict(),
+                    cached.observed_runs(),
+                    cached.inconclusive_runs(),
+                    cached.evidence_json().to_owned(),
+                );
+                self.shared.cache_hits.fetch_add(1, Ordering::Relaxed);
+                lock(self.shared.memory_cache).insert(payload.digest, record.clone());
+                lock(self.shared.attempts_by_digest).insert(payload.digest, record.clone());
+                Some(record.verdict())
+            }
+            Ok(None) => None,
+            Err(error) => {
+                set_error(self.shared.first_error, EngineError::State(error));
+                Some(CandidateVerdict::Inconclusive)
+            }
+        }
+    }
+
     fn evaluate(&self, payload: &StructuredPayload) -> CandidateVerdict {
         if has_error(self.shared.first_error) {
             return CandidateVerdict::Inconclusive;
         }
-        if let Some(record) = lock(self.shared.memory_cache).get(&payload.digest).cloned() {
-            self.shared.cache_hits.fetch_add(1, Ordering::Relaxed);
-            lock(self.shared.attempts_by_digest).insert(payload.digest, record.clone());
-            return record.verdict();
+        if payload.candidate.preparation().is_none()
+            && self
+                .accepted_material_digests
+                .contains(&payload.candidate.snapshot().digest())
+        {
+            return CandidateVerdict::Rejected;
         }
-        if let Some(writer) = self.shared.writer {
-            match writer.lookup_cache(payload.digest) {
-                Ok(Some(cached)) => {
-                    let record = AttemptRecord::new(
-                        payload.digest,
-                        cached.verdict(),
-                        cached.observed_runs(),
-                        cached.inconclusive_runs(),
-                        cached.evidence_json().to_owned(),
-                    );
-                    self.shared.cache_hits.fetch_add(1, Ordering::Relaxed);
-                    lock(self.shared.memory_cache).insert(payload.digest, record.clone());
-                    lock(self.shared.attempts_by_digest).insert(payload.digest, record.clone());
-                    return record.verdict();
-                }
-                Ok(None) => {}
-                Err(error) => {
-                    set_error(self.shared.first_error, EngineError::State(error));
-                    return CandidateVerdict::Inconclusive;
-                }
-            }
+        if let Some(verdict) = self.cached_verdict(payload) {
+            return verdict;
         }
 
         let local_error = Mutex::new(None);
@@ -1134,8 +1196,14 @@ impl StructuredEvaluationContext<'_, '_> {
                         nondeterministic_preparation = true;
                         CandidateVerdict::Inconclusive
                     } else {
+                        let material_changed = current.digest() != self.current_digest
+                            && !self.accepted_material_digests.contains(&current.digest());
                         realized = Some(current);
-                        self.shared.oracle.classify(&observation)
+                        if material_changed {
+                            self.shared.oracle.classify(&observation)
+                        } else {
+                            CandidateVerdict::Rejected
+                        }
                     }
                 }
                 Err(error) => {
@@ -1365,7 +1433,7 @@ fn nondeterministic_preparation_json(evidence: &AggregateEvidence) -> String {
 
 fn open_state(
     mode: &SessionMode,
-    contract: SessionContract,
+    contract: &SessionContract,
 ) -> Result<(Option<StateStore>, bool), EngineError> {
     match mode {
         SessionMode::Ephemeral => Ok((None, false)),

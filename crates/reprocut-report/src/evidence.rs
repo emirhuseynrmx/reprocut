@@ -6,6 +6,9 @@ use serde_json::Value;
 /// Current machine-readable reduction evidence schema.
 pub const EVIDENCE_SCHEMA_VERSION: u16 = 3;
 
+/// Diagnostic normalization contract accepted by this evidence schema.
+pub const NORMALIZATION_SCHEMA_VERSION: u16 = 4;
+
 /// The single immutable model used by every publication surface.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ReductionEvidence {
@@ -183,6 +186,11 @@ pub struct AttemptSummary {
 }
 
 /// Streams newline-delimited attempts without building a second JSON array.
+///
+/// # Errors
+///
+/// Returns a [`serde_json::Error`] when an attempt cannot be serialized or the destination writer
+/// rejects a record or newline.
 pub fn write_attempts_jsonl<W: Write>(
     attempts: &[AttemptSummary],
     mut output: W,
@@ -201,6 +209,11 @@ impl ReductionEvidence {
     }
 
     /// Validates cryptographic fields and mode-specific evidence invariants.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable reason string when the schema, digest encoding, preparation identity,
+    /// final verification, or mode-specific oracle contract is invalid.
     pub fn validate(&self) -> Result<(), &'static str> {
         if self.schema_version != EVIDENCE_SCHEMA_VERSION {
             return Err("unsupported evidence schema");
@@ -227,17 +240,17 @@ impl ReductionEvidence {
             "automatic"
                 if self.failure.failure_patterns.is_empty()
                     && !self.failure.anchors.is_empty()
-                    && self.failure.normalization_schema == 3 => {}
+                    && self.failure.normalization_schema == NORMALIZATION_SCHEMA_VERSION => {}
             "regex"
                 if !self.failure.failure_patterns.is_empty()
                     && self.failure.anchors.is_empty()
-                    && self.failure.normalization_schema == 3 => {}
+                    && self.failure.normalization_schema == NORMALIZATION_SCHEMA_VERSION => {}
             "exit_zero"
                 if self.failure.failure_patterns.is_empty()
                     && self.failure.reject_patterns.is_empty()
                     && self.failure.anchors.is_empty()
                     && self.failure.anchor.is_empty()
-                    && self.failure.normalization_schema == 3 => {}
+                    && self.failure.normalization_schema == NORMALIZATION_SCHEMA_VERSION => {}
             "automatic" | "regex" | "exit_zero" => {
                 return Err("oracle evidence violates its mode contract")
             }

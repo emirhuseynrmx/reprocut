@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from reprocut import FailureOracle
 
 
@@ -16,7 +15,7 @@ def test_exit_zero_mode_uses_termination_without_output_identity() -> None:
     assert oracle.classify(0, "", timed_out=True) == "inconclusive"
     assert oracle.fingerprint["mode"] == "exit_zero"
     assert oracle.fingerprint["anchors"] == []
-    assert oracle.fingerprint["normalization_schema"] == 3
+    assert oracle.fingerprint["normalization_schema"] == 4
 
 
 def test_regex_mode_requires_all_patterns_and_applies_reject_veto() -> None:
@@ -33,10 +32,7 @@ def test_regex_mode_requires_all_patterns_and_applies_reject_veto() -> None:
 
     assert oracle.classify(1, "TypeError: invoice 9 currency") == "preserved"
     assert oracle.classify(1, "TypeError: invoice 9") == "rejected"
-    assert (
-        oracle.classify(1, "TypeError: invoice 9 currency\nsecondary failure")
-        == "rejected"
-    )
+    assert oracle.classify(1, "TypeError: invoice 9 currency\nsecondary failure") == "rejected"
     assert oracle.fingerprint["mode"] == "regex"
     assert oracle.fingerprint["failure_patterns"] == [
         "TypeError: invoice [0-9]+",

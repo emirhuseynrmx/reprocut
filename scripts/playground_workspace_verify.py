@@ -69,14 +69,14 @@ def compose_cli(
     ).removesuffix("fn main() {}")
     report = report_source()
     oci = read("crates/reprocut-oci/src/lib.rs")
-    completion_stub = r'''
+    completion_stub = r"""
 use std::io::Write;
 #[derive(Clone, Copy)]
 pub enum Shell { Bash, Elvish, Fish, PowerShell, Zsh }
 pub fn generate(_: Shell, _: &mut clap::Command, _: &str, output: &mut dyn Write) {
     let _ = output.write_all(b"playground completion stub\n");
 }
-'''
+"""
     cli = (
         without_inner_attributes(read("crates/reprocut-cli/src/main.rs"))
         .replace("use reprocut_adapters::", "use crate::reprocut_adapters::")
@@ -102,18 +102,18 @@ def compose_report() -> str:
 
 
 def compose_oci() -> str:
-    return "\n".join(
-        [wrap("reprocut_oci", read("crates/reprocut-oci/src/lib.rs")), "fn main() {}"]
-    )
+    return "\n".join([wrap("reprocut_oci", read("crates/reprocut-oci/src/lib.rs")), "fn main() {}"])
 
 
 def compose_core() -> str:
     diagnostic = read("crates/reprocut-core/src/diagnostic.rs").replace(
         "use crate::{", "use super::{", 1
     )
-    model = read("crates/reprocut-core/src/model.rs").replace(
-        "crate::NORMALIZATION_SCHEMA", "super::NORMALIZATION_SCHEMA"
-    ).replace("use crate::transformation::", "use super::transformation::")
+    model = (
+        read("crates/reprocut-core/src/model.rs")
+        .replace("crate::NORMALIZATION_SCHEMA", "super::NORMALIZATION_SCHEMA")
+        .replace("use crate::transformation::", "use super::transformation::")
+    )
     oracle = (
         read("crates/reprocut-core/src/oracle.rs")
         .replace("use crate::{", "use super::{", 1)
@@ -159,9 +159,7 @@ fn main() {{}}
 
 def compose_workspace() -> str:
     core = compose_core().replace("fn main() {}\n", "")
-    workspace = workspace_source().replace(
-        "use reprocut_core::", "use crate::reprocut_core::"
-    )
+    workspace = workspace_source().replace("use reprocut_core::", "use crate::reprocut_core::")
     return "\n".join([core, wrap("reprocut_workspace", workspace), "fn main() {}"])
 
 
@@ -186,7 +184,7 @@ def compose_scheduler() -> str:
 
 def compose_runner() -> str:
     core = compose_core().replace("fn main() {}\n", "")
-    command_group = r'''
+    command_group = r"""
 use std::{io, process::{Child, Command, ExitStatus}};
 pub trait CommandGroup { fn group_spawn(&mut self) -> io::Result<GroupChild>; }
 impl CommandGroup for Command {
@@ -199,14 +197,19 @@ impl GroupChild {
     pub fn kill(&mut self) -> io::Result<()> { self.0.kill() }
     pub fn wait(&mut self) -> io::Result<ExitStatus> { self.0.wait() }
 }
-'''
+"""
     runner = (
         read("crates/reprocut-runner/src/lib.rs")
         .replace("use reprocut_core::", "use crate::reprocut_core::")
         .replace("use command_group::", "use crate::command_group::")
     )
     return "\n".join(
-        [core, wrap("command_group", command_group), wrap("reprocut_runner", runner), "fn main() {}"]
+        [
+            core,
+            wrap("command_group", command_group),
+            wrap("reprocut_runner", runner),
+            "fn main() {}",
+        ]
     )
 
 
@@ -216,9 +219,7 @@ def compose_engine(
     python_isolation_override: str | None = None,
 ) -> str:
     core = compose_core().replace("fn main() {}\n", "")
-    workspace = workspace_source().replace(
-        "use reprocut_core::", "use crate::reprocut_core::"
-    )
+    workspace = workspace_source().replace("use reprocut_core::", "use crate::reprocut_core::")
     schema = read("crates/reprocut-state/src/schema.rs")
     state = (
         read("crates/reprocut-state/src/lib.rs")
@@ -232,9 +233,11 @@ def compose_engine(
         read("crates/reprocut-engine/src/python_isolation.rs")
         .replace("use reprocut_core::", "use crate::reprocut_core::")
         .replace("use reprocut_runner::", "use crate::reprocut_runner::")
-        .replace("reprocut_core::ExecutionObservation", "crate::reprocut_core::ExecutionObservation")
+        .replace(
+            "reprocut_core::ExecutionObservation", "crate::reprocut_core::ExecutionObservation"
+        )
     )
-    pipeline = r'''
+    pipeline = r"""
 use crate::reprocut_adapters::{Ecosystem, PreparationPlan};
 use crate::reprocut_workspace::ProjectSnapshot;
 use super::PreparationMode;
@@ -258,7 +261,7 @@ pub(crate) fn manifest_candidates(
 pub(crate) fn syntax_candidates(
     _: &ProjectSnapshot, _: SyntaxPhase,
 ) -> Result<Vec<StructuredCandidate>, PipelineError> { Ok(Vec::new()) }
-'''
+"""
     discovery = read("crates/reprocut-adapters/src/discovery.rs").replace(
         "use reprocut_workspace::", "use crate::reprocut_workspace::"
     )
@@ -271,7 +274,9 @@ pub(crate) fn syntax_candidates(
         .replace("mod manifests;", f"mod manifests {{ {manifests} }}")
         .replace("pub use reprocut_workspace::", "pub use crate::reprocut_workspace::")
     )
-    runner = runner_override or r'''
+    runner = (
+        runner_override
+        or r"""
 use std::{ffi::{OsStr, OsString}, path::{Path, PathBuf}, time::Duration};
 use crate::reprocut_core::ExecutionObservation;
 use thiserror::Error;
@@ -295,7 +300,8 @@ pub struct ProcessRunner;
 impl ProcessRunner {
     pub fn run(_: &CommandSpec) -> Result<ExecutionObservation, RunnerError> { Err(RunnerError) }
 }
-'''
+"""
+    )
     engine = (
         read("crates/reprocut-engine/src/lib.rs")
         .replace("mod scheduler;", f"mod scheduler {{ {scheduler} }}")
@@ -326,12 +332,9 @@ impl ProcessRunner {
 
 def compose_adapters() -> str:
     core = compose_core().replace("fn main() {}\n", "")
-    workspace = workspace_source().replace(
-        "use reprocut_core::", "use crate::reprocut_core::"
-    )
-    discovery = (
-        read("crates/reprocut-adapters/src/discovery.rs")
-        .replace("use reprocut_workspace::", "use crate::reprocut_workspace::")
+    workspace = workspace_source().replace("use reprocut_core::", "use crate::reprocut_core::")
+    discovery = read("crates/reprocut-adapters/src/discovery.rs").replace(
+        "use reprocut_workspace::", "use crate::reprocut_workspace::"
     )
     manifests = read("crates/reprocut-adapters/src/manifests.rs").replace(
         "use crate::AdapterCommand;", "use super::AdapterCommand;"
@@ -354,7 +357,7 @@ def compose_adapters() -> str:
 
 def compose_pipeline() -> str:
     adapters = compose_adapters().removesuffix("fn main() {}")
-    syntax = r'''
+    syntax = r"""
 use std::path::Path;
 use crate::reprocut_core::{ByteRange, Operation, ProjectPath};
 use thiserror::Error;
@@ -377,13 +380,16 @@ pub enum SyntaxError {
     #[error("invalid UTF-8")] InvalidUtf8,
     #[error("grammar error")] Grammar,
 }
-pub fn deletion_transforms(_: SyntaxLanguage, _: &[u8]) -> Result<Vec<SyntaxTransform>, SyntaxError> {
+pub fn deletion_transforms(
+    _: SyntaxLanguage,
+    _: &[u8],
+) -> Result<Vec<SyntaxTransform>, SyntaxError> {
     Ok(Vec::new())
 }
 pub fn hoist_transforms(_: SyntaxLanguage, _: &[u8]) -> Result<Vec<SyntaxTransform>, SyntaxError> {
     Ok(Vec::new())
 }
-'''
+"""
     source = (
         read("crates/reprocut-engine/src/pipeline.rs")
         .replace("use reprocut_adapters::", "use crate::reprocut_adapters::")
@@ -391,11 +397,11 @@ pub fn hoist_transforms(_: SyntaxLanguage, _: &[u8]) -> Result<Vec<SyntaxTransfo
         .replace("use reprocut_syntax::", "use crate::reprocut_syntax::")
         .replace("use reprocut_workspace::", "use crate::reprocut_workspace::")
     )
-    engine = f'''
+    engine = f"""
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PreparationMode {{ None, Offline, LifecycleScripts, IsolatedPython }}
 pub(crate) mod pipeline {{ {source} }}
-'''
+"""
     return "\n".join(
         [adapters, wrap("reprocut_syntax", syntax), wrap("reprocut_engine", engine), "fn main() {}"]
     )

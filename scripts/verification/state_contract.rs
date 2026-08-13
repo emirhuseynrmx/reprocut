@@ -10,7 +10,7 @@ mod state_contract {
         let temporary = tempfile::tempdir().expect("state directory");
         let database = temporary.path().join("state.sqlite3");
         let contract = session("one");
-        let store = StateStore::create(&database, contract.clone()).expect("create state");
+        let store = StateStore::create(&database, &contract).expect("create state");
         let writer = store.writer();
         let first = attempt("first", CandidateVerdict::Preserved);
         let incomplete = attempt("incomplete", CandidateVerdict::Inconclusive);
@@ -42,23 +42,23 @@ mod state_contract {
         assert_eq!(writer.snapshot().expect("snapshot"), before);
         drop(store);
 
-        drop(StateStore::resume(&database, contract).expect("exact resume"));
+        drop(StateStore::resume(&database, &contract).expect("exact resume"));
         assert!(matches!(
-            StateStore::resume(&database, session("changed")),
+            StateStore::resume(&database, &session("changed")),
             Err(StateError::IncompatibleSession { .. })
         ));
         assert!(matches!(
-            StateStore::create(&database, session("fresh")),
+            StateStore::create(&database, &session("fresh")),
             Err(StateError::ExistingSession)
         ));
-        let restarted = StateStore::restart(&database, session("fresh")).expect("restart");
+        let restarted = StateStore::restart(&database, &session("fresh")).expect("restart");
         assert_eq!(restarted.session_id(), 2);
     }
 
     #[test]
     fn inconclusive_retry_history_can_converge_to_terminal_evidence() {
         let temporary = tempfile::tempdir().expect("state directory");
-        let store = StateStore::create(temporary.path().join("state.sqlite3"), session("retry"))
+        let store = StateStore::create(temporary.path().join("state.sqlite3"), &session("retry"))
             .expect("create state");
         let writer = store.writer();
         let candidate = ContentDigest::of(b"retry");

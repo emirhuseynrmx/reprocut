@@ -1,4 +1,4 @@
-//! Crash-safe, single-writer SQLite state for resumable reductions.
+//! Crash-safe, single-writer `SQLite` state for resumable reductions.
 
 mod schema;
 
@@ -54,7 +54,7 @@ impl SessionContract {
         }
     }
 
-    /// Creates the complete ReproCut 0.1 integrity contract.
+    /// Creates the complete `ReproCut` 0.1 integrity contract.
     #[allow(clippy::too_many_arguments)]
     pub fn new_v2(
         source_digest: ContentDigest,
@@ -104,7 +104,7 @@ impl SessionContract {
         ContentDigest::of(&bytes)
     }
 
-    /// Returns the integrity-contract schema independently from the SQLite schema.
+    /// Returns the integrity-contract schema independently from the `SQLite` schema.
     pub const fn contract_schema(&self) -> u16 {
         self.contract_schema
     }
@@ -203,7 +203,7 @@ impl AttemptEventRecord {
         &self.evidence_json
     }
 
-    /// Returns the SQLite `unixepoch()` completion timestamp.
+    /// Returns the `SQLite` `unixepoch()` completion timestamp.
     pub const fn completed_at(&self) -> i64 {
         self.completed_at
     }
@@ -369,7 +369,7 @@ impl StateSnapshot {
     }
 }
 
-/// A bounded sender to the session's only SQLite writer connection.
+/// A bounded sender to the session's only `SQLite` writer connection.
 #[derive(Clone, Debug)]
 pub struct WriterHandle {
     sender: SyncSender<WriterCommand>,
@@ -377,13 +377,23 @@ pub struct WriterHandle {
 
 impl WriterHandle {
     /// Persists one attempt and conditionally updates the reusable cache.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StateError::WriterStopped`] if the dedicated writer cannot accept or reply to
+    /// the command, or a database/record error returned by that writer.
     pub fn record_attempt(&self, attempt: AttemptRecord) -> Result<(), StateError> {
         let (reply, receiver) = mpsc::sync_channel(1);
         self.send(WriterCommand::RecordAttempt { attempt, reply })?;
-        receive(receiver)
+        receive(&receiver)
     }
 
     /// Atomically commits a preserved attempt and its causal transition.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StateError::InvalidRecord`] when the attempt is not preserved or does not own
+    /// the transition, [`StateError::WriterStopped`] on channel failure, or a database error.
     pub fn accept_transition(
         &self,
         attempt: AttemptRecord,
@@ -405,38 +415,58 @@ impl WriterHandle {
             transition,
             reply,
         })?;
-        receive(receiver)
+        receive(&receiver)
     }
 
     /// Looks up only complete preserved/rejected evidence.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StateError::WriterStopped`] on channel failure or a database/corruption error
+    /// returned by the writer.
     pub fn lookup_cache(
         &self,
         candidate: ContentDigest,
     ) -> Result<Option<CachedVerdict>, StateError> {
         let (reply, receiver) = mpsc::sync_channel(1);
         self.send(WriterCommand::LookupCache { candidate, reply })?;
-        receive(receiver)
+        receive(&receiver)
     }
 
     /// Returns durable ledger counts after all earlier commands.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StateError::WriterStopped`] on channel failure or a database/corruption error
+    /// returned by the writer.
     pub fn snapshot(&self) -> Result<StateSnapshot, StateError> {
         let (reply, receiver) = mpsc::sync_channel(1);
         self.send(WriterCommand::Snapshot { reply })?;
-        receive(receiver)
+        receive(&receiver)
     }
 
     /// Returns accepted transitions in ordinal order.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StateError::WriterStopped`] on channel failure or a database/corruption error
+    /// returned by the writer.
     pub fn transitions(&self) -> Result<Vec<TransitionRecord>, StateError> {
         let (reply, receiver) = mpsc::sync_channel(1);
         self.send(WriterCommand::Transitions { reply })?;
-        receive(receiver)
+        receive(&receiver)
     }
 
     /// Returns append-only attempt evidence in commit order.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StateError::WriterStopped`] on channel failure or a database/corruption error
+    /// returned by the writer.
     pub fn attempt_events(&self) -> Result<Vec<AttemptEventRecord>, StateError> {
         let (reply, receiver) = mpsc::sync_channel(1);
         self.send(WriterCommand::AttemptEvents { reply })?;
-        receive(receiver)
+        receive(&receiver)
     }
 
     fn send(&self, command: WriterCommand) -> Result<(), StateError> {
@@ -457,18 +487,28 @@ pub struct StateStore {
 
 impl StateStore {
     /// Creates a new session after applying known migrations.
-    pub fn create(path: impl AsRef<Path>, contract: SessionContract) -> Result<Self, StateError> {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StateError`] when the path cannot be prepared, migration or insertion fails, an
+    /// existing session would be hidden, or the dedicated writer cannot start.
+    pub fn create(path: impl AsRef<Path>, contract: &SessionContract) -> Result<Self, StateError> {
         Self::create_inner(path.as_ref(), contract, false)
     }
 
     /// Starts a new session in an existing journal while preserving prior history.
-    pub fn restart(path: impl AsRef<Path>, contract: SessionContract) -> Result<Self, StateError> {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StateError`] when the path cannot be prepared, migration or insertion fails, or
+    /// the dedicated writer cannot start.
+    pub fn restart(path: impl AsRef<Path>, contract: &SessionContract) -> Result<Self, StateError> {
         Self::create_inner(path.as_ref(), contract, true)
     }
 
     fn create_inner(
         path: &Path,
-        contract: SessionContract,
+        contract: &SessionContract,
         allow_existing: bool,
     ) -> Result<Self, StateError> {
         let path = prepare_path(path)?;
@@ -478,7 +518,7 @@ impl StateStore {
             .query_row("SELECT EXISTS(SELECT 1 FROM sessions)", [], |row| {
                 row.get::<_, bool>(0)
             })
-            .map_err(database_error)?;
+            .map_err(StateError::Database)?;
         if has_session && !allow_existing {
             return Err(StateError::ExistingSession);
         }
@@ -498,14 +538,19 @@ impl StateStore {
                     i64::from(contract.contract_schema),
                 ],
             )
-            .map_err(database_error)?;
+            .map_err(StateError::Database)?;
         let session_id = connection.last_insert_rowid();
         drop(connection);
         Self::start(path, session_id)
     }
 
     /// Resumes the newest session only when every immutable field matches.
-    pub fn resume(path: impl AsRef<Path>, contract: SessionContract) -> Result<Self, StateError> {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StateError`] when the journal cannot be opened or migrated, has no session,
+    /// predates the integrity contract, differs from `contract`, or its writer cannot start.
+    pub fn resume(path: impl AsRef<Path>, contract: &SessionContract) -> Result<Self, StateError> {
         let path = path.as_ref().to_path_buf();
         let connection = open_connection(&path)?;
         migrate(&connection)?;
@@ -522,7 +567,7 @@ impl StateStore {
                 },
             )
             .optional()
-            .map_err(database_error)?
+            .map_err(StateError::Database)?
             .ok_or(StateError::NoSession)?;
         if latest.2 != i64::from(contract.contract_schema) {
             return Err(StateError::LegacyContractSchema { found: latest.2 });
@@ -542,9 +587,9 @@ impl StateStore {
         let writer_path = path.clone();
         let join = thread::Builder::new()
             .name("reprocut-state-writer".to_owned())
-            .spawn(move || writer_main(&writer_path, session_id, receiver, ready))
+            .spawn(move || writer_main(&writer_path, session_id, &receiver, &ready))
             .map_err(StateError::SpawnWriter)?;
-        receive(ready_receiver)?;
+        receive(&ready_receiver)?;
         Ok(Self {
             path,
             session_id,
@@ -558,7 +603,7 @@ impl StateStore {
         self.writer.clone()
     }
 
-    /// Returns the SQLite path.
+    /// Returns the `SQLite` path.
     pub fn path(&self) -> &Path {
         &self.path
     }
@@ -586,9 +631,12 @@ pub enum StateError {
     /// An ordinary filesystem operation failed.
     #[error("prepare state path failed: {0}")]
     PreparePath(std::io::Error),
-    /// SQLite rejected an operation.
+    /// `SQLite` rejected an operation.
     #[error("state database error: {0}")]
-    Database(String),
+    Database(#[source] rusqlite::Error),
+    /// Persisted data violated the state schema's semantic invariants.
+    #[error("state database error: {0}")]
+    CorruptDatabase(&'static str),
     /// The database was created by an unsupported schema.
     #[error("unsupported state schema {found}; expected {expected}")]
     SchemaVersion {
@@ -609,7 +657,7 @@ pub enum StateError {
         /// Refused previous session.
         session_id: i64,
     },
-    /// A journal session predates the complete ReproCut 0.1 integrity identity.
+    /// A journal session predates the complete `ReproCut` 0.1 integrity identity.
     #[error(
         "state contract schema {found} is incompatible with ReproCut 0.1 integrity schema 2; restart explicitly"
     )]
@@ -659,8 +707,8 @@ enum WriterCommand {
 fn writer_main(
     path: &Path,
     session_id: i64,
-    receiver: Receiver<WriterCommand>,
-    ready: SyncSender<Result<(), StateError>>,
+    receiver: &Receiver<WriterCommand>,
+    ready: &SyncSender<Result<(), StateError>>,
 ) {
     let mut connection = match open_connection(path) {
         Ok(connection) => connection,
@@ -914,11 +962,10 @@ fn lookup_cache(
             |(verdict, observed_runs, inconclusive_runs, evidence_json)| {
                 Ok(CachedVerdict {
                     verdict: parse_verdict(&verdict)?,
-                    observed_runs: u16::try_from(observed_runs).map_err(|_| {
-                        StateError::Database("invalid observed run count".to_owned())
-                    })?,
+                    observed_runs: u16::try_from(observed_runs)
+                        .map_err(|_| StateError::CorruptDatabase("invalid observed run count"))?,
                     inconclusive_runs: u16::try_from(inconclusive_runs).map_err(|_| {
-                        StateError::Database("invalid inconclusive run count".to_owned())
+                        StateError::CorruptDatabase("invalid inconclusive run count")
                     })?,
                     evidence_json,
                 })
@@ -945,7 +992,7 @@ fn count_rows(
     let count = connection
         .query_row(&sql, [session_id], |row| row.get::<_, i64>(0))
         .map_err(database_error)?;
-    u64::try_from(count).map_err(|_| StateError::Database("negative row count".to_owned()))
+    u64::try_from(count).map_err(|_| StateError::CorruptDatabase("negative row count"))
 }
 
 fn read_transitions(
@@ -973,12 +1020,12 @@ fn read_transitions(
         let (ordinal, from, to, attempt_candidate, accepted_size) = row.map_err(database_error)?;
         Ok(TransitionRecord {
             ordinal: u64::try_from(ordinal)
-                .map_err(|_| StateError::Database("negative transition ordinal".to_owned()))?,
+                .map_err(|_| StateError::CorruptDatabase("negative transition ordinal"))?,
             from: parse_digest(from)?,
             to: parse_digest(to)?,
             attempt_candidate: parse_digest(attempt_candidate)?,
             accepted_size: u64::try_from(accepted_size)
-                .map_err(|_| StateError::Database("negative accepted size".to_owned()))?,
+                .map_err(|_| StateError::CorruptDatabase("negative accepted size"))?,
         })
     })
     .collect()
@@ -1014,13 +1061,13 @@ fn read_attempt_events(
             row.map_err(database_error)?;
         events.push(AttemptEventRecord {
             id: u64::try_from(id)
-                .map_err(|_| StateError::Database("invalid attempt event id".to_owned()))?,
+                .map_err(|_| StateError::CorruptDatabase("invalid attempt event id"))?,
             candidate: parse_digest(candidate)?,
             verdict: parse_verdict(&verdict)?,
             observed_runs: u16::try_from(observed_runs)
-                .map_err(|_| StateError::Database("invalid observed run count".to_owned()))?,
+                .map_err(|_| StateError::CorruptDatabase("invalid observed run count"))?,
             inconclusive_runs: u16::try_from(inconclusive_runs)
-                .map_err(|_| StateError::Database("invalid inconclusive run count".to_owned()))?,
+                .map_err(|_| StateError::CorruptDatabase("invalid inconclusive run count"))?,
             evidence_json,
             completed_at,
         });
@@ -1103,13 +1150,13 @@ fn parse_verdict(value: &str) -> Result<CandidateVerdict, StateError> {
         "preserved" => Ok(CandidateVerdict::Preserved),
         "rejected" => Ok(CandidateVerdict::Rejected),
         "inconclusive" => Ok(CandidateVerdict::Inconclusive),
-        _ => Err(StateError::Database("invalid persisted verdict".to_owned())),
+        _ => Err(StateError::CorruptDatabase("invalid persisted verdict")),
     }
 }
 
 fn parse_digest(bytes: Vec<u8>) -> Result<ContentDigest, StateError> {
     let bytes = <[u8; 32]>::try_from(bytes)
-        .map_err(|_| StateError::Database("invalid persisted digest length".to_owned()))?;
+        .map_err(|_| StateError::CorruptDatabase("invalid persisted digest length"))?;
     Ok(ContentDigest::from_bytes(bytes))
 }
 
@@ -1120,9 +1167,9 @@ fn encode_text(output: &mut Vec<u8>, value: &str) {
 }
 
 fn database_error(error: rusqlite::Error) -> StateError {
-    StateError::Database(error.to_string())
+    StateError::Database(error)
 }
 
-fn receive<T>(receiver: Receiver<Result<T, StateError>>) -> Result<T, StateError> {
+fn receive<T>(receiver: &Receiver<Result<T, StateError>>) -> Result<T, StateError> {
     receiver.recv().map_err(|_| StateError::WriterStopped)?
 }

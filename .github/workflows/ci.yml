@@ -50,7 +50,7 @@ jobs:
           RUSTDOCFLAGS: -D warnings
       - name: Run source-checkout Python contracts
         run: |
-          python -m pip install Pillow==12.2.0 pytest==8.4.2 ruff==0.16.2
+          python -m pip install Pillow==12.3.0 pytest==8.4.2 ruff==0.16.2
           ruff format --check python scripts demo/source
           ruff check python scripts demo/source
           PYTHONPATH=python python -m pytest python/tests -q
@@ -123,6 +123,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Select an OCI-capable Buildx driver
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
       - name: Install pinned Rust toolchain
         run: |
           rustup toolchain install 1.85.0 --profile minimal
@@ -197,7 +201,7 @@ jobs:
           rustup default 1.85.0
       - name: Build and install native wheel
         run: |
-          python -m pip install maturin==1.14.1 Pillow==12.2.0 pytest==8.4.2
+          python -m pip install maturin==1.14.1 pytest==8.4.2
           maturin build --locked --release
           python -m pip install --force-reinstall target/wheels/reprocut-*.whl
       - name: Require native backend in Python contracts
@@ -276,19 +280,25 @@ jobs:
         run: python -m pip install maturin==1.14.1 twine==7.0.0
       - name: Package every publishable Rust crate
         run: |
-          for package in \
-            reprocut-core reprocut-report reprocut-oci reprocut-workspace \
-            reprocut-runner reprocut-state reprocut-syntax reprocut-adapters \
-            reprocut-engine reprocut
-          do
-            cargo package --locked -p "$package" --no-verify
-          done
+          cargo package --locked --workspace --exclude reprocut-python --no-verify \
+            --config 'patch.crates-io.reprocut-core.path="crates/reprocut-core"' \
+            --config 'patch.crates-io.reprocut-report.path="crates/reprocut-report"' \
+            --config 'patch.crates-io.reprocut-oci.path="crates/reprocut-oci"' \
+            --config 'patch.crates-io.reprocut-workspace.path="crates/reprocut-workspace"' \
+            --config 'patch.crates-io.reprocut-runner.path="crates/reprocut-runner"' \
+            --config 'patch.crates-io.reprocut-state.path="crates/reprocut-state"' \
+            --config 'patch.crates-io.reprocut-syntax.path="crates/reprocut-syntax"' \
+            --config 'patch.crates-io.reprocut-adapters.path="crates/reprocut-adapters"' \
+            --config 'patch.crates-io.reprocut-engine.path="crates/reprocut-engine"' \
+            --config 'patch.crates-io.reprocut.path="crates/reprocut-cli"'
           mkdir -p dist/crates
           cp target/package/*.crate dist/crates/
       - name: Build ABI3 wheel and source distribution
         run: |
           maturin build --locked --release --out dist/wheels
-          maturin sdist --locked --out dist/sdist
+          # `sdist` performs no dependency resolution, so maturin intentionally has no
+          # `--locked` flag for this subcommand. Cargo.lock is included in the archive.
+          maturin sdist --out dist/sdist
       - name: Validate Python package metadata and contents
         run: python -m twine check dist/wheels/* dist/sdist/*
       - name: Upload registry-ready packages

@@ -1,3 +1,5 @@
+//! End-to-end command-line and artifact contracts.
+
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -91,7 +93,11 @@ fn protocol_run_streams_versioned_jsonl_and_keeps_stdout_machine_only() {
             "preparation": "offline",
             "command": [python(), "bug.py"],
             "state": sandbox.path().join("state.sqlite3"),
-            "timeout_ms": 3000
+            // Hosted Windows runners can briefly stall while Defender scans the
+            // freshly linked executable and spawned Python interpreter. Keep the
+            // product timeout explicit, but give this cross-platform contract a
+            // budget that measures ReproCut rather than runner startup jitter.
+            "timeout_ms": 10_000
         }))
         .expect("request JSON"),
     )
@@ -104,7 +110,13 @@ fn protocol_run_streams_versioned_jsonl_and_keeps_stdout_machine_only() {
         .output()
         .expect("protocol process");
 
-    assert!(result.status.success());
+    assert!(
+        result.status.success(),
+        "protocol failed with status {}\nstdout:\n{}\nstderr:\n{}",
+        result.status,
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
     assert!(
         result.stderr.is_empty(),
         "success protocol keeps stderr empty"

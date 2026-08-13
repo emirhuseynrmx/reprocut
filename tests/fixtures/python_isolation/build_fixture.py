@@ -10,7 +10,7 @@ import zipfile
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parent
+WHEELHOUSE = Path(__file__).resolve().parent / "wheels"
 STAMP = (1980, 1, 1, 0, 0, 0)
 
 
@@ -24,9 +24,7 @@ def wheel(name: str) -> None:
     info = f"{distribution}-1.0.0.dist-info"
     files = {
         f"{distribution}/__init__.py": f"VALUE = {name!r}\n".encode(),
-        f"{info}/METADATA": (
-            f"Metadata-Version: 2.1\nName: {name}\nVersion: 1.0.0\n\n"
-        ).encode(),
+        f"{info}/METADATA": (f"Metadata-Version: 2.1\nName: {name}\nVersion: 1.0.0\n\n").encode(),
         f"{info}/WHEEL": b"Wheel-Version: 1.0\nGenerator: reprocut-fixture\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
         f"{info}/top_level.txt": f"{distribution}\n".encode(),
     }
@@ -36,7 +34,7 @@ def wheel(name: str) -> None:
     output = io.StringIO(newline="")
     csv.writer(output, lineterminator="\n").writerows(rows)
     files[record] = output.getvalue().encode()
-    target = ROOT / f"{distribution}-1.0.0-py3-none-any.whl"
+    target = WHEELHOUSE / f"{distribution}-1.0.0-py3-none-any.whl"
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for path, data in sorted(files.items()):
             member = zipfile.ZipInfo(path, STAMP)
