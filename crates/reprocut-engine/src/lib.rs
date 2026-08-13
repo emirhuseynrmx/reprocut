@@ -444,7 +444,7 @@ impl ReductionEngine {
                 )
             })
             .transpose()?;
-        if let Some(preparation) = &python_preparation {
+        if python_preparation.is_some() {
             FrozenPythonPreparation::validate_original_program(request.program())?;
         }
         if request.preparation_mode() == PreparationMode::IsolatedPython
@@ -735,7 +735,7 @@ fn stabilize_oracle(
                 })
                 .count();
             let score = u16::try_from(score_count).unwrap_or(u16::MAX);
-            let replace = best.as_ref().map_or(true, |(best_score, best_index, _)| {
+            let replace = best.as_ref().is_none_or(|(best_score, best_index, _)| {
                 score > *best_score || (score == *best_score && left < *best_index)
             });
             if replace {
