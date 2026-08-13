@@ -10,8 +10,6 @@ from pathlib import Path
 
 import pytest
 
-Image = pytest.importorskip("PIL.Image")
-
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -84,6 +82,7 @@ def test_checked_in_demo_is_measured_and_reproducible() -> None:
 
 
 def test_demo_gif_contract() -> None:
+    Image = pytest.importorskip("PIL.Image")
     gif_path = ROOT / "assets" / "reprocut-demo.gif"
     evidence = json.loads((ROOT / "demo" / "result" / "reduction.json").read_text())
     assert 0 < gif_path.stat().st_size < 8 * 1024 * 1024

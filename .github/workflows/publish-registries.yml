@@ -190,7 +190,8 @@ jobs:
       - name: Build source distribution and validate every file
         run: |
           python -m pip install maturin==1.14.1 twine==7.0.0
-          maturin sdist --locked --out dist
+          # `sdist` performs no dependency resolution and includes the committed Cargo.lock.
+          maturin sdist --out dist
           python -m twine check dist/*
       - name: Publish with short-lived OpenID Connect credentials
         uses: pypa/gh-action-pypi-publish@release/v1

@@ -296,7 +296,9 @@ jobs:
       - name: Build ABI3 wheel and source distribution
         run: |
           maturin build --locked --release --out dist/wheels
-          maturin sdist --locked --out dist/sdist
+          # `sdist` performs no dependency resolution, so maturin intentionally has no
+          # `--locked` flag for this subcommand. Cargo.lock is included in the archive.
+          maturin sdist --out dist/sdist
       - name: Validate Python package metadata and contents
         run: python -m twine check dist/wheels/* dist/sdist/*
       - name: Upload registry-ready packages

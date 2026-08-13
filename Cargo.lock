@@ -1123,6 +1123,7 @@ dependencies = [
 name = "reprocut-workspace"
 version = "0.1.0"
 dependencies = [
+ "memchr",
  "reprocut-core",
  "tempfile",
  "thiserror",

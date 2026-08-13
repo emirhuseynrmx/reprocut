@@ -1,4 +1,4 @@
-//! Disposable filesystem workspaces for ReproCut candidates.
+//! Disposable filesystem workspaces for `ReproCut` candidates.
 
 mod hierarchy;
 mod snapshot;
@@ -26,7 +26,7 @@ pub struct InventoryPolicy {
 }
 
 impl InventoryPolicy {
-    /// Creates the source-control and ReproCut safety baseline.
+    /// Creates the source-control and `ReproCut` safety baseline.
     pub fn source_only() -> Self {
         Self {
             excluded_directory_names: [".git", ".reprocut", "reprocut-output"]
@@ -37,6 +37,7 @@ impl InventoryPolicy {
     }
 
     /// Adds an exact directory basename exclusion matched at any nested depth.
+    #[must_use]
     pub fn exclude(mut self, name: impl Into<String>) -> Self {
         self.excluded_directory_names.insert(name.into());
         self
@@ -199,6 +200,11 @@ pub struct ProjectSnapshot {
 
 impl ProjectSnapshot {
     /// Captures every inventory member once and rejects concurrent source drift.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WorkspaceError`] when a source file cannot be read, changes while it is
+    /// captured, or the post-capture inventory no longer matches the original inventory.
     pub fn capture(
         inventory: &ProjectInventory,
         policy: &InventoryPolicy,
@@ -224,6 +230,11 @@ impl ProjectSnapshot {
     }
 
     /// Reads selected immutable inventory units into one sorted snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WorkspaceError`] when a selected path is unsafe, cannot be read as a stable
+    /// regular file, or changes while it is captured.
     pub fn from_inventory<'unit>(
         inventory: &ProjectInventory,
         units: impl IntoIterator<Item = &'unit ReductionUnit>,
@@ -238,6 +249,11 @@ impl ProjectSnapshot {
     }
 
     /// Selects files from frozen bytes without consulting the live source tree.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WorkspaceError::MissingTransformationTarget`] when a requested unit is not
+    /// present in this snapshot.
     pub fn subset<'unit>(
         &self,
         units: impl IntoIterator<Item = &'unit ReductionUnit>,
@@ -284,6 +300,11 @@ impl ProjectSnapshot {
     }
 
     /// Returns a new snapshot with one canonical transformation applied.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WorkspaceError`] when a target file is absent or a replacement range lies
+    /// outside the immutable source bytes.
     pub fn with_transformation(
         &self,
         transformation: &Transformation,
@@ -321,6 +342,10 @@ impl ProjectSnapshot {
     }
 
     /// Returns a new snapshot replacing all bytes of one existing file.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WorkspaceError::MissingTransformationTarget`] when `path` is not present.
     pub fn with_file_contents(
         &self,
         path: &str,
@@ -333,6 +358,11 @@ impl ProjectSnapshot {
     }
 
     /// Captures prepared versions of existing files plus an explicit regular-file allowlist.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WorkspaceError`] when a required prepared file is missing, a path is unsafe,
+    /// a file cannot be read, or its bytes or metadata change during capture.
     pub fn capture_prepared(
         &self,
         prepared_root: &Path,
@@ -341,8 +371,11 @@ impl ProjectSnapshot {
         let mut files = Vec::with_capacity(self.files.len().saturating_add(additional_paths.len()));
         for file in &self.files {
             let (contents, executable_mask) =
-                read_prepared_regular_file(prepared_root, &file.path, true)?
-                    .expect("required prepared files return bytes");
+                read_prepared_regular_file(prepared_root, &file.path, true)?.ok_or_else(|| {
+                    WorkspaceError::MissingTransformationTarget {
+                        path: file.path.clone(),
+                    }
+                })?;
             let digest = ContentDigest::of(&contents);
             if digest == file.digest && executable_mask == file.executable_mask {
                 files.push(file.clone());
@@ -366,6 +399,11 @@ impl ProjectSnapshot {
     }
 
     /// Writes exactly this snapshot below an existing or new destination.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WorkspaceError`] when a snapshot path is unsafe, destination creation or
+    /// writing fails, or the recorded executable mask cannot be restored.
     pub fn copy_to(&self, destination_root: &Path) -> Result<(), WorkspaceError> {
         fs::create_dir_all(destination_root).map_err(|source| WorkspaceError::Io {
             operation: "create snapshot destination",
@@ -407,11 +445,22 @@ impl ProjectSnapshot {
 
 impl ProjectInventory {
     /// Scans regular files without following symbolic links.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WorkspaceError`] when `root` is invalid, traversal fails, an encountered path
+    /// cannot be represented safely, or the inventory exceeds 32-bit stable identifiers.
     pub fn scan(root: &Path) -> Result<Self, WorkspaceError> {
         Self::scan_with_policy(root, &InventoryPolicy::default())
     }
 
     /// Scans regular files while pruning generated/cache directories at traversal time.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WorkspaceError`] when `root` is invalid, canonicalization or traversal fails,
+    /// an encountered path escapes the root or cannot be represented safely, or the inventory
+    /// exceeds 32-bit stable identifiers.
     pub fn scan_with_policy(root: &Path, policy: &InventoryPolicy) -> Result<Self, WorkspaceError> {
         if !root.is_dir() {
             return Err(WorkspaceError::InvalidRoot {
@@ -434,10 +483,11 @@ impl ProjectInventory {
             if !entry.file_type().is_file() {
                 continue;
             }
-            let relative = entry
-                .path()
-                .strip_prefix(&root)
-                .expect("walkdir entries remain beneath their root");
+            let relative = entry.path().strip_prefix(&root).map_err(|_| {
+                WorkspaceError::UnsafeRelativePath {
+                    path: entry.path().display().to_string(),
+                }
+            })?;
             paths.push(display_relative(relative)?);
         }
 
@@ -466,6 +516,11 @@ impl ProjectInventory {
     }
 
     /// Copies exactly the selected units below a destination directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WorkspaceError`] when a selected path is unsafe or creating/copying a
+    /// destination file fails.
     pub fn copy_units_to(
         &self,
         units: &[&ReductionUnit],
@@ -496,6 +551,11 @@ pub struct CandidateWorkspace {
 
 impl CandidateWorkspace {
     /// Copies exactly the retained regular files into a disposable project.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WorkspaceError`] when the temporary workspace cannot be created or a retained
+    /// source file cannot be copied safely.
     pub fn materialize(
         inventory: &ProjectInventory,
         kept: &[&ReductionUnit],
@@ -524,6 +584,11 @@ impl CandidateWorkspace {
     }
 
     /// Materializes an immutable reduced-project snapshot.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WorkspaceError`] when the temporary workspace cannot be created or snapshot
+    /// bytes and permissions cannot be materialized.
     pub fn materialize_snapshot(snapshot: &ProjectSnapshot) -> Result<Self, WorkspaceError> {
         let temp_dir = tempfile::Builder::new()
             .prefix("reprocut-candidate-")
@@ -542,6 +607,11 @@ impl CandidateWorkspace {
     }
 
     /// Copies the full snapshot and applies one canonical transformation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WorkspaceError`] when materialization fails or a transformation target/range is
+    /// invalid for the copied project.
     pub fn materialize_transformation(
         inventory: &ProjectInventory,
         transformation: &Transformation,
@@ -558,6 +628,11 @@ impl CandidateWorkspace {
     }
 
     /// Removes selected files only from this candidate.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WorkspaceError`] when a unit path is unsafe or an existing candidate file cannot
+    /// be removed.
     pub fn remove_units(&self, removed: &[&ReductionUnit]) -> Result<(), WorkspaceError> {
         for unit in removed {
             let relative = safe_relative(unit.path())?;
@@ -768,8 +843,7 @@ fn snapshot_measurements(files: &[SnapshotFile]) -> SnapshotMeasurements {
             .bytes
             .saturating_add(u64::try_from(file.contents.len()).unwrap_or(u64::MAX));
         measurements.lines = measurements.lines.saturating_add(
-            u64::try_from(file.contents.iter().filter(|&&byte| byte == b'\n').count())
-                .unwrap_or(u64::MAX),
+            u64::try_from(memchr::memchr_iter(b'\n', &file.contents).count()).unwrap_or(u64::MAX),
         );
         if !file.contents.is_empty() && file.contents.last() != Some(&b'\n') {
             measurements.lines = measurements.lines.saturating_add(1);

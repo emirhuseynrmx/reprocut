@@ -1,7 +1,7 @@
 use std::fs;
 
 use reprocut_core::{ByteRange, Operation, ProjectPath, Transformation};
-use reprocut_workspace::{CandidateWorkspace, ProjectInventory, ProjectSnapshot};
+use reprocut_workspace::{CandidateWorkspace, ProjectInventory, ProjectSnapshot, WorkspaceError};
 
 #[test]
 fn snapshot_transformations_are_immutable_and_content_addressed() {
@@ -83,4 +83,21 @@ fn preparation_capture_adds_only_named_regular_files() {
 
     assert_eq!(prepared.file("Cargo.lock").expect("lock"), b"version = 4\n");
     assert!(prepared.file("untrusted.tmp").is_none());
+}
+
+#[test]
+fn preparation_capture_fails_closed_when_a_required_file_disappears() {
+    let root = tempfile::tempdir().expect("source");
+    fs::write(root.path().join("required.rs"), b"fn required() {}\n").expect("source file");
+    let inventory = ProjectInventory::scan(root.path()).expect("inventory");
+    let snapshot =
+        ProjectSnapshot::from_inventory(&inventory, inventory.units()).expect("snapshot");
+    let candidate = CandidateWorkspace::materialize_snapshot(&snapshot).expect("candidate");
+    fs::remove_file(candidate.root().join("required.rs")).expect("remove required file");
+
+    let error = snapshot
+        .capture_prepared(candidate.root(), &[])
+        .expect_err("missing required file must not be silently omitted");
+
+    assert!(matches!(error, WorkspaceError::Io { .. }));
 }
