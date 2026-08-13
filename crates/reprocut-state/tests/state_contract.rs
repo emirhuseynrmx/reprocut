@@ -5,7 +5,7 @@ use reprocut_state::{AttemptRecord, SessionContract, StateError, StateStore, Tra
 fn cache_reuses_only_complete_terminal_evidence() {
     let temporary = tempfile::tempdir().expect("state directory");
     let database = temporary.path().join("state.sqlite3");
-    let store = StateStore::create(&database, contract("one")).expect("create state");
+    let store = StateStore::create(&database, &contract("one")).expect("create state");
     let writer = store.writer();
     let preserved = attempt("preserved", CandidateVerdict::Preserved);
     let incomplete = attempt("incomplete", CandidateVerdict::Inconclusive);
@@ -35,7 +35,7 @@ fn cache_reuses_only_complete_terminal_evidence() {
 fn transition_and_its_attempt_commit_atomically() {
     let temporary = tempfile::tempdir().expect("state directory");
     let database = temporary.path().join("state.sqlite3");
-    let store = StateStore::create(&database, contract("atomic")).expect("create state");
+    let store = StateStore::create(&database, &contract("atomic")).expect("create state");
     let writer = store.writer();
     let first = attempt("first", CandidateVerdict::Preserved);
     writer
@@ -59,7 +59,7 @@ fn transition_and_its_attempt_commit_atomically() {
 fn material_output_identity_cannot_be_reused_by_a_later_transition() {
     let temporary = tempfile::tempdir().expect("state directory");
     let database = temporary.path().join("state.sqlite3");
-    let store = StateStore::create(&database, contract("unique-output")).expect("create state");
+    let store = StateStore::create(&database, &contract("unique-output")).expect("create state");
     let writer = store.writer();
     let first = attempt("first-output", CandidateVerdict::Preserved);
     writer
@@ -90,10 +90,10 @@ fn resume_requires_the_exact_immutable_session_contract() {
     let temporary = tempfile::tempdir().expect("state directory");
     let database = temporary.path().join("state.sqlite3");
     let original = contract("same");
-    drop(StateStore::create(&database, original.clone()).expect("create state"));
+    drop(StateStore::create(&database, &original).expect("create state"));
 
-    drop(StateStore::resume(&database, original).expect("compatible resume"));
-    let error = StateStore::resume(&database, contract("changed"))
+    drop(StateStore::resume(&database, &original).expect("compatible resume"));
+    let error = StateStore::resume(&database, &contract("changed"))
         .expect_err("changed command/source identity must refuse resume");
     assert!(matches!(error, StateError::IncompatibleSession { .. }));
 }
@@ -103,7 +103,7 @@ fn duplicate_attempt_messages_are_idempotent() {
     let temporary = tempfile::tempdir().expect("state directory");
     let store = StateStore::create(
         temporary.path().join("state.sqlite3"),
-        contract("duplicate"),
+        &contract("duplicate"),
     )
     .expect("create state");
     let writer = store.writer();
@@ -119,7 +119,7 @@ fn duplicate_attempt_messages_are_idempotent() {
 #[test]
 fn inconclusive_retries_append_evidence_and_can_become_terminal() {
     let temporary = tempfile::tempdir().expect("state directory");
-    let store = StateStore::create(temporary.path().join("state.sqlite3"), contract("retry"))
+    let store = StateStore::create(temporary.path().join("state.sqlite3"), &contract("retry"))
         .expect("create state");
     let writer = store.writer();
     let candidate = ContentDigest::of(b"retry-candidate");
@@ -167,7 +167,7 @@ fn schema_one_journals_migrate_but_old_session_contracts_are_not_reused() {
         .expect("schema one");
     drop(connection);
 
-    drop(StateStore::create(&database, contract("migrated")).expect("migrated store"));
+    drop(StateStore::create(&database, &contract("migrated")).expect("migrated store"));
 
     let connection = rusqlite::Connection::open(&database).expect("database");
     let version = connection
@@ -180,13 +180,13 @@ fn schema_one_journals_migrate_but_old_session_contracts_are_not_reused() {
 fn restart_is_explicit_and_preserves_prior_sessions() {
     let temporary = tempfile::tempdir().expect("state directory");
     let database = temporary.path().join("state.sqlite3");
-    drop(StateStore::create(&database, contract("first")).expect("create state"));
+    drop(StateStore::create(&database, &contract("first")).expect("create state"));
 
     assert!(matches!(
-        StateStore::create(&database, contract("second")),
+        StateStore::create(&database, &contract("second")),
         Err(StateError::ExistingSession)
     ));
-    let restarted = StateStore::restart(&database, contract("second")).expect("explicit restart");
+    let restarted = StateStore::restart(&database, &contract("second")).expect("explicit restart");
     assert_eq!(restarted.session_id(), 2);
 }
 

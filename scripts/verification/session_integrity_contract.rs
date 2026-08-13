@@ -71,7 +71,7 @@ mod session_integrity_contract {
         drop(connection);
 
         assert!(matches!(
-            StateStore::resume(&path, contract("", "")),
+            StateStore::resume(&path, &contract("", "")),
             Err(StateError::LegacyContractSchema { found: 1 })
         ));
     }

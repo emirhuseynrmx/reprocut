@@ -446,7 +446,7 @@ impl ReductionEngine {
             .map(FrozenPythonPreparation::digest)
             .unwrap_or_else(|| builtin_preparation_digest(request));
         let contract = session_contract(request, source_digest, preparation_digest);
-        let (state, resumed) = open_state(request.session_mode(), contract)?;
+        let (state, resumed) = open_state(request.session_mode(), &contract)?;
         let state_path = state.as_ref().map(|store| store.path().to_path_buf());
         let writer = state.as_ref().map(StateStore::writer);
         let all_units = inventory.units().iter().collect::<Vec<_>>();
@@ -1418,7 +1418,7 @@ fn nondeterministic_preparation_json(evidence: &AggregateEvidence) -> String {
 
 fn open_state(
     mode: &SessionMode,
-    contract: SessionContract,
+    contract: &SessionContract,
 ) -> Result<(Option<StateStore>, bool), EngineError> {
     match mode {
         SessionMode::Ephemeral => Ok((None, false)),

@@ -1,4 +1,4 @@
-//! Grammar-validated source transformations for ReproCut.
+//! Grammar-validated source transformations for `ReproCut`.
 
 use std::{path::Path, str};
 
@@ -106,12 +106,22 @@ impl SyntaxTransform {
     }
 
     /// Materializes this single edit with exactly one output allocation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SyntaxError::OutOfBounds`] when this transform's validated byte interval does
+    /// not fit `source`.
     pub fn candidate_bytes(&self, source: &[u8]) -> Result<Vec<u8>, SyntaxError> {
         apply_edit(source, self.range, &self.replacement)
     }
 }
 
 /// Parses source and rejects ERROR, MISSING, invalid UTF-8, or parser failure.
+///
+/// # Errors
+///
+/// Returns [`SyntaxError`] when the grammar cannot be configured, the source is not valid UTF-8,
+/// the parser returns no tree, or the tree contains an ERROR or MISSING node.
 pub fn parse_valid(language: SyntaxLanguage, source: &[u8]) -> Result<(), SyntaxError> {
     let tree = parse(language, source)?;
     if contains_invalid_node(&tree) {
@@ -121,6 +131,11 @@ pub fn parse_valid(language: SyntaxLanguage, source: &[u8]) -> Result<(), Syntax
 }
 
 /// Enumerates allowlisted named-node deletions that remain grammar-valid.
+///
+/// # Errors
+///
+/// Returns [`SyntaxError`] when the grammar cannot be configured or the original source cannot
+/// be parsed as valid UTF-8 syntax.
 pub fn deletion_transforms(
     language: SyntaxLanguage,
     source: &[u8],
@@ -148,6 +163,11 @@ pub fn deletion_transforms(
 }
 
 /// Enumerates wrapper-to-child replacements that remain grammar-valid.
+///
+/// # Errors
+///
+/// Returns [`SyntaxError`] when the grammar cannot be configured or the original source cannot
+/// be parsed as valid UTF-8 syntax.
 pub fn hoist_transforms(
     language: SyntaxLanguage,
     source: &[u8],

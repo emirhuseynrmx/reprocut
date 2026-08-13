@@ -1,9 +1,6 @@
 name: Regenerate verified demo evidence
 
 on:
-  # Bootstrap this workflow from the release-hardening pull request. The trigger is removed
-  # after the regenerated artifact is committed; future refreshes remain explicit dispatches.
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -41,3 +38,4 @@ jobs:
           path: |
             demo/result
             assets/reprocut-demo.gif
+            assets/reprocut-banner.svg

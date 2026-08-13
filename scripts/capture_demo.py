@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parent.parent
 EVIDENCE = ROOT / "demo" / "result" / "reduction.json"
 OUTPUT = ROOT / "assets" / "reprocut-demo.gif"
+BANNER = ROOT / "assets" / "reprocut-banner.svg"
 SIZE = (1200, 675)
 FRAME_COUNT = 24
 MAX_BYTES = 8 * 1024 * 1024
@@ -184,6 +186,22 @@ def encode(evidence: dict[str, object]) -> None:
     )
 
 
+def bind_banner(evidence: dict[str, object]) -> None:
+    """Atomically keep the static banner bound to the generated failure record."""
+    source = BANNER.read_text(encoding="utf-8")
+    fingerprint = evidence["failure"]["fingerprint_sha256"]
+    bound, replacements = re.subn(
+        r"sha256:[0-9a-f]{16}…",
+        f"sha256:{fingerprint[:16]}…",
+        source,
+    )
+    if replacements != 1:
+        raise RuntimeError(
+            f"static banner must contain one evidence fingerprint, found {replacements}"
+        )
+    BANNER.write_text(bound, encoding="utf-8", newline="\n")
+
+
 def verify(evidence: dict[str, object]) -> None:
     size = OUTPUT.stat().st_size
     if not 0 < size < MAX_BYTES:
@@ -201,6 +219,7 @@ def verify(evidence: dict[str, object]) -> None:
 
 def main() -> int:
     evidence = load_evidence()
+    bind_banner(evidence)
     encode(evidence)
     verify(evidence)
     return 0
