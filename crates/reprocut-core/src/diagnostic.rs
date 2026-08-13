@@ -9,7 +9,7 @@ use regex::Regex;
 use crate::{DiagnosticAnchor, DiagnosticChannel, ExecutionObservation};
 
 /// Version of the diagnostic normalization contract included in fingerprints.
-pub const NORMALIZATION_SCHEMA: u16 = 4;
+pub const NORMALIZATION_SCHEMA: u16 = 5;
 const MAX_ANCHORS: usize = 4;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -348,13 +348,16 @@ fn is_boilerplate(line: &str) -> bool {
 pub fn normalize_diagnostic(input: &str) -> String {
     static UUID: OnceLock<Regex> = OnceLock::new();
     static ISO_TIMESTAMP: OnceLock<Regex> = OnceLock::new();
+    static UUID_FIELD: OnceLock<Regex> = OnceLock::new();
+    static TIMESTAMP_FIELD: OnceLock<Regex> = OnceLock::new();
+    static LOG_LEVEL: OnceLock<Regex> = OnceLock::new();
     static UNIX_TEMP: OnceLock<Regex> = OnceLock::new();
     static WINDOWS_TEMP: OnceLock<Regex> = OnceLock::new();
     static ADDRESS: OnceLock<Regex> = OnceLock::new();
     static PROCESS_ID: OnceLock<Regex> = OnceLock::new();
     static LOOPBACK_PORT: OnceLock<Regex> = OnceLock::new();
     static NAMED_PORT: OnceLock<Regex> = OnceLock::new();
-    static DURATION: OnceLock<Regex> = OnceLock::new();
+    static TELEMETRY_DURATION: OnceLock<Regex> = OnceLock::new();
     static PATH_LOCATION: OnceLock<Regex> = OnceLock::new();
     static NAMED_LOCATION: OnceLock<Regex> = OnceLock::new();
     static HORIZONTAL_SPACE: OnceLock<Regex> = OnceLock::new();
@@ -366,6 +369,20 @@ pub fn normalize_diagnostic(input: &str) -> String {
     let timestamp = ISO_TIMESTAMP.get_or_init(|| {
         Regex::new(r"[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})?")
             .expect("timestamp regex is valid")
+    });
+    let uuid_field = UUID_FIELD.get_or_init(|| {
+        Regex::new(
+            r"(?i)(?:request|correlation|trace|span|invocation|run)(?:[_ -]?id)?[ \t]*[:=][ \t]*$",
+        )
+        .expect("UUID metadata-field regex is valid")
+    });
+    let timestamp_field = TIMESTAMP_FIELD.get_or_init(|| {
+        Regex::new(r"(?i)(?:timestamp|log[_ -]?time|logged[_ -]?at)[ \t]*[:=][ \t]*$")
+            .expect("timestamp metadata-field regex is valid")
+    });
+    let log_level = LOG_LEVEL.get_or_init(|| {
+        Regex::new(r"(?i)^[ \t\]]*(?:trace|debug|info|warn|warning|error|fatal)(?:[ \t:]|$)")
+            .expect("log-level regex is valid")
     });
     let unix_temp = UNIX_TEMP.get_or_init(|| {
         Regex::new(r"/(?:tmp|var/tmp)(?:/[^ \t\r\n:]+)*")
@@ -392,9 +409,9 @@ pub fn normalize_diagnostic(input: &str) -> String {
     let named_port = NAMED_PORT.get_or_init(|| {
         Regex::new(r"(?:port|Port|PORT)[ \t]*[:=]?[ \t]*[0-9]{1,5}").expect("port regex is valid")
     });
-    let duration = DURATION.get_or_init(|| {
-        Regex::new(r"[0-9]+(?:\.[0-9]+)?[ \t]*(?:seconds|second|minutes|minute|secs|sec|mins|min|ms|ns|us|s)")
-            .expect("duration regex is valid")
+    let telemetry_duration = TELEMETRY_DURATION.get_or_init(|| {
+        Regex::new(r"(?i)(elapsed|took|duration|finished[ \t]+in)([ \t]*[:=]?[ \t]*)[0-9]+(?:\.[0-9]+)?[ \t]*(?:seconds|second|minutes|minute|secs|sec|mins|min|ms|ns|us|s)")
+            .expect("telemetry duration regex is valid")
     });
     let path_location = PATH_LOCATION.get_or_init(|| {
         Regex::new(r"(?m)(?P<token>[^ \t\r\n:]+):[0-9]+(?::[0-9]+)?")
@@ -407,20 +424,35 @@ pub fn normalize_diagnostic(input: &str) -> String {
         .get_or_init(|| Regex::new(r"[\t ]+").expect("horizontal whitespace regex is valid"));
 
     let mut text = input.replace("\r\n", "\n").replace('\r', "\n");
-    text = uuid.replace_all(&text, "<uuid>").into_owned();
-    text = timestamp.replace_all(&text, "<timestamp>").into_owned();
+    text = replace_contextual_matches(uuid, &text, "<uuid>", |input, start, _| {
+        uuid_field.is_match(current_line_prefix(input, start))
+    });
+    text = replace_contextual_matches(
+        timestamp,
+        &text,
+        "<timestamp>",
+        |input, start, end| {
+            timestamp_field.is_match(current_line_prefix(input, start))
+                || is_log_envelope_timestamp(input, start, end, log_level)
+        },
+    );
     text = windows_temp.replace_all(&text, "<temp>").into_owned();
     text = unix_temp.replace_all(&text, "<temp>").into_owned();
     text = address.replace_all(&text, "address <address>").into_owned();
     text = replace_lexically_bounded(process_id, &text, "$1 <id>");
     text = loopback_port.replace_all(&text, "$1:<port>").into_owned();
     text = replace_lexically_bounded(named_port, &text, "port <port>");
-    text = replace_lexically_bounded(duration, &text, "<duration>");
+    text = replace_lexically_bounded(telemetry_duration, &text, "$1$2<duration>");
     text = path_location
         .replace_all(&text, |captures: &regex::Captures<'_>| {
             let token = &captures["token"];
             let start = captures.get(0).map_or(0, |matched| matched.start());
-            if is_source_location_token(token, has_compiler_source_context(&text[..start])) {
+            let prefix = &text[..start];
+            if is_source_location_token(
+                token,
+                has_compiler_source_context(prefix),
+                has_url_source_context(prefix),
+            ) {
                 format!("{token}:<location>")
             } else {
                 captures[0].to_owned()
@@ -450,6 +482,40 @@ fn replace_lexically_bounded(pattern: &Regex, input: &str, replacement: &str) ->
         .into_owned()
 }
 
+fn replace_contextual_matches(
+    pattern: &Regex,
+    input: &str,
+    replacement: &str,
+    predicate: impl Fn(&str, usize, usize) -> bool,
+) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut copied_until = 0;
+    for matched in pattern.find_iter(input) {
+        output.push_str(&input[copied_until..matched.start()]);
+        if predicate(input, matched.start(), matched.end()) {
+            output.push_str(replacement);
+        } else {
+            output.push_str(matched.as_str());
+        }
+        copied_until = matched.end();
+    }
+    output.push_str(&input[copied_until..]);
+    output
+}
+
+fn current_line_prefix(input: &str, start: usize) -> &str {
+    input[..start].rsplit('\n').next().unwrap_or(&input[..start])
+}
+
+fn is_log_envelope_timestamp(input: &str, start: usize, end: usize, log_level: &Regex) -> bool {
+    let prefix = current_line_prefix(input, start);
+    if !prefix.chars().all(|character| matches!(character, ' ' | '\t' | '[')) {
+        return false;
+    }
+    let suffix = input[end..].split('\n').next().unwrap_or(&input[end..]);
+    log_level.is_match(suffix)
+}
+
 fn has_lexical_boundaries(input: &str, start: usize, end: usize) -> bool {
     input[..start]
         .chars()
@@ -471,19 +537,36 @@ fn has_compiler_source_context(prefix: &str) -> bool {
     trimmed.ends_with("-->")
 }
 
-fn is_source_location_token(token: &str, compiler_context: bool) -> bool {
+fn has_url_source_context(prefix: &str) -> bool {
+    let line = prefix.rsplit('\n').next().unwrap_or(prefix);
+    line.ends_with("http:") || line.ends_with("https:")
+}
+
+fn is_source_location_token(token: &str, compiler_context: bool, url_context: bool) -> bool {
     const SOURCE_EXTENSIONS: &[&str] = &[
         "bash", "c", "cc", "cjs", "cpp", "cs", "cts", "cxx", "fish", "go", "h", "hh", "hpp", "hxx",
-        "java", "js", "json", "jsx", "kt", "kts", "mjs", "mts", "php", "py", "pyi", "rb", "rs",
-        "scala", "sh", "swift", "toml", "ts", "tsx", "yaml", "yml", "zsh",
+        "java", "js", "jsx", "kt", "kts", "mjs", "mts", "php", "py", "pyi", "rb", "rs",
+        "scala", "sh", "swift", "ts", "tsx", "zsh",
     ];
+    const DATA_EXTENSIONS: &[&str] = &["json", "toml", "yaml", "yml"];
     const EXTENSIONLESS_SOURCE_FILES: &[&str] = &["BUILD", "Dockerfile", "Makefile", "WORKSPACE"];
+    if url_context || (!compiler_context && token.starts_with('/')) {
+        return false;
+    }
     let basename = token.rsplit(['/', '\\']).next().unwrap_or(token);
+    let extension = token.rsplit_once('.').map(|(_, extension)| extension);
+    if extension.is_some_and(|extension| {
+        DATA_EXTENSIONS
+            .iter()
+            .any(|known| extension.eq_ignore_ascii_case(known))
+    }) {
+        return compiler_context;
+    }
     token == "<temp>"
         || compiler_context
         || has_source_tree_root(token)
         || EXTENSIONLESS_SOURCE_FILES.contains(&basename)
-        || token.rsplit_once('.').is_some_and(|(_, extension)| {
+        || extension.is_some_and(|extension| {
             SOURCE_EXTENSIONS
                 .iter()
                 .any(|known| extension.eq_ignore_ascii_case(known))

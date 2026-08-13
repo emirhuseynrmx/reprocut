@@ -15,7 +15,7 @@ LegacyBaseline = tuple[int, str]
 StreamBaseline = tuple[int, str, str]
 Baseline = Union[LegacyBaseline, StreamBaseline]
 
-NORMALIZATION_SCHEMA = 4
+NORMALIZATION_SCHEMA = 5
 MAX_PATTERNS = 16
 MAX_PATTERN_BYTES = 4096
 COMBINED_DELIMITER = "\n--- REPROCUT STREAM ---\n"
@@ -27,6 +27,18 @@ _UUID = re.compile(
 _TIMESTAMP = re.compile(
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}"
     r"(?:\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})?"
+)
+_UUID_FIELD = re.compile(
+    r"(?:request|correlation|trace|span|invocation|run)(?:[_ -]?id)?[ \t]*[:=][ \t]*$",
+    re.IGNORECASE,
+)
+_TIMESTAMP_FIELD = re.compile(
+    r"(?:timestamp|log[_ -]?time|logged[_ -]?at)[ \t]*[:=][ \t]*$",
+    re.IGNORECASE,
+)
+_LOG_LEVEL = re.compile(
+    r"^[ \t\]]*(?:trace|debug|info|warn|warning|error|fatal)(?:[ \t:]|$)",
+    re.IGNORECASE,
 )
 _UNIX_TEMP = re.compile(r"/(?:tmp|var/tmp)(?:/[^ \t\r\n:]+)*")
 _WINDOWS_TEMP = re.compile(
@@ -44,9 +56,11 @@ _PROCESS_ID = re.compile(
 )
 _LOOPBACK_PORT = re.compile(r"(localhost|LOCALHOST|127\.0\.0\.1|\[::1\]):[0-9]{1,5}")
 _NAMED_PORT = re.compile(r"(?:port|Port|PORT)[ \t]*[:=]?[ \t]*[0-9]{1,5}")
-_DURATION = re.compile(
+_TELEMETRY_DURATION = re.compile(
+    r"(elapsed|took|duration|finished[ \t]+in)([ \t]*[:=]?[ \t]*)"
     r"[0-9]+(?:\.[0-9]+)?[ \t]*(?:seconds|second|minutes|minute|secs|sec|"
-    r"mins|min|ms|ns|us|s)"
+    r"mins|min|ms|ns|us|s)",
+    re.IGNORECASE,
 )
 _PATH_LOCATION = re.compile(r"(?P<token>[^ \t\r\n:]+):[0-9]+(?::[0-9]+)?")
 _SOURCE_EXTENSIONS = frozenset(
@@ -67,7 +81,6 @@ _SOURCE_EXTENSIONS = frozenset(
         "hxx",
         "java",
         "js",
-        "json",
         "jsx",
         "kt",
         "kts",
@@ -81,14 +94,12 @@ _SOURCE_EXTENSIONS = frozenset(
         "scala",
         "sh",
         "swift",
-        "toml",
         "ts",
         "tsx",
-        "yaml",
-        "yml",
         "zsh",
     }
 )
+_DATA_EXTENSIONS = frozenset({"json", "toml", "yaml", "yml"})
 _EXTENSIONLESS_SOURCE_FILES = frozenset({"BUILD", "Dockerfile", "Makefile", "WORKSPACE"})
 _CHANNEL_ORDER = {"stdout": 0, "stderr": 1}
 _NAMED_LOCATION = re.compile(r"([Ll]ine|[Cc]olumn)[ \t]+[0-9]+")
@@ -345,28 +356,57 @@ def _validate_spec(
 
 def _normalize(diagnostic: str) -> str:
     value = diagnostic.replace("\r\n", "\n").replace("\r", "\n")
-    value = _UUID.sub("<uuid>", value)
-    value = _TIMESTAMP.sub("<timestamp>", value)
+    value = _UUID.sub(_normalize_uuid, value)
+    value = _TIMESTAMP.sub(_normalize_timestamp, value)
     value = _WINDOWS_TEMP.sub("<temp>", value)
     value = _UNIX_TEMP.sub("<temp>", value)
     value = _ADDRESS.sub("address <address>", value)
     value = _bounded_sub(_PROCESS_ID, r"\1 <id>", value)
     value = _LOOPBACK_PORT.sub(r"\1:<port>", value)
     value = _bounded_sub(_NAMED_PORT, "port <port>", value)
-    value = _bounded_sub(_DURATION, "<duration>", value)
+    value = _bounded_sub(_TELEMETRY_DURATION, r"\1\2<duration>", value)
     value = _PATH_LOCATION.sub(_normalize_source_location, value)
     value = _bounded_sub(_NAMED_LOCATION, r"\1 <location>", value)
     lines = (_HORIZONTAL_SPACE.sub(" ", line.strip()) for line in value.splitlines())
     return "\n".join(line for line in lines if line)
 
 
+def _normalize_uuid(match: re.Match[str]) -> str:
+    return "<uuid>" if _UUID_FIELD.search(_current_line_prefix(match)) else match.group(0)
+
+
+def _normalize_timestamp(match: re.Match[str]) -> str:
+    prefix = _current_line_prefix(match)
+    suffix = match.string[match.end() :].split("\n", 1)[0]
+    is_envelope = all(character in " \t[" for character in prefix) and bool(
+        _LOG_LEVEL.search(suffix)
+    )
+    return (
+        "<timestamp>"
+        if _TIMESTAMP_FIELD.search(prefix) or is_envelope
+        else match.group(0)
+    )
+
+
+def _current_line_prefix(match: re.Match[str]) -> str:
+    return match.string[: match.start()].rsplit("\n", 1)[-1]
+
+
 def _normalize_source_location(match: re.Match[str]) -> str:
     token = match.group("token")
     basename = re.split(r"[/\\]", token)[-1]
     extension = token.rpartition(".")[2].lower()
+    line_prefix = _current_line_prefix(match)
+    compiler_context = _has_compiler_source_context(match)
+    if line_prefix.endswith(("http:", "https:")) or (
+        token.startswith("/") and not compiler_context
+    ):
+        return match.group(0)
+    if extension in _DATA_EXTENSIONS:
+        return f"{token}:<location>" if compiler_context else match.group(0)
     if (
         token == "<temp>"
-        or _has_compiler_source_context(match)
+        or compiler_context
         or _has_source_tree_root(token)
         or basename in _EXTENSIONLESS_SOURCE_FILES
         or extension in _SOURCE_EXTENSIONS

@@ -7,7 +7,7 @@ use serde_json::Value;
 pub const EVIDENCE_SCHEMA_VERSION: u16 = 3;
 
 /// Diagnostic normalization contract accepted by this evidence schema.
-pub const NORMALIZATION_SCHEMA_VERSION: u16 = 4;
+pub const NORMALIZATION_SCHEMA_VERSION: u16 = 5;
 
 /// The single immutable model used by every publication surface.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

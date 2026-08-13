@@ -175,8 +175,8 @@ fn lexically_bounded_volatile_values_remain_normalized() {
         ("RuntimeError: PID 123", "RuntimeError: PID 999"),
         ("RuntimeError: line 12", "RuntimeError: line 99"),
         (
-            "RuntimeError: failed after 10 seconds",
-            "RuntimeError: failed after 20 seconds",
+            "RuntimeError: import failed; elapsed 10 seconds",
+            "RuntimeError: import failed; elapsed 20 seconds",
         ),
     ] {
         let oracle = FailureOracle::from_baselines(&[failed(baseline), failed(baseline)])
@@ -187,6 +187,77 @@ fn lexically_bounded_volatile_values_remain_normalized() {
             CandidateVerdict::Preserved,
             "{baseline} and {candidate} differ only by volatile context"
         );
+    }
+}
+
+#[test]
+fn schema_five_preserves_semantic_values() {
+    for (baseline, candidate) in [
+        (
+            "LookupError: invoice 123e4567-e89b-12d3-a456-426614174000",
+            "LookupError: invoice 123e4567-e89b-12d3-a456-426614174999",
+        ),
+        (
+            "ValidationError: effective_at 2026-08-13T10:11:12Z",
+            "ValidationError: effective_at 2026-08-14T10:11:12Z",
+        ),
+        ("TimeoutError: timeout 10ms", "TimeoutError: timeout 20ms"),
+        ("HTTPError: error.json:404", "HTTPError: error.json:500"),
+        (
+            "HTTPError: /api/error.json:404",
+            "HTTPError: /api/error.json:500",
+        ),
+        (
+            "HTTPError: https://example.test/error.json:404",
+            "HTTPError: https://example.test/error.json:500",
+        ),
+        (
+            "HTTPError: https://example.rs:404",
+            "HTTPError: https://example.rs:500",
+        ),
+    ] {
+        let oracle = FailureOracle::from_baselines(&[failed(baseline), failed(baseline)])
+            .expect("semantic value is discriminative");
+
+        assert_eq!(
+            oracle.classify(&failed(candidate)),
+            CandidateVerdict::Rejected,
+            "{baseline} must differ from {candidate}"
+        );
+    }
+}
+
+#[test]
+fn schema_five_normalizes_only_recognized_telemetry_context() {
+    for (baseline_a, baseline_b, candidate, expected_anchor) in [
+        (
+            "ValueError: request_id=123e4567-e89b-12d3-a456-426614174000",
+            "ValueError: request_id=123e4567-e89b-12d3-a456-426614174111",
+            "ValueError: request_id=123e4567-e89b-12d3-a456-426614174222",
+            "ValueError: request_id=<uuid>",
+        ),
+        (
+            "2026-08-13T10:11:12Z ERROR ValueError: import failed",
+            "2026-08-13T10:11:13Z ERROR ValueError: import failed",
+            "2026-08-13T10:11:14Z ERROR ValueError: import failed",
+            "<timestamp> ERROR ValueError: import failed",
+        ),
+        (
+            "RuntimeError: import failed; elapsed 10ms",
+            "RuntimeError: import failed; elapsed 20ms",
+            "RuntimeError: import failed; elapsed 30ms",
+            "RuntimeError: import failed; elapsed <duration>",
+        ),
+    ] {
+        let oracle = FailureOracle::from_baselines(&[failed(baseline_a), failed(baseline_b)])
+            .expect("telemetry context is stable");
+
+        assert_eq!(oracle.fingerprint().anchors()[0].text(), expected_anchor);
+        assert_eq!(
+            oracle.classify(&failed(candidate)),
+            CandidateVerdict::Preserved
+        );
+        assert_eq!(oracle.fingerprint().normalization_schema(), 5);
     }
 }
 
@@ -214,10 +285,10 @@ fn explicit_extensionless_source_locations_remain_volatile() {
 }
 
 #[test]
-fn long_duration_units_are_consumed_completely() {
+fn contextual_long_duration_units_are_consumed_completely() {
     assert_eq!(
-        normalize_diagnostic("RuntimeError: failed after 10 seconds"),
-        "RuntimeError: failed after <duration>"
+        normalize_diagnostic("RuntimeError: failed; elapsed 10 seconds"),
+        "RuntimeError: failed; elapsed <duration>"
     );
 }
 

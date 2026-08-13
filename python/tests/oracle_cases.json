@@ -6,13 +6,13 @@
     "failure_patterns": [],
     "reject_patterns": [],
     "baselines": [
-      [1, "FAILED tests/a.py::test_total", "PID 10 TypeError: invoice at /tmp/a.py:10:2 port 5001 after 10ms"],
-      [1, "FAILED tests/a.py::test_total", "PID 20 TypeError: invoice at /var/tmp/b.py:20:4 port 5002 after 20ms"]
+      [1, "FAILED tests/a.py::test_total", "PID 10 TypeError: invoice at /tmp/a.py:10:2 port 5001 elapsed 10ms"],
+      [1, "FAILED tests/a.py::test_total", "PID 20 TypeError: invoice at /var/tmp/b.py:20:4 port 5002 elapsed 20ms"]
     ],
     "candidate": {
       "exit_code": 1,
       "stdout": "FAILED tests/a.py::test_total",
-      "diagnostic": "PID 30 TypeError: invoice at /tmp/c.py:30:8 port 5003 after 30ms"
+      "diagnostic": "PID 30 TypeError: invoice at /tmp/c.py:30:8 port 5003 elapsed 30ms"
     },
     "expected": "preserved",
     "fingerprint": {
@@ -23,13 +23,13 @@
       "anchor": "FAILED tests/a.py::test_total",
       "anchors": [
         {"channel": "stdout", "text": "FAILED tests/a.py::test_total"},
-        {"channel": "stderr", "text": "PID <id> TypeError: invoice at <temp>:<location> port <port> after <duration>"}
+        {"channel": "stderr", "text": "PID <id> TypeError: invoice at <temp>:<location> port <port> elapsed <duration>"}
       ],
       "failure_patterns": [],
       "reject_patterns": [],
-      "normalization_schema": 4,
+      "normalization_schema": 5,
       "oracle_spec_sha256": "3015cdd3dcd09acb2c9e17736d828908ee6ccab62db68928f1de9e2c1468d142",
-      "fingerprint_sha256": "8b2c0d06a3fab090602a65e7b1db7af8f17abcd6bb097ac7f9b6530945b59e12"
+      "fingerprint_sha256": "cccbedced52eeac6009926c77da8da9c44dd08c12306c70e274d2180db783c71"
     }
   },
   {
@@ -50,9 +50,9 @@
       "anchors": [{"channel": "stderr", "text": "TypeError: invoice 41"}],
       "failure_patterns": [],
       "reject_patterns": [],
-      "normalization_schema": 4,
+      "normalization_schema": 5,
       "oracle_spec_sha256": "1c82610274183be423701b7037ec7605f66e3589b10ca57e49a663b53e0d9738",
-      "fingerprint_sha256": "5d0dd98cddfda26683fc2f1f064585ef82ec1c98e7ec1d7edb34cc2f297799a9"
+      "fingerprint_sha256": "45a8066b7d09683271e52f0d33449e442d2919185f38e88368e624aa4e76a8ab"
     }
   },
   {
@@ -62,12 +62,12 @@
     "failure_patterns": [],
     "reject_patterns": [],
     "baselines": [
-      [1, "", "RuntimeError: failed after 10 seconds"],
-      [1, "", "RuntimeError: failed after 20 seconds"]
+      [1, "", "RuntimeError: failed; elapsed 10 seconds"],
+      [1, "", "RuntimeError: failed; elapsed 20 seconds"]
     ],
     "candidate": {
       "exit_code": 1,
-      "diagnostic": "RuntimeError: failed after 30 seconds"
+      "diagnostic": "RuntimeError: failed; elapsed 30 seconds"
     },
     "expected": "preserved",
     "fingerprint": {
@@ -75,15 +75,15 @@
       "exit_code": 1,
       "signal": null,
       "termination": {"kind": "exit_code", "value": 1},
-      "anchor": "RuntimeError: failed after <duration>",
+      "anchor": "RuntimeError: failed; elapsed <duration>",
       "anchors": [
-        {"channel": "stderr", "text": "RuntimeError: failed after <duration>"}
+        {"channel": "stderr", "text": "RuntimeError: failed; elapsed <duration>"}
       ],
       "failure_patterns": [],
       "reject_patterns": [],
-      "normalization_schema": 4,
+      "normalization_schema": 5,
       "oracle_spec_sha256": "1c82610274183be423701b7037ec7605f66e3589b10ca57e49a663b53e0d9738",
-      "fingerprint_sha256": "9ee5e1864584d12f65889b418a789413fc4c2f27f4caa078b43d9e8d275fd41b"
+      "fingerprint_sha256": "97974008587d3c6ea33adeef534b391dc3e191e9fe4b97bd24b500229b491239"
     }
   },
   {
@@ -104,9 +104,9 @@
       "anchors": [],
       "failure_patterns": ["TypeError: invoice [0-9]+", "currency"],
       "reject_patterns": ["PermissionError"],
-      "normalization_schema": 4,
+      "normalization_schema": 5,
       "oracle_spec_sha256": "099cb6301757af57a751e13f73ad8e048d406ee7b10cc377a234441cda9d3f64",
-      "fingerprint_sha256": "cba09230e0e5a74124cf9ae96f6d0c3b30dbfbb35a6b5292d72e6b31c6736435"
+      "fingerprint_sha256": "023335eba27dab590b959df01b03863c4452ab17c8459b4978408ad238c12cc6"
     }
   },
   {
@@ -138,9 +138,9 @@
       "anchors": [],
       "failure_patterns": [],
       "reject_patterns": [],
-      "normalization_schema": 4,
+      "normalization_schema": 5,
       "oracle_spec_sha256": "1ca9f6c384604e2e220eca1cc799b1f2c075943406d18a6a6476001187356643",
-      "fingerprint_sha256": "4c56f66b74b7d0b8c47b3121f2f1f563c64342d4e27f4e31b89c8379270087e9"
+      "fingerprint_sha256": "081c81961b9ad435b1f7a81707fc689d3dc6882cd06a945172cdde2a0209a8c3"
     }
   }
 ]

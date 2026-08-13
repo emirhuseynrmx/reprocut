@@ -50,7 +50,7 @@ def test_fingerprint_is_an_immutable_plain_value() -> None:
         "anchors": [{"channel": "stderr", "text": "TypeError: currency"}],
         "failure_patterns": [],
         "reject_patterns": [],
-        "normalization_schema": 4,
+        "normalization_schema": 5,
         "oracle_spec_sha256": "<digest>",
         "fingerprint_sha256": "<digest>",
     }
@@ -63,17 +63,17 @@ def test_fingerprint_is_an_immutable_plain_value() -> None:
 def test_volatile_paths_and_ids_do_not_change_failure_identity() -> None:
     oracle = FailureOracle.from_baselines(
         [
-            (1, "PID 10 TypeError: request at /tmp/alpha.py:10:2 port 5001 after 10ms"),
+            (1, "PID 10 TypeError: request at /tmp/alpha.py:10:2 port 5001 elapsed 10ms"),
             (
                 1,
-                "PID 20 TypeError: request at /var/tmp/beta.py:20:4 port 5002 after 20ms",
+                "PID 20 TypeError: request at /var/tmp/beta.py:20:4 port 5002 elapsed 20ms",
             ),
         ]
     )
     assert (
         oracle.classify(
             1,
-            "PID 30 TypeError: request at /tmp/gamma.py:30:8 port 5003 after 30ms",
+            "PID 30 TypeError: request at /tmp/gamma.py:30:8 port 5003 elapsed 30ms",
         )
         == "preserved"
     )
@@ -182,8 +182,8 @@ def test_volatile_labels_do_not_match_inside_semantic_words(baseline: str, candi
         ("RuntimeError: PID 123", "RuntimeError: PID 999"),
         ("RuntimeError: line 12", "RuntimeError: line 99"),
         (
-            "RuntimeError: failed after 10 seconds",
-            "RuntimeError: failed after 20 seconds",
+            "RuntimeError: import failed; elapsed 10 seconds",
+            "RuntimeError: import failed; elapsed 20 seconds",
         ),
     ],
 )
@@ -211,6 +211,7 @@ def test_lexically_bounded_volatile_values_remain_normalized(baseline: str, cand
             "HTTPError: https://example.test/error.json:404",
             "HTTPError: https://example.test/error.json:500",
         ),
+        ("HTTPError: https://example.rs:404", "HTTPError: https://example.rs:500"),
     ],
 )
 def test_schema_5_preserves_semantic_values(baseline: str, candidate: str) -> None:

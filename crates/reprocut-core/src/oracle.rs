@@ -118,7 +118,7 @@ impl OracleSpec {
         })
     }
 
-    /// Returns automatic schema-4 inference for one stream policy.
+    /// Returns automatic schema-5 inference for one stream policy.
     ///
     /// # Panics
     ///
