@@ -1,9 +1,11 @@
 //! Versioned reduction-evidence contracts.
 
 use reprocut_report::{
-    write_attempts_jsonl, AttemptSummary, ChannelAnchor, EvaluationPolicyEvidence, FailureEvidence,
-    MaterialMeasurement, MeasurementSet, PreparationEvidence, ReductionEvidence, RetentionEvidence,
-    SearchEvidence, EVIDENCE_SCHEMA_VERSION, NORMALIZATION_SCHEMA_VERSION,
+    write_attempts_jsonl, ArtifactManifest, ArtifactMember, AttemptSummary, ChannelAnchor,
+    EvaluationPolicyEvidence, FailureEvidence, MaterialMeasurement, MeasurementSet,
+    PreparationEvidence, ReductionEvidence, RetainedEntry, RetainedEntryKind, RetentionEvidence,
+    SearchEvidence, ARTIFACT_MANIFEST_SCHEMA_VERSION, EVIDENCE_SCHEMA_VERSION,
+    NORMALIZATION_SCHEMA_VERSION,
 };
 use serde_json::json;
 
@@ -35,6 +37,57 @@ fn display_command_is_derived_from_argv_without_shell_authority() {
     assert_eq!(
         evidence.display_command(),
         "python bug.py --case \"two words\""
+    );
+}
+
+#[test]
+fn retained_manifest_binds_content_metadata_and_order() {
+    let executable = RetainedEntry::regular_file("bin/repro", b"failure\n", 0b101)
+        .expect("safe retained entry");
+    let changed_byte = RetainedEntry::regular_file("bin/repro", b"failure!\n", 0b101)
+        .expect("safe retained entry");
+    let changed_mode = RetainedEntry::regular_file("bin/repro", b"failure\n", 0)
+        .expect("safe retained entry");
+
+    assert_eq!(executable.kind, RetainedEntryKind::RegularFile);
+    assert_eq!(executable.size_bytes, 8);
+    assert_eq!(executable.executable_mask, Some(0b101));
+    assert_ne!(executable.sha256, changed_byte.sha256);
+    assert_ne!(executable.canonical_digest(), changed_mode.canonical_digest());
+
+    let source = RetainedEntry::regular_file("src/main.rs", b"fn main() {}\n", 0)
+        .expect("safe retained entry");
+    let manifest = reprocut_report::RetainedManifest::new(vec![source.clone(), executable.clone()])
+        .expect("canonical retained manifest");
+    assert_eq!(manifest.entries(), &[executable, source]);
+    assert_eq!(manifest.total_bytes(), 21);
+}
+
+#[test]
+fn artifact_identity_excludes_its_own_envelope() {
+    let members = vec![
+        ArtifactMember::from_bytes("reduction.json", b"{}", 0)
+            .expect("safe artifact member"),
+        ArtifactMember::from_bytes("project/bug.py", b"raise ValueError\n", 0)
+            .expect("safe artifact member"),
+    ];
+    let manifest = ArtifactManifest::new(members).expect("canonical artifact manifest");
+
+    assert_eq!(manifest.schema_version(), ARTIFACT_MANIFEST_SCHEMA_VERSION);
+    assert_eq!(manifest.members()[0].path, "project/bug.py");
+    assert_eq!(manifest.members()[1].path, "reduction.json");
+    assert!(manifest
+        .members()
+        .iter()
+        .all(|member| member.path != "artifact-manifest.json"));
+    assert_eq!(manifest.artifact_id(), manifest.payload_digest());
+
+    let envelope = serde_json::to_vec(&manifest).expect("manifest envelope JSON");
+    assert_eq!(
+        serde_json::from_slice::<ArtifactManifest>(&envelope)
+            .expect("manifest envelope round trip")
+            .artifact_id(),
+        manifest.artifact_id()
     );
 }
 
