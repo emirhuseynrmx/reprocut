@@ -163,9 +163,7 @@ fn fixture_root() -> std::path::PathBuf {
 }
 
 fn python_executable() -> std::path::PathBuf {
-    env::var_os("TEST_PYTHON")
-        .map(Into::into)
-        .unwrap_or_else(|| "python3".into())
+    env::var_os("TEST_PYTHON").map_or_else(|| "python3".into(), Into::into)
 }
 
 fn tree_digest(root: &Path) -> u64 {

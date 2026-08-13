@@ -44,9 +44,8 @@ fn fixture_root() -> std::path::PathBuf {
 }
 
 fn python_executable() -> std::path::PathBuf {
-    let requested: std::path::PathBuf = env::var_os("TEST_PYTHON")
-        .map(Into::into)
-        .unwrap_or_else(|| "python3".into());
+    let requested: std::path::PathBuf =
+        env::var_os("TEST_PYTHON").map_or_else(|| "python3".into(), Into::into);
     if requested.is_absolute() {
         return requested;
     }
