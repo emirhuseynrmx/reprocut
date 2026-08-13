@@ -80,9 +80,12 @@ def process_tree_rss(root_process: Any, psutil_module: Any) -> int:
     except (psutil_module.NoSuchProcess, psutil_module.AccessDenied):
         processes = [root_process]
     for process in processes:
-        try:  # noqa: PERF203 - descendants can disappear independently while sampled
+        try:
             total += int(process.memory_info().rss)
-        except (psutil_module.NoSuchProcess, psutil_module.AccessDenied):
+        except (  # noqa: PERF203 - descendants disappear independently while sampled
+            psutil_module.NoSuchProcess,
+            psutil_module.AccessDenied,
+        ):
             continue
     return total
 

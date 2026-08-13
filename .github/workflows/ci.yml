@@ -28,7 +28,7 @@ jobs:
       - name: Apply and verify pinned Ruff repairs
         run: |
           python -m pip install ruff==0.16.2
-          ruff check --fix python scripts demo/source
+          ruff check --fix python scripts demo/source || true
           ruff format python scripts demo/source
           ruff check python scripts demo/source
           python -m compileall -q python scripts demo/source

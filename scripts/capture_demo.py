@@ -40,9 +40,9 @@ def font(size: int, *, mono: bool = False, bold: bool = False) -> ImageFont.Free
         else (["DejaVuSans-Bold.ttf", "arialbd.ttf"] if bold else ["DejaVuSans.ttf", "arial.ttf"])
     )
     for name in names:
-        try:  # noqa: PERF203 - each fallback font must be probed independently
+        try:
             return ImageFont.truetype(name, size=size)
-        except OSError:
+        except OSError:  # noqa: PERF203 - each fallback font is an independent probe
             continue
     raise RuntimeError(f"no bundled TrueType font found for {names}")
 
