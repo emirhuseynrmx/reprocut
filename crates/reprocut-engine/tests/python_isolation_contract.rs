@@ -27,8 +27,16 @@ fn frozen_wheelhouse_is_used_for_every_python_reduction_phase() {
             .expect("retained manifest"),
     );
 
-    assert!(manifest.contains("required-dep"));
-    assert!(!manifest.contains("unused-dep"));
+    assert!(
+        manifest.contains("required-dep"),
+        "required dependency was lost; manifest={manifest:?}; accepted={:?}",
+        outcome.accepted_structured_edits()
+    );
+    assert!(
+        !manifest.contains("unused-dep"),
+        "unused dependency was retained; manifest={manifest:?}; accepted={:?}",
+        outcome.accepted_structured_edits()
+    );
     assert!(outcome
         .accepted_structured_edits()
         .iter()
