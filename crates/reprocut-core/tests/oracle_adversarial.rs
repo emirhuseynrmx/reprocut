@@ -1,8 +1,8 @@
 //! Adversarial failure-oracle collision and truncation contracts.
 
 use reprocut_core::{
-    normalize_diagnostic, CandidateVerdict, DiagnosticChannel, ExecutionObservation, FailureOracle,
-    OracleError,
+    normalize_diagnostic, CandidateVerdict, DiagnosticAnchor, DiagnosticChannel,
+    ExecutionObservation, FailureOracle, OracleError,
 };
 
 fn failed(stderr: &str) -> ExecutionObservation {
@@ -93,7 +93,7 @@ fn combined_reserves_an_anchor_for_each_stream() {
         .fingerprint()
         .anchors()
         .iter()
-        .map(|anchor| anchor.channel())
+        .map(DiagnosticAnchor::channel)
         .collect::<std::collections::BTreeSet<_>>();
     assert_eq!(oracle.fingerprint().anchors().len(), 4);
     assert!(channels.contains(&DiagnosticChannel::Stdout));
@@ -117,7 +117,7 @@ fn auto_reserves_one_anchor_for_every_error_bearing_stream_even_when_stdout_fill
         .fingerprint()
         .anchors()
         .iter()
-        .map(|anchor| anchor.channel())
+        .map(DiagnosticAnchor::channel)
         .collect::<std::collections::BTreeSet<_>>();
     assert_eq!(oracle.fingerprint().anchors().len(), 4);
     assert!(channels.contains(&DiagnosticChannel::Stdout));

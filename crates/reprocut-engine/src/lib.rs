@@ -513,7 +513,7 @@ impl ReductionEngine {
                 let mut slot_material_bytes = Vec::with_capacity(frontier.len());
 
                 for (slot, candidate) in frontier.iter().enumerate() {
-                    let unit_ids = candidate.iter().map(|unit| unit.id()).collect::<Vec<_>>();
+                    let unit_ids = candidate.iter().map(ReductionUnit::id).collect::<Vec<_>>();
                     let Ok(candidate_snapshot) = source_snapshot.subset(candidate.iter().copied())
                     else {
                         set_error(&first_error, EngineError::InvalidCandidate);

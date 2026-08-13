@@ -76,7 +76,7 @@ fn direct_subset_search_escapes_a_complement_only_local_minimum() {
         .collect::<Vec<_>>();
 
     let result = reduce(&units, |kept| {
-        let ids = kept.iter().map(|unit| unit.id()).collect::<Vec<_>>();
+        let ids = kept.iter().map(ReductionUnit::id).collect::<Vec<_>>();
         if ids == [0, 1, 2, 3, 4, 5] || ids == [2, 3] {
             CandidateVerdict::Preserved
         } else {
