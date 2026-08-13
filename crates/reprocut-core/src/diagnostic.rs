@@ -350,7 +350,9 @@ pub fn normalize_diagnostic(input: &str) -> String {
 
     let mut text = input.replace("\r\n", "\n").replace('\r', "\n");
     text = replace_contextual_matches(&patterns.uuid, &text, "<uuid>", |input, start, _| {
-        patterns.uuid_field.is_match(current_line_prefix(input, start))
+        patterns
+            .uuid_field
+            .is_match(current_line_prefix(input, start))
     });
     text = replace_contextual_matches(
         &patterns.timestamp,
@@ -363,11 +365,20 @@ pub fn normalize_diagnostic(input: &str) -> String {
                 || is_log_envelope_timestamp(input, start, end, &patterns.log_level)
         },
     );
-    text = patterns.windows_temp.replace_all(&text, "<temp>").into_owned();
+    text = patterns
+        .windows_temp
+        .replace_all(&text, "<temp>")
+        .into_owned();
     text = patterns.unix_temp.replace_all(&text, "<temp>").into_owned();
-    text = patterns.address.replace_all(&text, "address <address>").into_owned();
+    text = patterns
+        .address
+        .replace_all(&text, "address <address>")
+        .into_owned();
     text = replace_lexically_bounded(&patterns.process_id, &text, "$1 <id>");
-    text = patterns.loopback_port.replace_all(&text, "$1:<port>").into_owned();
+    text = patterns
+        .loopback_port
+        .replace_all(&text, "$1:<port>")
+        .into_owned();
     text = replace_lexically_bounded(&patterns.named_port, &text, "port <port>");
     text = replace_lexically_bounded(&patterns.telemetry_duration, &text, "$1$2<duration>");
     text = patterns
