@@ -1,3 +1,5 @@
+//! Deterministic HTML, Markdown, and machine-readable evidence rendering.
+
 #![forbid(unsafe_code)]
 
 mod evidence;

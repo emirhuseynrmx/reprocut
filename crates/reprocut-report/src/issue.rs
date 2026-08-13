@@ -11,6 +11,16 @@ pub fn render_issue(evidence: &ReductionEvidence) -> String {
         .next()
         .unwrap_or("preserved failure");
     let title = escape_markdown_text(&truncate_chars(anchor_line, 100));
+    let mut issue = String::with_capacity(4_096);
+    render_heading_and_reduction(&mut issue, evidence, &title);
+    render_failure_identity(&mut issue, evidence);
+    render_integrity_and_reproduction(&mut issue, evidence);
+    render_retained_project_and_search(&mut issue, evidence);
+    render_included_evidence_and_limits(&mut issue, evidence);
+    issue
+}
+
+fn render_heading_and_reduction(issue: &mut String, evidence: &ReductionEvidence, title: &str) {
     let removed_files = evidence
         .measurements
         .original
@@ -21,7 +31,6 @@ pub fn render_issue(evidence: &ReductionEvidence) -> String {
         .original
         .bytes
         .saturating_sub(evidence.measurements.retained.bytes);
-    let mut issue = String::with_capacity(4_096);
     writeln!(issue, "# Minimal reproduction: {title}\n").expect("writing to String cannot fail");
     writeln!(
         issue,
@@ -56,7 +65,9 @@ pub fn render_issue(evidence: &ReductionEvidence) -> String {
             .saturating_sub(evidence.measurements.retained.lines),
     )
     .expect("writing to String cannot fail");
+}
 
+fn render_failure_identity(issue: &mut String, evidence: &ReductionEvidence) {
     issue.push_str("## Failure identity\n\n");
     writeln!(
         issue,
@@ -112,7 +123,9 @@ pub fn render_issue(evidence: &ReductionEvidence) -> String {
         ),
         _ => {}
     }
+}
 
+fn render_integrity_and_reproduction(issue: &mut String, evidence: &ReductionEvidence) {
     issue.push_str("## Integrity contracts\n\n");
     writeln!(
         issue,
@@ -135,7 +148,9 @@ pub fn render_issue(evidence: &ReductionEvidence) -> String {
 
     issue.push_str("## Reproduce\n\n");
     issue.push_str(&fenced("sh", &evidence.display_command()));
+}
 
+fn render_retained_project_and_search(issue: &mut String, evidence: &ReductionEvidence) {
     issue.push_str("## Retained project\n\n");
     if evidence.kept_files.is_empty() {
         issue.push_str("_No regular files were retained._\n\n");
@@ -164,7 +179,9 @@ pub fn render_issue(evidence: &ReductionEvidence) -> String {
         evidence.measurements.elapsed_ms
     )
     .expect("writing to String cannot fail");
+}
 
+fn render_included_evidence_and_limits(issue: &mut String, evidence: &ReductionEvidence) {
     issue.push_str("## Included evidence\n\n");
     issue.push_str("- `project/` — exact final verified snapshot\n");
     issue.push_str("- `reduction.json` — versioned shared evidence\n");
@@ -177,7 +194,6 @@ pub fn render_issue(evidence: &ReductionEvidence) -> String {
         writeln!(issue, "- {}", escape_markdown_text(limitation))
             .expect("writing to String cannot fail");
     }
-    issue
 }
 
 fn truncate_chars(value: &str, limit: usize) -> String {

@@ -17,9 +17,13 @@ use walkdir::WalkDir;
 /// Runtime family used to select an explicit base image.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RuntimeFamily {
+    /// Rust project built and run with the pinned `Cargo` toolchain image.
     Cargo,
+    /// Python project run with the pinned `CPython` image.
     Python,
+    /// JavaScript project run with the pinned `Node.js` image.
     Npm,
+    /// Project requiring only a minimal Debian userspace.
     Generic,
 }
 
@@ -38,12 +42,19 @@ impl RuntimeFamily {
 /// Supported builder frontends that can emit OCI archives directly.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Builder {
+    /// Docker's `Buildx` frontend with direct `type=oci` output.
     DockerBuildx,
+    /// A standalone `BuildKit` daemon accessed through `buildctl`.
     BuildKit,
 }
 
 impl Builder {
     /// Detects the first builder whose version probe succeeds.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`OciError::BuilderUnavailable`] when neither Docker Buildx nor standalone
+    /// BuildKit can complete its version probe.
     pub fn detect() -> Result<Self, OciError> {
         if command_succeeds("docker", ["buildx", "version"]) {
             return Ok(Self::DockerBuildx);
@@ -67,7 +78,7 @@ pub struct OciRequest {
 }
 
 impl OciRequest {
-    /// Creates an export request from one completed ReproCut artifact.
+    /// Creates an export request from one completed `ReproCut` artifact.
     pub fn new(
         artifact_root: PathBuf,
         output: PathBuf,
@@ -86,6 +97,7 @@ impl OciRequest {
     }
 
     /// Pins a builder instead of auto-detecting one.
+    #[must_use]
     pub fn with_builder(mut self, builder: Builder) -> Self {
         self.builder = Some(builder);
         self
@@ -112,6 +124,11 @@ impl PreparedContext {
 }
 
 /// Prepares a context containing only the verified project and generated Dockerfile.
+///
+/// # Errors
+///
+/// Returns [`OciError`] when the entrypoint is empty, the verified project is absent, the source
+/// contains a link or special file, metadata cannot be serialized, or filesystem work fails.
 pub fn prepare_context(request: &OciRequest) -> Result<PreparedContext, OciError> {
     if request.command.is_empty() {
         return Err(OciError::EmptyCommand);
@@ -149,10 +166,15 @@ pub fn prepare_context(request: &OciRequest) -> Result<PreparedContext, OciError
 }
 
 /// Builds and validates one real OCI archive, never a context-only placeholder.
+///
+/// # Errors
+///
+/// Returns [`OciError`] when the destination already exists, no builder is available, context
+/// preparation or builder execution fails, or the emitted tar lacks the required OCI members.
 pub fn export_archive(request: &OciRequest) -> Result<Builder, OciError> {
     ensure_output_absent(request.output())?;
     let context = prepare_context(request)?;
-    let builder = request.builder.unwrap_or(Builder::detect()?);
+    let builder = select_builder(request.builder, Builder::detect)?;
     if let Some(parent) = request
         .output
         .parent()
@@ -191,7 +213,7 @@ fn copy_regular_tree(source: &Path, destination: &Path) -> Result<(), OciError> 
         let relative = entry
             .path()
             .strip_prefix(source)
-            .expect("walk entries remain below their root");
+            .map_err(|_| OciError::UnsupportedEntry(entry.path().to_path_buf()))?;
         if relative.as_os_str().is_empty() {
             continue;
         }
@@ -337,6 +359,13 @@ fn command_succeeds<const N: usize>(program: &str, arguments: [&str; N]) -> bool
         .is_ok_and(|status| status.success())
 }
 
+fn select_builder<F>(pinned: Option<Builder>, detect: F) -> Result<Builder, OciError>
+where
+    F: FnOnce() -> Result<Builder, OciError>,
+{
+    pinned.map_or_else(detect, Ok)
+}
+
 fn absolute_output(path: &Path) -> Result<PathBuf, OciError> {
     if path.is_absolute() {
         return Ok(path.to_path_buf());
@@ -365,49 +394,73 @@ fn ensure_output_absent(path: &Path) -> Result<(), OciError> {
 /// OCI context, builder, or archive validation failure.
 #[derive(Debug, Error)]
 pub enum OciError {
+    /// The artifact does not contain the final verified `project/` tree.
     #[error("artifact has no verified project directory: {0}")]
     MissingProject(PathBuf),
+    /// OCI cannot encode an empty entrypoint contract.
     #[error("OCI entrypoint command is empty")]
     EmptyCommand,
+    /// Minimal contexts reject links, devices, sockets, and other non-regular entries.
     #[error("OCI context refuses symlinks and special files: {0}")]
     UnsupportedEntry(PathBuf),
+    /// Export is fail-closed and will not overwrite an existing path.
     #[error("OCI output already exists: {0}")]
     OutputExists(PathBuf),
+    /// Neither supported OCI-capable frontend passed detection.
     #[error("neither Docker Buildx nor BuildKit is available")]
     BuilderUnavailable,
+    /// The selected builder executable could not be started or waited on.
     #[error("spawn {builder:?} failed: {source}")]
     SpawnBuilder {
+        /// Builder selected for this invocation.
         builder: Builder,
+        /// Operating-system process error.
         #[source]
         source: io::Error,
     },
+    /// The builder ran but returned an unsuccessful exit status.
     #[error("{builder:?} failed with {status}")]
     BuilderFailed {
+        /// Builder that reported failure.
         builder: Builder,
+        /// Exact process exit status.
         status: ExitStatus,
     },
+    /// The output tar omitted one or more mandatory OCI image-layout members.
     #[error(
         "builder output is not an OCI archive (oci-layout={has_layout}, index.json={has_index})"
     )]
-    InvalidArchive { has_layout: bool, has_index: bool },
+    InvalidArchive {
+        /// Whether the archive contained `oci-layout`.
+        has_layout: bool,
+        /// Whether the archive contained `index.json`.
+        has_index: bool,
+    },
+    /// A tar member carried a non-octal or overflowing size field.
     #[error("invalid tar size field: {0:?}")]
     InvalidTarSize(String),
+    /// An ordinary filesystem or archive-stream operation failed.
     #[error("{operation} failed for {path}: {source}")]
     Io {
+        /// Stable operation label.
         operation: &'static str,
+        /// Path affected by the operation.
         path: PathBuf,
+        /// Underlying operating-system error.
         #[source]
         source: io::Error,
     },
+    /// Recursive traversal of the verified project failed.
     #[error("walk verified project failed: {0}")]
     Walk(#[from] walkdir::Error),
+    /// OCI entrypoint or label JSON serialization failed.
     #[error("serialize OCI metadata failed: {0}")]
     Serialize(#[from] serde_json::Error),
 }
 
 #[cfg(test)]
 mod archive_tests {
-    use super::{validate_oci_archive, OciError};
+    use super::{select_builder, validate_oci_archive, Builder, OciError};
     use std::{fs, io::Write as _};
 
     #[test]
@@ -426,6 +479,15 @@ mod archive_tests {
                 has_index: true
             })
         ));
+    }
+
+    #[test]
+    fn a_pinned_builder_never_runs_environment_detection() {
+        let selected = select_builder(Some(Builder::BuildKit), || {
+            panic!("pinned builder must bypass environment detection")
+        })
+        .expect("pinned builder");
+        assert_eq!(selected, Builder::BuildKit);
     }
 
     fn write_tar(path: &std::path::Path, entries: &[(&str, &[u8])]) {

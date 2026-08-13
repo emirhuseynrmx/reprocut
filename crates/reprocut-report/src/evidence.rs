@@ -186,6 +186,11 @@ pub struct AttemptSummary {
 }
 
 /// Streams newline-delimited attempts without building a second JSON array.
+///
+/// # Errors
+///
+/// Returns a [`serde_json::Error`] when an attempt cannot be serialized or the destination writer
+/// rejects a record or newline.
 pub fn write_attempts_jsonl<W: Write>(
     attempts: &[AttemptSummary],
     mut output: W,
@@ -204,6 +209,11 @@ impl ReductionEvidence {
     }
 
     /// Validates cryptographic fields and mode-specific evidence invariants.
+    ///
+    /// # Errors
+    ///
+    /// Returns a stable reason string when the schema, digest encoding, preparation identity,
+    /// final verification, or mode-specific oracle contract is invalid.
     pub fn validate(&self) -> Result<(), &'static str> {
         if self.schema_version != EVIDENCE_SCHEMA_VERSION {
             return Err("unsupported evidence schema");
