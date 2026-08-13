@@ -130,6 +130,7 @@ fn auto_reserves_one_anchor_for_every_error_bearing_stream_even_when_stdout_fill
 fn api_routes_and_urls_retain_semantic_status_values() {
     for (baseline, candidate) in [
         ("HTTPError: GET /api/v1:404", "HTTPError: GET /api/v1:500"),
+        ("HTTPError at /api/v1:404", "HTTPError at /api/v1:500"),
         (
             "HTTPError: https://example.com/v1:404",
             "HTTPError: https://example.com/v1:500",
@@ -142,6 +143,47 @@ fn api_routes_and_urls_retain_semantic_status_values() {
             oracle.classify(&failed(candidate)),
             CandidateVerdict::Rejected,
             "{baseline} must differ from {candidate}"
+        );
+    }
+}
+
+#[test]
+fn volatile_labels_do_not_match_inside_semantic_words() {
+    for (baseline, candidate) in [
+        ("RuntimeError: support 404", "RuntimeError: support 500"),
+        ("RuntimeError: rapid 123", "RuntimeError: rapid 999"),
+        ("RuntimeError: pipeline 123", "RuntimeError: pipeline 999"),
+        ("RuntimeError: 12msisdn", "RuntimeError: 13msisdn"),
+    ] {
+        let oracle = FailureOracle::from_baselines(&[failed(baseline), failed(baseline)])
+            .expect("semantic value is a discriminative failure value");
+
+        assert_eq!(
+            oracle.classify(&failed(candidate)),
+            CandidateVerdict::Rejected,
+            "{baseline} must differ from {candidate}"
+        );
+    }
+}
+
+#[test]
+fn lexically_bounded_volatile_values_remain_normalized() {
+    for (baseline, candidate) in [
+        ("RuntimeError: port 404", "RuntimeError: port 500"),
+        ("RuntimeError: PID 123", "RuntimeError: PID 999"),
+        ("RuntimeError: line 12", "RuntimeError: line 99"),
+        (
+            "RuntimeError: failed after 10 seconds",
+            "RuntimeError: failed after 20 seconds",
+        ),
+    ] {
+        let oracle = FailureOracle::from_baselines(&[failed(baseline), failed(baseline)])
+            .expect("bounded volatile value is stable after normalization");
+
+        assert_eq!(
+            oracle.classify(&failed(candidate)),
+            CandidateVerdict::Preserved,
+            "{baseline} and {candidate} differ only by volatile context"
         );
     }
 }
