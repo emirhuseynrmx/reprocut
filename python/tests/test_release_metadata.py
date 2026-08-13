@@ -10,9 +10,7 @@ try:
 except ModuleNotFoundError:
     tomllib = None
 
-pytestmark = pytest.mark.skipif(
-    tomllib is None, reason="stdlib tomllib requires Python 3.11+"
-)
+pytestmark = pytest.mark.skipif(tomllib is None, reason="stdlib tomllib requires Python 3.11+")
 
 ROOT = Path(__file__).resolve().parents[2]
 CRATES = ROOT / "crates"

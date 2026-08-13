@@ -90,9 +90,7 @@ def package_binary(request: PackageRequest) -> Path:
         else:
             write_tar_gz(temporary, root, files, request.source_date_epoch)
         if archive.exists() or archive.is_symlink():
-            raise FileExistsError(
-                f"release archive appeared while packaging: {archive}"
-            )
+            raise FileExistsError(f"release archive appeared while packaging: {archive}")
         os.replace(temporary, archive)
     finally:
         temporary.unlink(missing_ok=True)
@@ -138,9 +136,7 @@ def write_tar_gz(
         with gzip.GzipFile(
             filename="", mode="wb", fileobj=raw, mtime=epoch, compresslevel=9
         ) as zipped:
-            with tarfile.open(
-                fileobj=zipped, mode="w", format=tarfile.PAX_FORMAT
-            ) as archive:
+            with tarfile.open(fileobj=zipped, mode="w", format=tarfile.PAX_FORMAT) as archive:
                 for relative, contents, mode in files:
                     member = tarfile.TarInfo(f"{root}/{relative}")
                     member.size = len(contents)
@@ -160,17 +156,13 @@ def write_zip(
     epoch: int,
 ) -> None:
     date_time = zip_timestamp(epoch)
-    with zipfile.ZipFile(
-        output, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=9
-    ) as archive:
+    with zipfile.ZipFile(output, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for relative, contents, mode in files:
             member = zipfile.ZipInfo(f"{root}/{relative}", date_time=date_time)
             member.create_system = 3
             member.compress_type = zipfile.ZIP_DEFLATED
             member.external_attr = (stat.S_IFREG | mode) << 16
-            archive.writestr(
-                member, contents, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9
-            )
+            archive.writestr(member, contents, compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
 
 
 def zip_timestamp(epoch: int) -> tuple[int, int, int, int, int, int]:

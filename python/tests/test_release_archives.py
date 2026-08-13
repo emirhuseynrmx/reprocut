@@ -57,9 +57,7 @@ def test_archive_is_reproducible_bounded_and_self_describing(tmp_path: Path) -> 
         "reprocut",
     )
     with tarfile.open(first, "r:gz") as archive:
-        version = json.load(
-            archive.extractfile(f"reprocut-0.1.0-{TARGET}/VERSION.json")
-        )
+        version = json.load(archive.extractfile(f"reprocut-0.1.0-{TARGET}/VERSION.json"))
     assert version["source_date_epoch"] == 1_700_000_000
 
 
@@ -70,9 +68,7 @@ def test_packaging_refuses_overwrite_and_unsupported_target(tmp_path: Path) -> N
         package_binary(request)
     with pytest.raises(ValueError, match="unsupported release target"):
         package_binary(
-            PackageRequest(
-                **{**request.__dict__, "target": "javascript-unknown-browser"}
-            )
+            PackageRequest(**{**request.__dict__, "target": "javascript-unknown-browser"})
         )
 
 

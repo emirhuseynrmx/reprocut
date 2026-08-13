@@ -32,7 +32,7 @@ ATTEMPTS_END = "__REPROCUT_ATTEMPTS_END__"
 # The official Playground image has no Python executable. This adapter lets the
 # real Rust search engine execute a content-equivalent shell property there.
 # The builder separately runs both Python trees three times before publication.
-DEMO_RUNNER = r'''
+DEMO_RUNNER = r"""
 use std::{
     ffi::OsString,
     io,
@@ -119,12 +119,12 @@ fn bounded(mut value: Vec<u8>, limit: usize) -> (Vec<u8>, bool) {
 pub const fn containment_mechanism() -> ContainmentMechanism {
     ContainmentMechanism::DirectChild
 }
-'''
+"""
 
 # The checked-in demo never selects isolated Python. Keeping this API-compatible
 # fail-closed stub out of the remote code avoids making Playground compile an
 # unreachable virtual-environment implementation under its tight memory limit.
-DEMO_PYTHON_ISOLATION = r'''
+DEMO_PYTHON_ISOLATION = r"""
 use std::{ffi::OsString, path::{Path, PathBuf}, time::Duration};
 use crate::reprocut_core::ContentDigest;
 use crate::reprocut_runner::CommandSpec;
@@ -154,7 +154,7 @@ pub(crate) struct PreparedPythonCandidate;
 impl PreparedPythonCandidate {
     pub(crate) fn command_for(&self, _: &Path, _: &[OsString], _: Duration, _: usize) -> Result<CommandSpec, PythonPreparationError> { Err(PythonPreparationError) }
 }
-'''
+"""
 
 
 def source_files(root: Path) -> list[Path]:
@@ -191,9 +191,7 @@ def stable_python_failure(root: Path) -> object:
     runs = [execute_python_failure(root) for _ in range(3)]
     if any(run.returncode == 0 for run in runs):
         raise RuntimeError("demo command unexpectedly succeeded")
-    return FailureOracle.from_baselines(
-        [(run.returncode, run.stdout, run.stderr) for run in runs]
-    )
+    return FailureOracle.from_baselines([(run.returncode, run.stdout, run.stderr) for run in runs])
 
 
 def execute_python_failure(root: Path) -> subprocess.CompletedProcess[str]:
@@ -213,14 +211,12 @@ def remote_program() -> str:
     for path in source_files(SOURCE):
         relative = path.relative_to(SOURCE).as_posix()
         contents = path.read_text(encoding="utf-8")
-        writes.append(
-            f"write_demo_file(&source, {raw_string(relative)}, {raw_string(contents)});"
-        )
+        writes.append(f"write_demo_file(&source, {raw_string(relative)}, {raw_string(contents)});")
 
     shell_oracle = (
         "if grep -q quote_total bug.py 2>/dev/null && "
         "grep -q 'subtotal + currency' checkout.py 2>/dev/null && "
-        "grep -q '\"currency\": \"TRY\"' fixtures/order.json 2>/dev/null; then "
+        'grep -q \'"currency": "TRY"\' fixtures/order.json 2>/dev/null; then '
         'printf "%s\\n" "TypeError: unsupported operand type(s) for +: '
         "'decimal.Decimal' and 'str'\" >&2; exit 1; "
         'fi; printf "%s\\n" "required demo material missing" >&2; exit 2'
@@ -456,9 +452,7 @@ def write_reproduction_scripts(artifact: Path) -> None:
     )
 
 
-def format_summary(
-    *, output: str, original_files: int, retained_files: int, attempts: int
-) -> str:
+def format_summary(*, output: str, original_files: int, retained_files: int, attempts: int) -> str:
     return f"built {output}: {original_files} -> {retained_files} files, {attempts} candidates"
 
 
@@ -538,12 +532,8 @@ def main(*, refresh: bool = False) -> int:
             encoding="utf-8",
             newline="\n",
         )
-        (artifact / "report.html").write_text(
-            report + "\n", encoding="utf-8", newline="\n"
-        )
-        (artifact / "issue.md").write_text(
-            issue + "\n", encoding="utf-8", newline="\n"
-        )
+        (artifact / "report.html").write_text(report + "\n", encoding="utf-8", newline="\n")
+        (artifact / "issue.md").write_text(issue + "\n", encoding="utf-8", newline="\n")
         (artifact / "attempts.jsonl").write_text(
             attempts.rstrip("\r\n") + "\n", encoding="utf-8", newline="\n"
         )

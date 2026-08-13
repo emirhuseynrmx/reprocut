@@ -28,7 +28,6 @@ class FailureOracle:
         failure_patterns: Sequence[str] | None = None,
         reject_patterns: Sequence[str] | None = None,
     ) -> FailureOracle: ...
-
     def classify(
         self,
         exit_code: int,
@@ -38,6 +37,5 @@ class FailureOracle:
         timed_out: bool = False,
         truncated: bool = False,
     ) -> Verdict: ...
-
     @property
     def fingerprint(self) -> dict[str, object]: ...

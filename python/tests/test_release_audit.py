@@ -21,9 +21,7 @@ def test_static_release_contract_is_fully_encoded_and_current() -> None:
     assert len(checks) >= 8
     assert "oracle-ci-coverage" in {item.name for item in checks}
     assert "dependency-lock" in {item.name for item in checks}
-    assert all(item.passed for item in checks), [
-        item for item in checks if not item.passed
-    ]
+    assert all(item.passed for item in checks), [item for item in checks if not item.passed]
 
 
 def test_ci_evidence_is_schema_versioned_and_bound_to_the_expected_commit(

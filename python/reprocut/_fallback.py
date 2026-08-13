@@ -89,19 +89,13 @@ _SOURCE_EXTENSIONS = frozenset(
         "zsh",
     }
 )
-_EXTENSIONLESS_SOURCE_FILES = frozenset(
-    {"BUILD", "Dockerfile", "Makefile", "WORKSPACE"}
-)
+_EXTENSIONLESS_SOURCE_FILES = frozenset({"BUILD", "Dockerfile", "Makefile", "WORKSPACE"})
 _CHANNEL_ORDER = {"stdout": 0, "stderr": 1}
 _NAMED_LOCATION = re.compile(r"([Ll]ine|[Cc]olumn)[ \t]+[0-9]+")
 _HORIZONTAL_SPACE = re.compile(r"[\t ]+")
 _PYTEST = re.compile(r"^(?:failed|error)[ \t]+[^ \t\r\n]+(?:::[^ \t\r\n]+)+")
-_COMPILER = re.compile(
-    r"(?:error\[[a-z][0-9]{2,}\]|(?:fatal )?error[ \t]+[a-z]{1,5}[0-9]{2,})"
-)
-_ROOT = re.compile(
-    r"(?:[a-z_][a-z0-9_.]*(?:error|exception)|panicked at|^panic:|^fatal:)"
-)
+_COMPILER = re.compile(r"(?:error\[[a-z][0-9]{2,}\]|(?:fatal )?error[ \t]+[a-z]{1,5}[0-9]{2,})")
+_ROOT = re.compile(r"(?:[a-z_][a-z0-9_.]*(?:error|exception)|panicked at|^panic:|^fatal:)")
 _ASSERTION = re.compile(r"(?:assert(?:ion)?|expected|actual|left.*right)")
 _MESSAGE = re.compile(r"(?:error|failed|failure|panic|exception|fatal)")
 _SUMMARY = re.compile(
@@ -123,9 +117,7 @@ class EvaluationPolicy:
 
     __slots__ = ("_mode", "_required", "_runs")
 
-    def __init__(
-        self, mode: str, runs: int, required: int, *, _factory: bool = False
-    ) -> None:
+    def __init__(self, mode: str, runs: int, required: int, *, _factory: bool = False) -> None:
         if not _factory:
             raise TypeError("use EvaluationPolicy.strict() or EvaluationPolicy.flaky()")
         object.__setattr__(self, "_mode", mode)
@@ -149,9 +141,7 @@ class EvaluationPolicy:
         if not 1 <= required <= runs:
             raise ValueError("flaky required must be between 1 and runs")
         if required * 3 < runs * 2:
-            raise ValueError(
-                "flaky required must be at least a two-thirds supermajority"
-            )
+            raise ValueError("flaky required must be at least a two-thirds supermajority")
         return cls("flaky", runs, required, _factory=True)
 
     @property
@@ -203,12 +193,8 @@ class FailureOracle:
         object.__setattr__(self, "_failure_patterns", failure_patterns)
         object.__setattr__(self, "_reject_patterns", reject_patterns)
         object.__setattr__(self, "_oracle_spec_digest", oracle_spec_digest)
-        object.__setattr__(
-            self, "_required_regex", tuple(map(re.compile, failure_patterns))
-        )
-        object.__setattr__(
-            self, "_reject_regex", tuple(map(re.compile, reject_patterns))
-        )
+        object.__setattr__(self, "_required_regex", tuple(map(re.compile, failure_patterns)))
+        object.__setattr__(self, "_reject_regex", tuple(map(re.compile, reject_patterns)))
 
     def __setattr__(self, name: str, value: object) -> None:
         del name, value
@@ -233,9 +219,7 @@ class FailureOracle:
         first_exit = observations[0][0]
         if mode == "exit_zero":
             if any(exit_code != 0 for exit_code, _, _ in observations):
-                raise ValueError(
-                    "exit-zero mode requires every baseline to exit with code zero"
-                )
+                raise ValueError("exit-zero mode requires every baseline to exit with code zero")
             anchors: tuple[tuple[str, str], ...] = ()
         else:
             if any(exit_code != first_exit for exit_code, _, _ in observations[1:]):
@@ -244,32 +228,20 @@ class FailureOracle:
             reject = tuple(map(re.compile, canonical_reject))
             if mode == "regex":
                 for observation in observations:
-                    diagnostic = _diagnostic_view(
-                        channel, observation[1], observation[2]
-                    )
+                    diagnostic = _diagnostic_view(channel, observation[1], observation[2])
                     if any(pattern.search(diagnostic) for pattern in reject):
-                        raise ValueError(
-                            "a reject expression matches an original baseline"
-                        )
+                        raise ValueError("a reject expression matches an original baseline")
                     if not all(pattern.search(diagnostic) for pattern in required):
-                        raise ValueError(
-                            "a required expression does not match every baseline"
-                        )
+                        raise ValueError("a required expression does not match every baseline")
                 anchors = ()
             else:
                 for observation in observations:
-                    diagnostic = _diagnostic_view(
-                        channel, observation[1], observation[2]
-                    )
+                    diagnostic = _diagnostic_view(channel, observation[1], observation[2])
                     if any(pattern.search(diagnostic) for pattern in reject):
-                        raise ValueError(
-                            "a reject expression matches an original baseline"
-                        )
+                        raise ValueError("a reject expression matches an original baseline")
                 anchors = _stable_discriminators(channel, observations)
                 if not anchors:
-                    raise ValueError(
-                        "baseline diagnostic has no stable discriminative anchor"
-                    )
+                    raise ValueError("baseline diagnostic has no stable discriminative anchor")
         spec_digest = _spec_digest(mode, channel, canonical_failure, canonical_reject)
         return cls(
             first_exit,
@@ -310,16 +282,13 @@ class FailureOracle:
             )
         streams = {"stdout": _normalize(stdout), "stderr": _normalize(diagnostic)}
         matches = all(
-            text in streams[anchor_channel].splitlines()
-            for anchor_channel, text in self._anchors
+            text in streams[anchor_channel].splitlines() for anchor_channel, text in self._anchors
         )
         return "preserved" if matches else "rejected"
 
     @property
     def fingerprint(self) -> dict[str, object]:
-        anchors = [
-            {"channel": channel, "text": text} for channel, text in self._anchors
-        ]
+        anchors = [{"channel": channel, "text": text} for channel, text in self._anchors]
         fingerprint_digest = _fingerprint_digest(
             self._mode,
             self._exit_code,
@@ -460,22 +429,18 @@ def _stable_discriminators(
         values = [item[1] if stream == "stdout" else item[2] for item in observations]
         first = _eligible_lines(stream, _normalize(values[0]))
         intersections = [
-            {line[4] for line in _eligible_lines(stream, _normalize(value))}
-            for value in values[1:]
+            {line[4] for line in _eligible_lines(stream, _normalize(value))} for value in values[1:]
         ]
         candidates.extend(
             line for line in first if all(line[4] in lines for lines in intersections)
         )
     if channel == "combined" and not all(
-        any(candidate[3] == stream for candidate in candidates)
-        for stream in ("stdout", "stderr")
+        any(candidate[3] == stream for candidate in candidates) for stream in ("stdout", "stderr")
     ):
         return ()
     if channel == "auto":
         candidates = [candidate for candidate in candidates if candidate[0] < 4]
-    candidates.sort(
-        key=lambda line: (line[0], -line[1], line[2], _CHANNEL_ORDER[line[3]], line[4])
-    )
+    candidates.sort(key=lambda line: (line[0], -line[1], line[2], _CHANNEL_ORDER[line[3]], line[4]))
     selected: list[tuple[int, int, int, str, str]] = []
     if channel == "combined":
         selected.extend(
@@ -509,9 +474,7 @@ def _stable_discriminators(
     return tuple((line[3], line[4]) for line in selected)
 
 
-def _eligible_lines(
-    stream: str, diagnostic: str
-) -> list[tuple[int, int, int, str, str]]:
+def _eligible_lines(stream: str, diagnostic: str) -> list[tuple[int, int, int, str, str]]:
     result = []
     for position, line in enumerate(diagnostic.splitlines()):
         kind = _discriminator_kind(line)
@@ -551,9 +514,7 @@ def _is_boilerplate(line: str) -> bool:
     }:
         return True
     return bool(
-        _SUMMARY.search(lowercase)
-        or _LOCATION.search(lowercase)
-        or _LIFECYCLE.search(lowercase)
+        _SUMMARY.search(lowercase) or _LOCATION.search(lowercase) or _LIFECYCLE.search(lowercase)
     )
 
 

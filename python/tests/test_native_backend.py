@@ -15,7 +15,10 @@ def test_wheel_uses_the_native_backend() -> None:
     assert reprocut.FailureOracle.__module__ == "reprocut._native"
     assert reprocut.EvaluationPolicy.flaky(11, 9).required == 9
     oracle = reprocut.FailureOracle.from_baselines(
-        [(1, "currency=EUR", "TypeError: invoice 41"), (1, "currency=EUR", "TypeError: invoice 42")],
+        [
+            (1, "currency=EUR", "TypeError: invoice 41"),
+            (1, "currency=EUR", "TypeError: invoice 42"),
+        ],
         mode="regex",
         channel="combined",
         failure_patterns=[r"TypeError: invoice [0-9]+", "currency"],

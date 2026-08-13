@@ -108,7 +108,10 @@ class ReductionRequest:
             raise ValueError(f"unsupported oracle mode: {self.oracle_mode}")
         if len(self.failure_patterns) > 16 or len(self.reject_patterns) > 16:
             raise ValueError("oracle accepts at most 16 required and 16 reject expressions")
-        if any(len(pattern.encode("utf-8")) > 4096 for pattern in (*self.failure_patterns, *self.reject_patterns)):
+        if any(
+            len(pattern.encode("utf-8")) > 4096
+            for pattern in (*self.failure_patterns, *self.reject_patterns)
+        ):
             raise ValueError("oracle regular expression exceeds 4096 UTF-8 bytes")
         try:
             for pattern in (*self.failure_patterns, *self.reject_patterns):
@@ -122,9 +125,19 @@ class ReductionRequest:
         if self.oracle_mode == "exit_zero" and (self.failure_patterns or self.reject_patterns):
             raise ValueError("exit_zero mode does not accept regex patterns")
         isolation_selected = self.preparation == "isolated_python"
-        isolation_complete = self.python_executable is not None and self.python_wheelhouse is not None
-        isolation_fields = isolation_complete or self.python_executable is not None or self.python_wheelhouse is not None or bool(self.python_extras) or self.prepare_spec is not None
-        if isolation_selected != isolation_complete or (not isolation_selected and isolation_fields):
+        isolation_complete = (
+            self.python_executable is not None and self.python_wheelhouse is not None
+        )
+        isolation_fields = (
+            isolation_complete
+            or self.python_executable is not None
+            or self.python_wheelhouse is not None
+            or bool(self.python_extras)
+            or self.prepare_spec is not None
+        )
+        if isolation_selected != isolation_complete or (
+            not isolation_selected and isolation_fields
+        ):
             raise ValueError(
                 "isolated_python requires python_executable and python_wheelhouse, and isolation fields require isolated_python"
             )
@@ -548,9 +561,7 @@ def _load_evidence(path: Path, fingerprint: str) -> Mapping[str, object]:
         or not re.fullmatch(r"[0-9a-f]{64}", preparation_digest)
     ):
         raise ReproCutError("completed evidence has an invalid preparation SHA-256")
-    if preparation_digest is None and not (
-        isinstance(limitations, list) and limitations
-    ):
+    if preparation_digest is None and not (isinstance(limitations, list) and limitations):
         raise ReproCutError("missing preparation digest requires an explicit limitation")
     return cast(Mapping[str, object], _freeze_json(document))
 

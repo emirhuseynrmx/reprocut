@@ -21,9 +21,7 @@ def build_manifest(
     source_revision: str,
     expected_targets: set[str] | None = None,
 ) -> tuple[Path, Path]:
-    expected = (
-        set(SUPPORTED_TARGETS) if expected_targets is None else set(expected_targets)
-    )
+    expected = set(SUPPORTED_TARGETS) if expected_targets is None else set(expected_targets)
     archives: dict[str, Path] = {}
     for candidate in sorted(input_root.rglob("reprocut-*")):
         if not candidate.is_file() or candidate.is_symlink():
@@ -45,9 +43,7 @@ def build_manifest(
     checksums: dict[str, str] = {}
     for target in sorted(archives):
         archive = archives[target]
-        verified = verify_archive(
-            archive, expected_target=target, expected_version=version
-        )
+        verified = verify_archive(archive, expected_target=target, expected_version=version)
         if verified.source_revision != source_revision:
             raise ValueError(f"source revision mismatch for {target}")
         sbom = archive.with_name(f"{archive.name}.spdx.json")
@@ -76,9 +72,7 @@ def build_manifest(
     for path in (checksums_path, manifest_path):
         if path.exists() or path.is_symlink():
             raise FileExistsError(f"release aggregate already exists: {path}")
-    checksum_text = "".join(
-        f"{digest}  {name}\n" for name, digest in sorted(checksums.items())
-    )
+    checksum_text = "".join(f"{digest}  {name}\n" for name, digest in sorted(checksums.items()))
     manifest = {
         "schema_version": 1,
         "name": "reprocut",
@@ -104,9 +98,7 @@ def validate_spdx(path: Path) -> None:
         value = json.loads(path.read_bytes())
     except json.JSONDecodeError as error:
         raise ValueError(f"invalid SPDX JSON: {path}") from error
-    if not isinstance(value, dict) or not str(value.get("spdxVersion", "")).startswith(
-        "SPDX-"
-    ):
+    if not isinstance(value, dict) or not str(value.get("spdxVersion", "")).startswith("SPDX-"):
         raise ValueError(f"SBOM is not an SPDX JSON document: {path}")
 
 

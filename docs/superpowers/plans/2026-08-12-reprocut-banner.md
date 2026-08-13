@@ -46,7 +46,9 @@ def test_banner_is_static_accessible_and_evidence_bound() -> None:
     root = ET.fromstring(source)
     namespace = {"svg": "http://www.w3.org/2000/svg"}
     text = " ".join("".join(root.itertext()).split())
-    states = [node.attrib["data-file-state"] for node in root.iter() if "data-file-state" in node.attrib]
+    states = [
+        node.attrib["data-file-state"] for node in root.iter() if "data-file-state" in node.attrib
+    ]
 
     assert root.attrib["viewBox"] == "0 0 1600 600"
     assert root.find("svg:title", namespace) is not None

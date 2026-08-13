@@ -57,9 +57,7 @@ def verify_archive(
     for member in members:
         safe = safe_member(member.name)
         if len(safe.parts) < 2 or safe.parts[0] != root:
-            raise ArchiveError(
-                f"archive member escaped the release root: {member.name}"
-            )
+            raise ArchiveError(f"archive member escaped the release root: {member.name}")
         key = PurePosixPath(*safe.parts[1:]).as_posix()
         if key in relative:
             raise ArchiveError(f"duplicate archive member: {key}")
@@ -104,10 +102,7 @@ def verify_archive(
         raise ArchiveError("VERSION.json version or target does not match archive")
     if version["binary"] != binary:
         raise ArchiveError("VERSION.json binary does not match target")
-    if (
-        not isinstance(version["source_date_epoch"], int)
-        or version["source_date_epoch"] < 0
-    ):
+    if not isinstance(version["source_date_epoch"], int) or version["source_date_epoch"] < 0:
         raise ArchiveError("VERSION.json source date is invalid")
     revision = version["source_revision"]
     if not isinstance(revision, str) or REVISION.fullmatch(revision) is None:
@@ -147,9 +142,7 @@ def read_members(archive: Path) -> list[Member]:
                 stream = source.extractfile(member)
                 if stream is None:
                     raise ArchiveError(f"unreadable archive member: {member.name}")
-                result.append(
-                    Member(member.name, stream.read(MAX_INPUT_BYTES + 1), member.mode)
-                )
+                result.append(Member(member.name, stream.read(MAX_INPUT_BYTES + 1), member.mode))
             return result
     if archive.suffix == ".zip":
         with zipfile.ZipFile(archive) as source:

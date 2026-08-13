@@ -254,22 +254,22 @@ def render_markdown(document: dict[str, Any]) -> str:
     mib = 1024 * 1024
     return f"""# ReproCut 0.1 release benchmark
 
-This is a {document['measured_runs']}-run measurement of the checked-in 312-file fixture on one
+This is a {document["measured_runs"]}-run measurement of the checked-in 312-file fixture on one
 recorded machine. It is evidence for this environment, not a universal speed claim.
 
 | Metric | Before | After / measured |
 |---|---:|---:|
-| Files | {original['files']} | {retained['files']} |
-| Bytes | {original['bytes']} | {retained['bytes']} |
-| Lines | {original['lines']} | {retained['lines']} |
-| End-to-end wall time | — | {wall['median']:.3f} ms median ({wall['min']:.3f}–{wall['max']:.3f}) |
-| Oracle executions | — | {oracle['median']} median ({oracle['min']}–{oracle['max']}) |
-| Candidate attempts | — | {attempts['median']} median ({attempts['min']}–{attempts['max']}) |
-| Sampled process-tree peak RSS | — | {memory['median'] / mib:.2f} MiB median ({memory['min'] / mib:.2f}–{memory['max'] / mib:.2f}) |
+| Files | {original["files"]} | {retained["files"]} |
+| Bytes | {original["bytes"]} | {retained["bytes"]} |
+| Lines | {original["lines"]} | {retained["lines"]} |
+| End-to-end wall time | — | {wall["median"]:.3f} ms median ({wall["min"]:.3f}–{wall["max"]:.3f}) |
+| Oracle executions | — | {oracle["median"]} median ({oracle["min"]}–{oracle["max"]}) |
+| Candidate attempts | — | {attempts["median"]} median ({attempts["min"]}–{attempts["max"]}) |
+| Sampled process-tree peak RSS | — | {memory["median"] / mib:.2f} MiB median ({memory["min"] / mib:.2f}–{memory["max"] / mib:.2f}) |
 
-Failure fingerprint: `{summary['fingerprint_sha256']}`
+Failure fingerprint: `{summary["fingerprint_sha256"]}`
 
-Peak RSS is sampled every {document['poll_interval_ms']:.3f} ms across the ReproCut process and
+Peak RSS is sampled every {document["poll_interval_ms"]:.3f} ms across the ReproCut process and
 visible descendants; a short-lived peak between samples can be missed. Raw runs and complete
 environment metadata are preserved in `benchmark.json`.
 """

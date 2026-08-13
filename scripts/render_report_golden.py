@@ -10,9 +10,7 @@ from playground_workspace_verify import ROOT, report_source, wrap
 
 
 def main() -> int:
-    fixture = (ROOT / "scripts/verification/render_report_fixture.rs").read_text(
-        encoding="utf-8"
-    )
+    fixture = (ROOT / "scripts/verification/render_report_fixture.rs").read_text(encoding="utf-8")
     code = "\n".join([wrap("reprocut_report", report_source()), fixture])
     payload = json.dumps(
         {

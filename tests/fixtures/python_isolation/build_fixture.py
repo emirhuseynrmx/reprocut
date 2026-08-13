@@ -24,9 +24,7 @@ def wheel(name: str) -> None:
     info = f"{distribution}-1.0.0.dist-info"
     files = {
         f"{distribution}/__init__.py": f"VALUE = {name!r}\n".encode(),
-        f"{info}/METADATA": (
-            f"Metadata-Version: 2.1\nName: {name}\nVersion: 1.0.0\n\n"
-        ).encode(),
+        f"{info}/METADATA": (f"Metadata-Version: 2.1\nName: {name}\nVersion: 1.0.0\n\n").encode(),
         f"{info}/WHEEL": b"Wheel-Version: 1.0\nGenerator: reprocut-fixture\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
         f"{info}/top_level.txt": f"{distribution}\n".encode(),
     }

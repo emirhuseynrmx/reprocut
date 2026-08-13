@@ -33,10 +33,7 @@ def test_regex_mode_requires_all_patterns_and_applies_reject_veto() -> None:
 
     assert oracle.classify(1, "TypeError: invoice 9 currency") == "preserved"
     assert oracle.classify(1, "TypeError: invoice 9") == "rejected"
-    assert (
-        oracle.classify(1, "TypeError: invoice 9 currency\nsecondary failure")
-        == "rejected"
-    )
+    assert oracle.classify(1, "TypeError: invoice 9 currency\nsecondary failure") == "rejected"
     assert oracle.fingerprint["mode"] == "regex"
     assert oracle.fingerprint["failure_patterns"] == [
         "TypeError: invoice [0-9]+",
