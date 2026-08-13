@@ -11,11 +11,12 @@ proptest! {
         universe_len in 1_usize..33,
         raw_required in prop::collection::vec(0_u32..32, 1..16),
     ) {
+        let universe_len = u32::try_from(universe_len).expect("strategy bounds fit u32");
         let required = raw_required
             .into_iter()
-            .map(|id| id % universe_len as u32)
+            .map(|id| id % universe_len)
             .collect::<BTreeSet<_>>();
-        let units = (0..universe_len as u32)
+        let units = (0..universe_len)
             .map(|id| ReductionUnit::new(id, format!("unit-{id}")))
             .collect::<Vec<_>>();
 

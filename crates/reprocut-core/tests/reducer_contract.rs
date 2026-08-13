@@ -7,7 +7,12 @@ fn removes_every_unit_not_required_for_failure() {
     let units = ["a", "bug.py", "b", "c"]
         .into_iter()
         .enumerate()
-        .map(|(id, path)| ReductionUnit::new(id as u32, path.into()))
+        .map(|(id, path)| {
+            ReductionUnit::new(
+                u32::try_from(id).expect("fixture identifier fits u32"),
+                path.into(),
+            )
+        })
         .collect::<Vec<_>>();
 
     let result = reduce(&units, |kept| {
@@ -34,7 +39,12 @@ fn inconclusive_candidates_are_never_accepted() {
     let units = ["oracle.txt", "noise.txt"]
         .into_iter()
         .enumerate()
-        .map(|(id, path)| ReductionUnit::new(id as u32, path.into()))
+        .map(|(id, path)| {
+            ReductionUnit::new(
+                u32::try_from(id).expect("fixture identifier fits u32"),
+                path.into(),
+            )
+        })
         .collect::<Vec<_>>();
 
     let result = reduce(&units, |kept| {
@@ -148,7 +158,12 @@ fn required_pair_fixture() -> Vec<ReductionUnit> {
     ["noise-a", "left", "noise-b", "right", "noise-c"]
         .into_iter()
         .enumerate()
-        .map(|(id, path)| ReductionUnit::new(id as u32, path.into()))
+        .map(|(id, path)| {
+            ReductionUnit::new(
+                u32::try_from(id).expect("fixture identifier fits u32"),
+                path.into(),
+            )
+        })
         .collect()
 }
 

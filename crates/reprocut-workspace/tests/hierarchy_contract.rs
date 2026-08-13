@@ -8,7 +8,12 @@ fn directory_groups_precede_sorted_file_leaves() {
     let units = ["src/a.rs", "src/nested/b.rs", "tests/c.rs", "README.md"]
         .into_iter()
         .enumerate()
-        .map(|(id, path)| ReductionUnit::new(id as u32, path.to_owned()))
+        .map(|(id, path)| {
+            ReductionUnit::new(
+                u32::try_from(id).expect("fixture identifier fits u32"),
+                path.to_owned(),
+            )
+        })
         .collect::<Vec<_>>();
     let hierarchy = DirectoryHierarchy::from_units(&units);
     let groups = hierarchy.groups();
