@@ -427,15 +427,10 @@ pub fn normalize_diagnostic(input: &str) -> String {
     text = replace_contextual_matches(uuid, &text, "<uuid>", |input, start, _| {
         uuid_field.is_match(current_line_prefix(input, start))
     });
-    text = replace_contextual_matches(
-        timestamp,
-        &text,
-        "<timestamp>",
-        |input, start, end| {
-            timestamp_field.is_match(current_line_prefix(input, start))
-                || is_log_envelope_timestamp(input, start, end, log_level)
-        },
-    );
+    text = replace_contextual_matches(timestamp, &text, "<timestamp>", |input, start, end| {
+        timestamp_field.is_match(current_line_prefix(input, start))
+            || is_log_envelope_timestamp(input, start, end, log_level)
+    });
     text = windows_temp.replace_all(&text, "<temp>").into_owned();
     text = unix_temp.replace_all(&text, "<temp>").into_owned();
     text = address.replace_all(&text, "address <address>").into_owned();
@@ -504,12 +499,18 @@ fn replace_contextual_matches(
 }
 
 fn current_line_prefix(input: &str, start: usize) -> &str {
-    input[..start].rsplit('\n').next().unwrap_or(&input[..start])
+    input[..start]
+        .rsplit('\n')
+        .next()
+        .unwrap_or(&input[..start])
 }
 
 fn is_log_envelope_timestamp(input: &str, start: usize, end: usize, log_level: &Regex) -> bool {
     let prefix = current_line_prefix(input, start);
-    if !prefix.chars().all(|character| matches!(character, ' ' | '\t' | '[')) {
+    if !prefix
+        .chars()
+        .all(|character| matches!(character, ' ' | '\t' | '['))
+    {
         return false;
     }
     let suffix = input[end..].split('\n').next().unwrap_or(&input[end..]);
@@ -545,8 +546,8 @@ fn has_url_source_context(prefix: &str) -> bool {
 fn is_source_location_token(token: &str, compiler_context: bool, url_context: bool) -> bool {
     const SOURCE_EXTENSIONS: &[&str] = &[
         "bash", "c", "cc", "cjs", "cpp", "cs", "cts", "cxx", "fish", "go", "h", "hh", "hpp", "hxx",
-        "java", "js", "jsx", "kt", "kts", "mjs", "mts", "php", "py", "pyi", "rb", "rs",
-        "scala", "sh", "swift", "ts", "tsx", "zsh",
+        "java", "js", "jsx", "kt", "kts", "mjs", "mts", "php", "py", "pyi", "rb", "rs", "scala",
+        "sh", "swift", "ts", "tsx", "zsh",
     ];
     const DATA_EXTENSIONS: &[&str] = &["json", "toml", "yaml", "yml"];
     const EXTENSIONLESS_SOURCE_FILES: &[&str] = &["BUILD", "Dockerfile", "Makefile", "WORKSPACE"];
