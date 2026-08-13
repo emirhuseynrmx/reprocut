@@ -8,7 +8,8 @@ use regex::Regex;
 
 use crate::{DiagnosticAnchor, DiagnosticChannel, ExecutionObservation};
 
-pub const NORMALIZATION_SCHEMA: u16 = 3;
+/// Version of the diagnostic normalization contract included in fingerprints.
+pub const NORMALIZATION_SCHEMA: u16 = 4;
 const MAX_ANCHORS: usize = 4;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -388,7 +389,7 @@ pub fn normalize_diagnostic(input: &str) -> String {
         Regex::new(r"(?:port|Port|PORT)[ \t]*[:=]?[ \t]*[0-9]{1,5}").expect("port regex is valid")
     });
     let duration = DURATION.get_or_init(|| {
-        Regex::new(r"[0-9]+(?:\.[0-9]+)?[ \t]*(?:seconds|second|minutes|minute|secs|sec|mins|min|ms|ns|us|s|m)")
+        Regex::new(r"[0-9]+(?:\.[0-9]+)?[ \t]*(?:seconds|second|minutes|minute|secs|sec|mins|min|ms|ns|us|s)")
             .expect("duration regex is valid")
     });
     let path_location = PATH_LOCATION.get_or_init(|| {
@@ -407,24 +408,22 @@ pub fn normalize_diagnostic(input: &str) -> String {
     text = windows_temp.replace_all(&text, "<temp>").into_owned();
     text = unix_temp.replace_all(&text, "<temp>").into_owned();
     text = address.replace_all(&text, "address <address>").into_owned();
-    text = process_id.replace_all(&text, "$1 <id>").into_owned();
+    text = replace_lexically_bounded(process_id, &text, "$1 <id>");
     text = loopback_port.replace_all(&text, "$1:<port>").into_owned();
-    text = named_port.replace_all(&text, "port <port>").into_owned();
-    text = duration.replace_all(&text, "<duration>").into_owned();
+    text = replace_lexically_bounded(named_port, &text, "port <port>");
+    text = replace_lexically_bounded(duration, &text, "<duration>");
     text = path_location
         .replace_all(&text, |captures: &regex::Captures<'_>| {
             let token = &captures["token"];
             let start = captures.get(0).map_or(0, |matched| matched.start());
-            if is_source_location_token(token, has_explicit_source_context(&text[..start])) {
+            if is_source_location_token(token, has_compiler_source_context(&text[..start])) {
                 format!("{token}:<location>")
             } else {
                 captures[0].to_owned()
             }
         })
         .into_owned();
-    text = named_location
-        .replace_all(&text, "$1 <location>")
-        .into_owned();
+    text = replace_lexically_bounded(named_location, &text, "$1 <location>");
     text.lines()
         .map(|line| horizontal_space.replace_all(line.trim(), " "))
         .filter(|line| !line.is_empty())
@@ -432,13 +431,47 @@ pub fn normalize_diagnostic(input: &str) -> String {
         .join("\n")
 }
 
-fn has_explicit_source_context(prefix: &str) -> bool {
-    let line = prefix.rsplit('\n').next().unwrap_or(prefix);
-    let trimmed = line.trim_end_matches([' ', '\t']);
-    trimmed.ends_with("-->") || trimmed.split_whitespace().next_back() == Some("at")
+fn replace_lexically_bounded(
+    pattern: &Regex,
+    input: &str,
+    replacement: &str,
+) -> String {
+    pattern
+        .replace_all(input, |captures: &regex::Captures<'_>| {
+            let matched = captures.get(0).expect("the complete match always exists");
+            if has_lexical_boundaries(input, matched.start(), matched.end()) {
+                let mut expanded = String::new();
+                captures.expand(replacement, &mut expanded);
+                expanded
+            } else {
+                matched.as_str().to_owned()
+            }
+        })
+        .into_owned()
 }
 
-fn is_source_location_token(token: &str, explicit_context: bool) -> bool {
+fn has_lexical_boundaries(input: &str, start: usize, end: usize) -> bool {
+    input[..start]
+        .chars()
+        .next_back()
+        .is_none_or(|character| !is_lexical_character(character))
+        && input[end..]
+            .chars()
+            .next()
+            .is_none_or(|character| !is_lexical_character(character))
+}
+
+fn is_lexical_character(character: char) -> bool {
+    character.is_alphanumeric() || character == '_'
+}
+
+fn has_compiler_source_context(prefix: &str) -> bool {
+    let line = prefix.rsplit('\n').next().unwrap_or(prefix);
+    let trimmed = line.trim_end_matches([' ', '\t']);
+    trimmed.ends_with("-->")
+}
+
+fn is_source_location_token(token: &str, compiler_context: bool) -> bool {
     const SOURCE_EXTENSIONS: &[&str] = &[
         "bash", "c", "cc", "cjs", "cpp", "cs", "cts", "cxx", "fish", "go", "h", "hh", "hpp", "hxx",
         "java", "js", "json", "jsx", "kt", "kts", "mjs", "mts", "php", "py", "pyi", "rb", "rs",
@@ -447,13 +480,32 @@ fn is_source_location_token(token: &str, explicit_context: bool) -> bool {
     const EXTENSIONLESS_SOURCE_FILES: &[&str] = &["BUILD", "Dockerfile", "Makefile", "WORKSPACE"];
     let basename = token.rsplit(['/', '\\']).next().unwrap_or(token);
     token == "<temp>"
-        || explicit_context
+        || compiler_context
+        || has_source_tree_root(token)
         || EXTENSIONLESS_SOURCE_FILES.contains(&basename)
         || token.rsplit_once('.').is_some_and(|(_, extension)| {
             SOURCE_EXTENSIONS
                 .iter()
                 .any(|known| extension.eq_ignore_ascii_case(known))
         })
+}
+
+fn has_source_tree_root(token: &str) -> bool {
+    const SOURCE_TREE_ROOTS: &[&str] = &[
+        "app", "apps", "benches", "crates", "examples", "lib", "packages", "src", "test",
+        "tests",
+    ];
+    let relative = token
+        .strip_prefix("./")
+        .or_else(|| token.strip_prefix(".\\"))
+        .unwrap_or(token);
+    if relative.starts_with('/') || relative.starts_with('\\') {
+        return false;
+    }
+    relative
+        .split(['/', '\\'])
+        .next()
+        .is_some_and(|root| SOURCE_TREE_ROOTS.contains(&root))
 }
 
 pub(crate) fn normalize_bytes(bytes: &[u8]) -> String {

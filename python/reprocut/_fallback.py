@@ -15,7 +15,7 @@ LegacyBaseline = tuple[int, str]
 StreamBaseline = tuple[int, str, str]
 Baseline = Union[LegacyBaseline, StreamBaseline]
 
-NORMALIZATION_SCHEMA = 3
+NORMALIZATION_SCHEMA = 4
 MAX_PATTERNS = 16
 MAX_PATTERN_BYTES = 4096
 COMBINED_DELIMITER = "\n--- REPROCUT STREAM ---\n"
@@ -46,7 +46,7 @@ _LOOPBACK_PORT = re.compile(r"(localhost|LOCALHOST|127\.0\.0\.1|\[::1\]):[0-9]{1
 _NAMED_PORT = re.compile(r"(?:port|Port|PORT)[ \t]*[:=]?[ \t]*[0-9]{1,5}")
 _DURATION = re.compile(
     r"[0-9]+(?:\.[0-9]+)?[ \t]*(?:seconds|second|minutes|minute|secs|sec|"
-    r"mins|min|ms|ns|us|s|m)"
+    r"mins|min|ms|ns|us|s)"
 )
 _PATH_LOCATION = re.compile(r"(?P<token>[^ \t\r\n:]+):[0-9]+(?::[0-9]+)?")
 _SOURCE_EXTENSIONS = frozenset(
@@ -381,12 +381,12 @@ def _normalize(diagnostic: str) -> str:
     value = _WINDOWS_TEMP.sub("<temp>", value)
     value = _UNIX_TEMP.sub("<temp>", value)
     value = _ADDRESS.sub("address <address>", value)
-    value = _PROCESS_ID.sub(r"\1 <id>", value)
+    value = _bounded_sub(_PROCESS_ID, r"\1 <id>", value)
     value = _LOOPBACK_PORT.sub(r"\1:<port>", value)
-    value = _NAMED_PORT.sub("port <port>", value)
-    value = _DURATION.sub("<duration>", value)
+    value = _bounded_sub(_NAMED_PORT, "port <port>", value)
+    value = _bounded_sub(_DURATION, "<duration>", value)
     value = _PATH_LOCATION.sub(_normalize_source_location, value)
-    value = _NAMED_LOCATION.sub(r"\1 <location>", value)
+    value = _bounded_sub(_NAMED_LOCATION, r"\1 <location>", value)
     lines = (_HORIZONTAL_SPACE.sub(" ", line.strip()) for line in value.splitlines())
     return "\n".join(line for line in lines if line)
 
@@ -397,7 +397,8 @@ def _normalize_source_location(match: re.Match[str]) -> str:
     extension = token.rpartition(".")[2].lower()
     if (
         token == "<temp>"
-        or _has_explicit_source_context(match)
+        or _has_compiler_source_context(match)
+        or _has_source_tree_root(token)
         or basename in _EXTENSIONLESS_SOURCE_FILES
         or extension in _SOURCE_EXTENSIONS
     ):
@@ -405,9 +406,49 @@ def _normalize_source_location(match: re.Match[str]) -> str:
     return match.group(0)
 
 
-def _has_explicit_source_context(match: re.Match[str]) -> bool:
+def _bounded_sub(pattern: re.Pattern[str], replacement: str, value: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        return (
+            match.expand(replacement)
+            if _has_lexical_boundaries(value, match.start(), match.end())
+            else match.group(0)
+        )
+
+    return pattern.sub(replace, value)
+
+
+def _has_lexical_boundaries(value: str, start: int, end: int) -> bool:
+    return (start == 0 or not _is_lexical_character(value[start - 1])) and (
+        end == len(value) or not _is_lexical_character(value[end])
+    )
+
+
+def _is_lexical_character(character: str) -> bool:
+    return character.isalnum() or character == "_"
+
+
+def _has_compiler_source_context(match: re.Match[str]) -> bool:
     line_prefix = match.string[: match.start()].rsplit("\n", 1)[-1].rstrip(" \t")
-    return line_prefix.endswith("-->") or line_prefix.rsplit(maxsplit=1)[-1:] == ["at"]
+    return line_prefix.endswith("-->")
+
+
+def _has_source_tree_root(token: str) -> bool:
+    source_tree_roots = {
+        "app",
+        "apps",
+        "benches",
+        "crates",
+        "examples",
+        "lib",
+        "packages",
+        "src",
+        "test",
+        "tests",
+    }
+    relative = token[2:] if token.startswith(("./", ".\\")) else token
+    if relative.startswith(("/", "\\")):
+        return False
+    return re.split(r"[/\\]", relative, maxsplit=1)[0] in source_tree_roots
 
 
 def _stable_discriminators(
