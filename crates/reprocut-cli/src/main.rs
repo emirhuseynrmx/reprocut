@@ -264,7 +264,7 @@ struct ReduceArgs {
     #[arg(long, default_value_t = 0)]
     jobs: usize,
 
-    /// SQLite journal path (defaults to `ROOT/.reprocut/state.sqlite3`).
+    /// `SQLite` journal path (defaults to `ROOT/.reprocut/state.sqlite3`).
     #[arg(long)]
     state: Option<PathBuf>,
 
