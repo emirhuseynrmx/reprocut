@@ -431,11 +431,7 @@ pub fn normalize_diagnostic(input: &str) -> String {
         .join("\n")
 }
 
-fn replace_lexically_bounded(
-    pattern: &Regex,
-    input: &str,
-    replacement: &str,
-) -> String {
+fn replace_lexically_bounded(pattern: &Regex, input: &str, replacement: &str) -> String {
     pattern
         .replace_all(input, |captures: &regex::Captures<'_>| {
             let matched = captures.get(0).expect("the complete match always exists");
@@ -492,8 +488,7 @@ fn is_source_location_token(token: &str, compiler_context: bool) -> bool {
 
 fn has_source_tree_root(token: &str) -> bool {
     const SOURCE_TREE_ROOTS: &[&str] = &[
-        "app", "apps", "benches", "crates", "examples", "lib", "packages", "src", "test",
-        "tests",
+        "app", "apps", "benches", "crates", "examples", "lib", "packages", "src", "test", "tests",
     ];
     let relative = token
         .strip_prefix("./")

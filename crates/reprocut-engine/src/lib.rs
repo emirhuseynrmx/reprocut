@@ -1,8 +1,8 @@
 //! End-to-end reduction orchestration for ReproCut.
 
-mod scheduler;
 mod pipeline;
 mod python_isolation;
+mod scheduler;
 
 pub use python_isolation::{PythonIsolationRequest, PythonPreparationError};
 pub use scheduler::{CandidatePlan, FrontierOutcome, FrontierScheduler, SchedulerError};

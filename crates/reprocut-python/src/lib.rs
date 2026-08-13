@@ -99,11 +99,17 @@ impl NativeFailureOracle {
         &self,
         exit_code: i32,
         diagnostic: String,
-        stdout: String,
+        stdout: &str,
         timed_out: bool,
         truncated: bool,
     ) -> &'static str {
-        let candidate = observation(exit_code, stdout, diagnostic, timed_out, truncated);
+        let candidate = observation(
+            exit_code,
+            stdout.to_owned(),
+            diagnostic,
+            timed_out,
+            truncated,
+        );
         match self.inner.classify(&candidate) {
             CandidateVerdict::Preserved => "preserved",
             CandidateVerdict::Rejected => "rejected",

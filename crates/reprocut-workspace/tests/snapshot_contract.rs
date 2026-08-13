@@ -54,7 +54,8 @@ fn snapshot_materialization_writes_only_snapshot_files() {
         .iter()
         .filter(|unit| unit.path() == "keep.txt")
         .collect::<Vec<_>>();
-    let snapshot = ProjectSnapshot::from_inventory(&inventory, &kept).expect("snapshot");
+    let snapshot =
+        ProjectSnapshot::from_inventory(&inventory, kept.iter().copied()).expect("snapshot");
 
     let candidate = CandidateWorkspace::materialize_snapshot(&snapshot).expect("candidate");
 

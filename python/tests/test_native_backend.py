@@ -22,6 +22,10 @@ def test_wheel_uses_the_native_backend() -> None:
         reject_patterns=["PermissionError"],
     )
     assert oracle.classify(1, "TypeError: invoice 99", stdout="currency=EUR") == "preserved"
+    stderr_oracle = reprocut.FailureOracle.from_baselines(
+        [(1, "ValueError: default stdout"), (1, "ValueError: default stdout")]
+    )
+    assert stderr_oracle.classify(1, "ValueError: default stdout") == "preserved"
     assert oracle.fingerprint["fingerprint_sha256"] == (
         "b049c6c2366bd7fe88f9e4f01e85572cba45c8bd4da776ec30dfd64fda93b235"
     )

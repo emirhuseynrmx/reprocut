@@ -8,7 +8,7 @@ use std::fmt::Write as _;
 pub use evidence::{
     display_command, write_attempts_jsonl, AttemptSummary, ChannelAnchor, EvaluationPolicyEvidence,
     FailureEvidence, MaterialMeasurement, MeasurementSet, PreparationEvidence, ReductionEvidence,
-    RetentionEvidence, SearchEvidence, EVIDENCE_SCHEMA_VERSION,
+    RetentionEvidence, SearchEvidence, EVIDENCE_SCHEMA_VERSION, NORMALIZATION_SCHEMA_VERSION,
 };
 pub use issue::render_issue;
 

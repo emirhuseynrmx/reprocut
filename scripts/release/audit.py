@@ -76,7 +76,7 @@ def static_checks(root: Path) -> list[Check]:
     demo_ok = (
         evidence.get("schema_version") == 3
         and evidence["failure"]["same_failure"] is True
-        and evidence["failure"].get("normalization_schema") == 3
+        and evidence["failure"].get("normalization_schema") == 4
         and evidence["failure"].get("oracle_mode")
         in {"automatic", "regex", "exit_zero"}
         and evidence["search"]["final_verifications"] == 3

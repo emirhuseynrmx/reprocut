@@ -52,7 +52,7 @@ def test_fingerprint_is_an_immutable_plain_value() -> None:
         "anchors": [{"channel": "stderr", "text": "TypeError: currency"}],
         "failure_patterns": [],
         "reject_patterns": [],
-        "normalization_schema": 3,
+        "normalization_schema": 4,
         "oracle_spec_sha256": "<digest>",
         "fingerprint_sha256": "<digest>",
     }

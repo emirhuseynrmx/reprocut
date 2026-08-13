@@ -85,7 +85,7 @@ fn fixture(anchor: &str) -> ReductionEvidence {
             oracle_mode: "automatic".to_owned(),
             anchor: anchor.to_owned(),
             anchors: Vec::new(),
-            normalization_schema: 3,
+            normalization_schema: 4,
             failure_patterns: Vec::new(),
             reject_patterns: Vec::new(),
             oracle_spec_sha256: "b".repeat(64),
