@@ -197,6 +197,71 @@ def test_lexically_bounded_volatile_values_remain_normalized(baseline: str, cand
     ("baseline", "candidate"),
     [
         (
+            "LookupError: invoice 123e4567-e89b-12d3-a456-426614174000",
+            "LookupError: invoice 123e4567-e89b-12d3-a456-426614174999",
+        ),
+        (
+            "ValidationError: effective_at 2026-08-13T10:11:12Z",
+            "ValidationError: effective_at 2026-08-14T10:11:12Z",
+        ),
+        ("TimeoutError: timeout 10ms", "TimeoutError: timeout 20ms"),
+        ("HTTPError: error.json:404", "HTTPError: error.json:500"),
+        ("HTTPError: /api/error.json:404", "HTTPError: /api/error.json:500"),
+        (
+            "HTTPError: https://example.test/error.json:404",
+            "HTTPError: https://example.test/error.json:500",
+        ),
+    ],
+)
+def test_schema_5_preserves_semantic_values(baseline: str, candidate: str) -> None:
+    oracle = FailureOracle.from_baselines([(1, baseline), (1, baseline)])
+
+    assert oracle.classify(1, candidate) == "rejected"
+
+
+@pytest.mark.parametrize(
+    ("baselines", "candidate", "expected_anchor"),
+    [
+        (
+            [
+                (1, "ValueError: request_id=123e4567-e89b-12d3-a456-426614174000"),
+                (1, "ValueError: request_id=123e4567-e89b-12d3-a456-426614174111"),
+            ],
+            "ValueError: request_id=123e4567-e89b-12d3-a456-426614174222",
+            "ValueError: request_id=<uuid>",
+        ),
+        (
+            [
+                (1, "2026-08-13T10:11:12Z ERROR ValueError: import failed"),
+                (1, "2026-08-13T10:11:13Z ERROR ValueError: import failed"),
+            ],
+            "2026-08-13T10:11:14Z ERROR ValueError: import failed",
+            "<timestamp> ERROR ValueError: import failed",
+        ),
+        (
+            [
+                (1, "RuntimeError: import failed; elapsed 10ms"),
+                (1, "RuntimeError: import failed; elapsed 20ms"),
+            ],
+            "RuntimeError: import failed; elapsed 30ms",
+            "RuntimeError: import failed; elapsed <duration>",
+        ),
+    ],
+)
+def test_schema_5_normalizes_only_recognized_telemetry_context(
+    baselines: list[tuple[int, str]], candidate: str, expected_anchor: str
+) -> None:
+    oracle = FailureOracle.from_baselines(baselines)
+
+    assert oracle.fingerprint["anchors"] == [{"channel": "stderr", "text": expected_anchor}]
+    assert oracle.classify(1, candidate) == "preserved"
+    assert oracle.fingerprint["normalization_schema"] == 5
+
+
+@pytest.mark.parametrize(
+    ("baseline", "candidate"),
+    [
+        (
             "RuntimeError: failed at src/module:12",
             "RuntimeError: failed at src/module:99",
         ),
