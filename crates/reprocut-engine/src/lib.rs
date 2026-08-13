@@ -1,4 +1,4 @@
-//! End-to-end reduction orchestration for ReproCut.
+//! End-to-end reduction orchestration for `ReproCut`.
 
 mod pipeline;
 mod python_isolation;
@@ -114,6 +114,7 @@ impl ReductionRequest {
     }
 
     /// Returns a request using an explicit failure channel and aggregate policy.
+    #[must_use]
     pub fn with_evaluation(
         mut self,
         diagnostic_channel: DiagnosticChannel,
@@ -126,6 +127,7 @@ impl ReductionRequest {
     }
 
     /// Returns a request using one prevalidated oracle contract.
+    #[must_use]
     pub fn with_oracle(mut self, oracle_spec: OracleSpec) -> Self {
         self.diagnostic_channel = oracle_spec.channel();
         self.oracle_spec = oracle_spec;
@@ -133,6 +135,7 @@ impl ReductionRequest {
     }
 
     /// Returns a request with bounded parallelism and an explicit state policy.
+    #[must_use]
     pub fn with_runtime(mut self, jobs: usize, session_mode: SessionMode) -> Self {
         self.jobs = jobs;
         self.session_mode = session_mode;
@@ -140,12 +143,14 @@ impl ReductionRequest {
     }
 
     /// Returns a request using exact nested-directory inventory exclusions.
+    #[must_use]
     pub fn with_inventory_policy(mut self, inventory_policy: InventoryPolicy) -> Self {
         self.inventory_policy = inventory_policy;
         self
     }
 
     /// Enables ecosystem-aware preparation and structured reducer selection.
+    #[must_use]
     pub fn with_ecosystem(
         mut self,
         ecosystem: Ecosystem,
@@ -157,6 +162,7 @@ impl ReductionRequest {
     }
 
     /// Enables frozen-wheelhouse Python isolation for every execution phase.
+    #[must_use]
     pub fn with_python_isolation(mut self, isolation: PythonIsolationRequest) -> Self {
         self.ecosystem = Ecosystem::Python;
         self.preparation_mode = PreparationMode::IsolatedPython;
@@ -412,6 +418,11 @@ pub struct ReductionEngine;
 
 impl ReductionEngine {
     /// Stabilizes, minimizes, and re-verifies one failing command.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError`] when inventory, isolation, process execution, oracle
+    /// stabilization, candidate reduction, durable state, or final verification fails.
     #[allow(clippy::too_many_lines)]
     pub fn run(request: &ReductionRequest) -> Result<ReductionOutcome, EngineError> {
         let started = Instant::now();
@@ -434,17 +445,17 @@ impl ReductionEngine {
             })
             .transpose()?;
         if let Some(preparation) = &python_preparation {
-            preparation.validate_original_program(request.program())?;
+            FrozenPythonPreparation::validate_original_program(request.program())?;
         }
         if request.preparation_mode() == PreparationMode::IsolatedPython
             && python_preparation.is_none()
         {
             return Err(EngineError::MissingPythonIsolation);
         }
-        let preparation_digest = python_preparation
-            .as_ref()
-            .map(FrozenPythonPreparation::digest)
-            .unwrap_or_else(|| builtin_preparation_digest(request));
+        let preparation_digest = python_preparation.as_ref().map_or_else(
+            || builtin_preparation_digest(request),
+            FrozenPythonPreparation::digest,
+        );
         let contract = session_contract(request, source_digest, preparation_digest);
         let (state, resumed) = open_state(request.session_mode(), &contract)?;
         let state_path = state.as_ref().map(|store| store.path().to_path_buf());
@@ -674,8 +685,7 @@ impl ReductionEngine {
             original_lines: original_measurements.lines(),
             reduction,
             fingerprint: oracle.fingerprint().clone(),
-            baseline_runs: u16::try_from(baselines.len())
-                .expect("evaluation policy run count is represented by u16"),
+            baseline_runs: u16::try_from(baselines.len()).unwrap_or(u16::MAX),
             final_verifications: final_evidence.observed_runs(),
             inconclusive_attempts: inconclusive_attempts.load(Ordering::Relaxed),
             cache_hits: cache_hits.load(Ordering::Relaxed),
@@ -724,14 +734,10 @@ fn stabilize_oracle(
                     candidate.classify(observation) == CandidateVerdict::Preserved
                 })
                 .count();
-            let score = u16::try_from(score_count)
-                .expect("evaluation policy run count is represented by u16");
-            let replace = best
-                .as_ref()
-                .map(|(best_score, best_index, _)| {
-                    score > *best_score || (score == *best_score && left < *best_index)
-                })
-                .unwrap_or(true);
+            let score = u16::try_from(score_count).unwrap_or(u16::MAX);
+            let replace = best.as_ref().map_or(true, |(best_score, best_index, _)| {
+                score > *best_score || (score == *best_score && left < *best_index)
+            });
             if replace {
                 best = Some((score, left, candidate));
             }
@@ -1122,6 +1128,35 @@ struct StructuredEvaluationContext<'context, 'request> {
 }
 
 impl StructuredEvaluationContext<'_, '_> {
+    fn cached_verdict(&self, payload: &StructuredPayload) -> Option<CandidateVerdict> {
+        if let Some(record) = lock(self.shared.memory_cache).get(&payload.digest).cloned() {
+            self.shared.cache_hits.fetch_add(1, Ordering::Relaxed);
+            lock(self.shared.attempts_by_digest).insert(payload.digest, record.clone());
+            return Some(record.verdict());
+        }
+        let writer = self.shared.writer?;
+        match writer.lookup_cache(payload.digest) {
+            Ok(Some(cached)) => {
+                let record = AttemptRecord::new(
+                    payload.digest,
+                    cached.verdict(),
+                    cached.observed_runs(),
+                    cached.inconclusive_runs(),
+                    cached.evidence_json().to_owned(),
+                );
+                self.shared.cache_hits.fetch_add(1, Ordering::Relaxed);
+                lock(self.shared.memory_cache).insert(payload.digest, record.clone());
+                lock(self.shared.attempts_by_digest).insert(payload.digest, record.clone());
+                Some(record.verdict())
+            }
+            Ok(None) => None,
+            Err(error) => {
+                set_error(self.shared.first_error, EngineError::State(error));
+                Some(CandidateVerdict::Inconclusive)
+            }
+        }
+    }
+
     fn evaluate(&self, payload: &StructuredPayload) -> CandidateVerdict {
         if has_error(self.shared.first_error) {
             return CandidateVerdict::Inconclusive;
@@ -1133,32 +1168,8 @@ impl StructuredEvaluationContext<'_, '_> {
         {
             return CandidateVerdict::Rejected;
         }
-        if let Some(record) = lock(self.shared.memory_cache).get(&payload.digest).cloned() {
-            self.shared.cache_hits.fetch_add(1, Ordering::Relaxed);
-            lock(self.shared.attempts_by_digest).insert(payload.digest, record.clone());
-            return record.verdict();
-        }
-        if let Some(writer) = self.shared.writer {
-            match writer.lookup_cache(payload.digest) {
-                Ok(Some(cached)) => {
-                    let record = AttemptRecord::new(
-                        payload.digest,
-                        cached.verdict(),
-                        cached.observed_runs(),
-                        cached.inconclusive_runs(),
-                        cached.evidence_json().to_owned(),
-                    );
-                    self.shared.cache_hits.fetch_add(1, Ordering::Relaxed);
-                    lock(self.shared.memory_cache).insert(payload.digest, record.clone());
-                    lock(self.shared.attempts_by_digest).insert(payload.digest, record.clone());
-                    return record.verdict();
-                }
-                Ok(None) => {}
-                Err(error) => {
-                    set_error(self.shared.first_error, EngineError::State(error));
-                    return CandidateVerdict::Inconclusive;
-                }
-            }
+        if let Some(verdict) = self.cached_verdict(payload) {
+            return verdict;
         }
 
         let local_error = Mutex::new(None);

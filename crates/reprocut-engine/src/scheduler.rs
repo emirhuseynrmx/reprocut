@@ -99,6 +99,11 @@ impl FrontierScheduler {
     /// placed in the hot path. The result channel is bounded to twice the actual
     /// worker count. A later preserved result can stop unnecessary higher ranks,
     /// but it cannot commit until all lower ranks have published terminal results.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchedulerError::DuplicateRank`] when two plans claim the same position in the
+    /// deterministic frontier order.
     pub fn evaluate<T, F>(
         mut plans: Vec<CandidatePlan<T>>,
         jobs: usize,

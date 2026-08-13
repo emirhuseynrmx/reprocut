@@ -40,6 +40,11 @@ impl PythonIsolationRequest {
     }
 
     /// Validates, canonicalizes, and sorts Python extra names.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PythonPreparationError::InvalidExtra`] when an extra is empty, has an invalid
+    /// boundary, or contains characters outside normalized Python project-name syntax.
     pub fn with_extras(
         mut self,
         extras: impl IntoIterator<Item = String>,
@@ -54,6 +59,7 @@ impl PythonIsolationRequest {
     }
 
     /// Adds an optional schema-1 argv-only preparation specification.
+    #[must_use]
     pub fn with_prepare_spec(mut self, prepare_spec: PathBuf) -> Self {
         self.prepare_spec = Some(prepare_spec);
         self
@@ -139,11 +145,8 @@ pub enum PythonPreparationError {
 #[derive(Debug)]
 pub(crate) struct FrozenPythonPreparation {
     interpreter: PathBuf,
-    interpreter_identity: Vec<u8>,
     wheelhouse_owner: TempDir,
-    wheelhouse_digest: ContentDigest,
     extras: Vec<String>,
-    prepare_spec_bytes: Vec<u8>,
     prepare_commands: Vec<Vec<String>>,
     digest: ContentDigest,
 }
@@ -180,11 +183,8 @@ impl FrozenPythonPreparation {
         );
         Ok(Self {
             interpreter,
-            interpreter_identity: identity,
             wheelhouse_owner,
-            wheelhouse_digest,
             extras: request.extras.clone(),
-            prepare_spec_bytes,
             prepare_commands,
             digest,
         })
@@ -196,10 +196,7 @@ impl FrozenPythonPreparation {
     }
 
     /// Rejects absolute or parent-relative commands before any candidate starts.
-    pub(crate) fn validate_original_program(
-        &self,
-        program: &Path,
-    ) -> Result<(), PythonPreparationError> {
+    pub(crate) fn validate_original_program(program: &Path) -> Result<(), PythonPreparationError> {
         if program.is_absolute()
             || program
                 .components()
@@ -210,21 +207,6 @@ impl FrozenPythonPreparation {
             });
         }
         Ok(())
-    }
-
-    /// Returns the frozen wheel corpus identity.
-    pub(crate) const fn wheelhouse_digest(&self) -> ContentDigest {
-        self.wheelhouse_digest
-    }
-
-    /// Returns the bounded interpreter identity evidence.
-    pub(crate) fn interpreter_identity(&self) -> &[u8] {
-        &self.interpreter_identity
-    }
-
-    /// Returns the exact prepare-spec bytes participating in identity.
-    pub(crate) fn prepare_spec_bytes(&self) -> &[u8] {
-        &self.prepare_spec_bytes
     }
 
     /// Creates a fresh venv, installs only from the frozen wheelhouse, and runs custom setup.
@@ -682,7 +664,9 @@ fn normalize_extra(name: &str) -> Result<String, PythonPreparationError> {
 fn safe_wheel_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 255
-        && name.ends_with(".whl")
+        && Path::new(name)
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("whl"))
         && !name.starts_with('.')
         && !name.contains("..")
         && !name.contains(['/', '\\'])
@@ -780,7 +764,6 @@ mod tests {
         assert!(matches!(
             freeze_wheelhouse(wheelhouse.path()),
             Err(PythonPreparationError::DuplicateWheel { .. })
-                | Err(PythonPreparationError::UnsafeWheel { .. })
         ));
         fs::remove_file(wheelhouse.path().join("DEMO-1-PY3-NONE-ANY.WHL"))
             .expect("remove collision");
