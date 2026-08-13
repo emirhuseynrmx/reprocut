@@ -1,3 +1,5 @@
+//! Property tests for transformation composition.
+
 use reprocut_core::{Operation, ProjectPath, Transformation};
 
 #[test]

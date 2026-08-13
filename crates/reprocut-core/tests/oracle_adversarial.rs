@@ -1,3 +1,5 @@
+//! Adversarial failure-oracle collision and truncation contracts.
+
 use reprocut_core::{
     normalize_diagnostic, CandidateVerdict, DiagnosticChannel, ExecutionObservation, FailureOracle,
     OracleError,

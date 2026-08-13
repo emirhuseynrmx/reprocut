@@ -1,3 +1,5 @@
+//! Ecosystem manifest-reduction contracts.
+
 use reprocut_adapters::{CargoManifest, ManifestCapability, NpmManifest, PythonManifest};
 
 #[test]

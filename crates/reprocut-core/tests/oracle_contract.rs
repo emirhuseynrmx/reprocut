@@ -1,3 +1,5 @@
+//! Failure-oracle recognition and normalization contracts.
+
 use reprocut_core::{
     CandidateVerdict, DiagnosticChannel, ExecutionObservation, FailureOracle, OracleError,
 };

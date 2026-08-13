@@ -1,3 +1,5 @@
+//! Core value-model and serialization contracts.
+
 use reprocut_core::{
     CandidateVerdict, ContainmentMechanism, DiagnosticChannel, ExecutionObservation,
     FailureFingerprint, TerminationReason,

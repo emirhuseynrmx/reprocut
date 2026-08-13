@@ -1,3 +1,5 @@
+//! Property tests for aggregate evaluation policies.
+
 use reprocut_core::{AggregateDecision, CandidateVerdict, EvaluationPolicy};
 
 #[test]

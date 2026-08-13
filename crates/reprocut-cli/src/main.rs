@@ -1,3 +1,5 @@
+//! `ReproCut` command-line entry point.
+
 #![forbid(unsafe_code)]
 
 use std::{

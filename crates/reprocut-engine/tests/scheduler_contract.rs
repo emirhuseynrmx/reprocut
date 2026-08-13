@@ -1,3 +1,5 @@
+//! Deterministic parallel-frontier scheduler contracts.
+
 use std::time::Duration;
 
 use reprocut_core::{CandidateRank, CandidateVerdict, ContentDigest, FrontierClass};

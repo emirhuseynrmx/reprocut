@@ -1,3 +1,5 @@
+//! End-to-end reduction-engine contracts.
+
 use std::{
     collections::hash_map::DefaultHasher,
     env,

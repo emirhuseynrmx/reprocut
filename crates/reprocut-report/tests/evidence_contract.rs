@@ -1,3 +1,5 @@
+//! Versioned reduction-evidence contracts.
+
 use reprocut_report::{
     write_attempts_jsonl, AttemptSummary, ChannelAnchor, EvaluationPolicyEvidence, FailureEvidence,
     MaterialMeasurement, MeasurementSet, PreparationEvidence, ReductionEvidence, RetentionEvidence,

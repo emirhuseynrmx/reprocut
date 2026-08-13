@@ -1,3 +1,5 @@
+//! Real OCI builder and archive-export contracts.
+
 use std::fs;
 
 use reprocut_oci::{export_archive, Builder, OciRequest, RuntimeFamily};

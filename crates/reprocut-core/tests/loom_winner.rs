@@ -1,3 +1,5 @@
+//! Exhaustive interleaving model for earliest-winner publication.
+
 #![cfg(loom)]
 
 use loom::sync::{

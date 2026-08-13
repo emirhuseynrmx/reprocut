@@ -1,3 +1,5 @@
+//! Property tests for reduction minimality and determinism.
+
 use std::collections::BTreeSet;
 
 use proptest::prelude::*;

@@ -1,3 +1,5 @@
+//! Byte-stable report golden contracts.
+
 use reprocut_report::{render_report, ChannelAnchor, ReportModel, RetentionEvidence};
 
 fn fixture_model() -> ReportModel {

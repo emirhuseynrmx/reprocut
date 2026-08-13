@@ -1,3 +1,5 @@
+//! Paste-ready issue rendering and escaping contracts.
+
 use reprocut_report::{
     render_issue, EvaluationPolicyEvidence, FailureEvidence, MaterialMeasurement, MeasurementSet,
     PreparationEvidence, ReductionEvidence, RetentionEvidence, SearchEvidence,

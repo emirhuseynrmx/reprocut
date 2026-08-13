@@ -1,3 +1,5 @@
+//! Frozen, offline Python preparation contracts.
+
 use std::{env, ffi::OsString, fs, path::Path, time::Duration};
 
 use reprocut_engine::{PythonIsolationRequest, ReductionEngine, ReductionRequest};

@@ -1,3 +1,5 @@
+//! Deterministic delta-reduction contracts.
+
 use reprocut_core::{reduce, reduce_hierarchical_frontiers, CandidateVerdict, ReductionUnit};
 
 #[test]

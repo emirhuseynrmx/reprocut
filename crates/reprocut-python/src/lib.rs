@@ -1,3 +1,5 @@
+//! Native Python bindings for failure fingerprinting and policy aggregation.
+
 use pyo3::{
     exceptions::PyValueError,
     prelude::*,

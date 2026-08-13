@@ -1,3 +1,5 @@
+//! End-to-end command-line and artifact contracts.
+
 use std::{
     fs,
     path::{Path, PathBuf},

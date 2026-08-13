@@ -1,3 +1,5 @@
+//! Crash-safe journal, cache, resume, and transition contracts.
+
 use reprocut_core::{CandidateVerdict, ContentDigest};
 use reprocut_state::{AttemptRecord, SessionContract, StateError, StateStore, TransitionRecord};
 

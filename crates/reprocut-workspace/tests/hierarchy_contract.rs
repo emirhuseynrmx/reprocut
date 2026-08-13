@@ -1,3 +1,5 @@
+//! Directory-hierarchy reduction contracts.
+
 use reprocut_core::ReductionUnit;
 use reprocut_workspace::{DirectoryHierarchy, HierarchyGroupKind};
 

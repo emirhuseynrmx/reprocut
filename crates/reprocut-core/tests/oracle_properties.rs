@@ -1,3 +1,5 @@
+//! Property tests for stable failure-oracle behavior.
+
 use proptest::prelude::*;
 use reprocut_core::{normalize_diagnostic, CandidateVerdict, ExecutionObservation, FailureOracle};
 

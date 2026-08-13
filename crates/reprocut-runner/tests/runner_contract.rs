@@ -1,3 +1,5 @@
+//! Bounded process and descendant-containment contracts.
+
 use std::{env, ffi::OsString, fs, process::Command, thread, time::Duration};
 
 use reprocut_core::ContainmentMechanism;

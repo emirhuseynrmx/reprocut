@@ -1,3 +1,5 @@
+//! Reduction hot-path benchmarks.
+
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use reprocut_core::{reduce, CandidateVerdict, ExecutionObservation, FailureOracle, ReductionUnit};
 

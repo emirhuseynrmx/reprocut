@@ -1,3 +1,5 @@
+//! Minimal OCI build-context contracts.
+
 use std::fs;
 
 use reprocut_oci::{export_archive, prepare_context, OciError, OciRequest, RuntimeFamily};
