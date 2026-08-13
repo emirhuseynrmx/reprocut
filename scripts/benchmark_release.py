@@ -255,10 +255,10 @@ def render_markdown(document: dict[str, Any]) -> str:
     oracle = summary["oracle_runs"]
     attempts = summary["candidate_attempts"]
     mib = 1024 * 1024
-    wall_range = f'{wall["min"]:.3f}-{wall["max"]:.3f}'
-    oracle_range = f'{oracle["min"]}-{oracle["max"]}'
-    attempt_range = f'{attempts["min"]}-{attempts["max"]}'
-    memory_range = f'{memory["min"] / mib:.2f}-{memory["max"] / mib:.2f}'
+    wall_range = f"{wall['min']:.3f}-{wall['max']:.3f}"
+    oracle_range = f"{oracle['min']}-{oracle['max']}"
+    attempt_range = f"{attempts['min']}-{attempts['max']}"
+    memory_range = f"{memory['min'] / mib:.2f}-{memory['max'] / mib:.2f}"
     return f"""# ReproCut 0.1 release benchmark
 
 This is a {document["measured_runs"]}-run measurement of the checked-in 312-file fixture on one

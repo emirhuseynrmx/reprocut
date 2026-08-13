@@ -7,7 +7,6 @@ from types import SimpleNamespace
 
 import pytest
 import reprocut.cli as python_cli
-
 from reprocut.client import (
     BaselineStableEvent,
     CompletedEvent,

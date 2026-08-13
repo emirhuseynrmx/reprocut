@@ -132,20 +132,21 @@ def write_tar_gz(
     files: list[tuple[str, bytes, int]],
     epoch: int,
 ) -> None:
-    with output.open("xb") as raw, gzip.GzipFile(
-        filename="", mode="wb", fileobj=raw, mtime=epoch, compresslevel=9
-    ) as zipped:
-        with tarfile.open(fileobj=zipped, mode="w", format=tarfile.PAX_FORMAT) as archive:
-            for relative, contents, mode in files:
-                member = tarfile.TarInfo(f"{root}/{relative}")
-                member.size = len(contents)
-                member.mode = mode
-                member.mtime = epoch
-                member.uid = 0
-                member.gid = 0
-                member.uname = ""
-                member.gname = ""
-                archive.addfile(member, io_bytes(contents))
+    with (
+        output.open("xb") as raw,
+        gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=epoch, compresslevel=9) as zipped,
+        tarfile.open(fileobj=zipped, mode="w", format=tarfile.PAX_FORMAT) as archive,
+    ):
+        for relative, contents, mode in files:
+            member = tarfile.TarInfo(f"{root}/{relative}")
+            member.size = len(contents)
+            member.mode = mode
+            member.mtime = epoch
+            member.uid = 0
+            member.gid = 0
+            member.uname = ""
+            member.gname = ""
+            archive.addfile(member, io_bytes(contents))
 
 
 def write_zip(
