@@ -21,7 +21,11 @@ proptest! {
             .collect::<Vec<_>>();
 
         let result = reduce(&units, |kept| {
-            let kept_ids = kept.iter().map(ReductionUnit::id).collect::<BTreeSet<_>>();
+            let kept_ids = kept
+                .iter()
+                .copied()
+                .map(ReductionUnit::id)
+                .collect::<BTreeSet<_>>();
             if required.is_subset(&kept_ids) {
                 CandidateVerdict::Preserved
             } else {
