@@ -4,7 +4,7 @@
   "description": "Minimize a failing project with the local ReproCut CLI.",
   "version": "0.1.0",
   "publisher": "reprocut",
-  "license": "MIT OR Apache-2.0",
+  "license": "Apache-2.0",
   "private": true,
   "engines": {
     "vscode": "^1.91.0"

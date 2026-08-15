@@ -51,11 +51,13 @@ def workspace_source() -> str:
 
 
 def report_source() -> str:
-    evidence = read("crates/reprocut-report/src/evidence.rs").replace(
-        "reprocut_core::", "crate::reprocut_core::"
-    ).replace(
-        "use crate::{RetainedEntryKind, RetainedManifest};",
-        "use super::{RetainedEntryKind, RetainedManifest};",
+    evidence = (
+        read("crates/reprocut-report/src/evidence.rs")
+        .replace("reprocut_core::", "crate::reprocut_core::")
+        .replace(
+            "use crate::{RetainedEntryKind, RetainedManifest};",
+            "use super::{RetainedEntryKind, RetainedManifest};",
+        )
     )
     manifest = read("crates/reprocut-report/src/manifest.rs").replace(
         "use reprocut_core::", "use crate::reprocut_core::"

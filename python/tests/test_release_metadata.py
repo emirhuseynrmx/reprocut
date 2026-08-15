@@ -51,9 +51,7 @@ def test_v0_1_contract_versions_have_one_machine_readable_authority() -> None:
         name: getattr(versions, name, None) for name in LOCKED_CONTRACT_VERSIONS
     } == LOCKED_CONTRACT_VERSIONS
 
-    rust = (ROOT / "crates" / "reprocut-core" / "src" / "schema.rs").read_text(
-        encoding="utf-8"
-    )
+    rust = (ROOT / "crates" / "reprocut-core" / "src" / "schema.rs").read_text(encoding="utf-8")
     for field, value in (
         ("normalization", 5),
         ("evidence", 4),
@@ -67,9 +65,7 @@ def test_v0_1_contract_versions_have_one_machine_readable_authority() -> None:
 
 
 def test_checked_in_release_surfaces_match_the_locked_contract_versions() -> None:
-    evidence = json.loads(
-        (ROOT / "demo" / "result" / "reduction.json").read_text(encoding="utf-8")
-    )
+    evidence = json.loads((ROOT / "demo" / "result" / "reduction.json").read_text(encoding="utf-8"))
     report = (ROOT / "demo" / "result" / "report.html").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
@@ -93,11 +89,85 @@ def test_pypi_metadata_and_console_entrypoint_are_release_complete() -> None:
 
     assert project["name"] == "reprocut"
     assert project["version"] == "0.1.0"
-    assert project["license"] == "MIT OR Apache-2.0"
-    assert project["license-files"] == ["LICENSE-MIT", "LICENSE-APACHE"]
+    assert project["license"] == "Apache-2.0"
+    assert project["license-files"] == ["LICENSE"]
     assert project["scripts"]["reprocut-py"] == "reprocut.cli:main"
     assert project["urls"]["Repository"].endswith("/reprocut")
     assert pyproject["tool"]["maturin"]["module-name"] == "reprocut._native"
+    assert pyproject["tool"]["maturin"]["locked"] is True
+    assert pyproject["tool"]["maturin"]["sdist-generator"] == "git"
+
+
+def test_all_project_metadata_uses_the_single_apache_2_license() -> None:
+    cargo = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
+    editor = json.loads((ROOT / "editors" / "vscode" / "package.json").read_text(encoding="utf-8"))
+    gallery = json.loads((ROOT / "gallery" / "package.json").read_text(encoding="utf-8"))
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    release_readme = (ROOT / "release" / "README.md").read_text(encoding="utf-8")
+
+    assert cargo["workspace"]["package"]["license"] == "Apache-2.0"
+    assert editor["license"] == "Apache-2.0"
+    assert gallery["license"] == "Apache-2.0"
+    assert (ROOT / "LICENSE").is_file()
+    assert not (ROOT / "LICENSE-MIT").exists()
+    assert not (ROOT / "LICENSE-APACHE").exists()
+    assert "Licensed under the [Apache License 2.0](LICENSE)." in readme
+    assert "README, the Apache-2.0 license, and a version record" in release_readme
+    assert "dual licenses" not in release_readme
+
+
+def test_release_workflows_are_native_safe_restartable_and_preflighted() -> None:
+    publish = (ROOT / ".github" / "workflows" / "publish-registries.yml").read_text(
+        encoding="utf-8"
+    )
+    release = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    for workflow in (publish, release):
+        assert "macos-13" not in workflow
+        assert re.search(
+            r"target: x86_64-apple-darwin\s+runner: macos-15-intel"
+            r"|runner: macos-15-intel\s+target: x86_64-apple-darwin",
+            workflow,
+        )
+        assert re.search(
+            r"target: aarch64-apple-darwin\s+runner: macos-15"
+            r"|runner: macos-15\s+target: aarch64-apple-darwin",
+            workflow,
+        )
+
+    for workflow in (publish, ci):
+        assert "--no-verify" not in workflow
+        assert "scripts/release/publish_crates.py preflight" in workflow
+
+    assert "scripts/release/publish_crates.py publish" in publish
+    assert "--expected-owner emirhuseynrmx" in publish
+    assert (ROOT / "scripts" / "release" / "publish_crates.py").is_file()
+
+
+def test_sdist_is_built_and_smoked_outside_the_repository() -> None:
+    workflows = [
+        (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+        for name in ("ci.yml", "publish-registries.yml")
+    ]
+    for workflow in workflows:
+        assert "python -m pip wheel" in workflow
+        assert "--no-deps" in workflow
+        assert "/tmp/reprocut-sdist-wheel" in workflow
+        assert "python -m venv /tmp/reprocut-sdist-smoke" in workflow
+        assert "REPROCUT_REQUIRE_NATIVE=1" in workflow
+
+
+def test_registry_readme_links_and_install_contract_are_release_stable() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    pinned = "https://github.com/emirhuseynrmx/reprocut/raw/v0.1.0/"
+
+    assert f"{pinned}assets/reprocut-banner.svg" in readme
+    assert f"{pinned}assets/reprocut-demo.gif" in readme
+    assert "packages have not been published" not in readme
+    assert "cargo install reprocut --version 0.1.0 --locked" in readme
+    assert "python -m pip install reprocut==0.1.0" in readme
+    assert "The Python package does not bundle the Rust reducer CLI." in readme
 
 
 def test_every_publishable_path_dependency_has_the_release_version() -> None:

@@ -1,4 +1,4 @@
-![ReproCut - same failure, less project](assets/reprocut-banner.svg)
+![ReproCut - same failure, less project](https://github.com/emirhuseynrmx/reprocut/raw/v0.1.0/assets/reprocut-banner.svg)
 
 # ReproCut
 
@@ -9,14 +9,17 @@ It works on a copy, not your checkout. It establishes a repeatable baseline,
 tests candidate reductions in fresh snapshots, and publishes a result only
 after final verification satisfies the selected evaluation policy.
 
-![A ReproCut run reducing 18 files to 3](assets/reprocut-demo.gif)
+![A ReproCut run reducing 18 files to 3](https://github.com/emirhuseynrmx/reprocut/raw/v0.1.0/assets/reprocut-demo.gif)
 
 The GIF is a tiny onboarding fixture: **18 files to 3**, from **55 lines** and
 **1,669 bytes**, in **24 candidate evaluations**, followed by **3/3 final
-verification runs**. Its [evidence](demo/result/reduction.json),
-[attempt log](demo/result/attempts.jsonl), and
-[HTML report](demo/result/report.html) are checked in. It demonstrates the user
-flow; it is not a large-project benchmark.
+verification runs**. Its
+[evidence](https://github.com/emirhuseynrmx/reprocut/blob/v0.1.0/demo/result/reduction.json),
+[attempt log](https://github.com/emirhuseynrmx/reprocut/blob/v0.1.0/demo/result/attempts.jsonl),
+and
+[HTML report](https://github.com/emirhuseynrmx/reprocut/blob/v0.1.0/demo/result/report.html)
+are checked in. It demonstrates the user flow; it is not a large-project
+benchmark.
 
 ## Evidence, without mixing unlike claims
 
@@ -34,12 +37,30 @@ the opt-in historical-toolchain workflow completes successfully. A reviewed
 third-party evidence submission—not a self-authored example—is required before
 the independent count can increase.
 
-ReproCut 0.1.0 is a release candidate. The crates.io and PyPI packages have not
-been published.
+ReproCut 0.1 is an alpha release focused on deterministic, evidence-backed
+project reduction. Its checked-in result uses schema-4 evidence. Failure
+identity uses schema-5 normalized diagnostics.
 
 ## Quick start
 
-Building from source requires Rust 1.85 or newer.
+Install the Rust CLI with Cargo 1.85 or newer:
+
+```console
+cargo install reprocut --version 0.1.0 --locked
+```
+
+The Python package provides native failure-oracle bindings, evaluation policy,
+the typed client, and the `reprocut-py` console script:
+
+```console
+python -m pip install reprocut==0.1.0
+```
+
+The Python package does not bundle the Rust reducer CLI. Full project reduction
+from Python resolves `reprocut` through `REPROCUT_BINARY` or `PATH`, so install
+both packages when using `reduce()`.
+
+To build the CLI from source:
 
 ```console
 git clone https://github.com/emirhuseynrmx/reprocut.git
@@ -182,7 +203,8 @@ hostile code.
 
 ## Python API
 
-The typed Python client invokes the same Rust protocol engine:
+The typed Python client invokes the installed Rust CLI through the versioned
+protocol:
 
 ```python
 from pathlib import Path
@@ -202,7 +224,7 @@ print(result.report_path)
 ```
 
 The pure-Python fallback implements the oracle contract only. Full project
-reduction requires the Rust CLI or native package.
+reduction always requires the separate Rust CLI.
 
 ## Integrations and export
 
@@ -267,5 +289,4 @@ See [RELEASING.md](docs/RELEASING.md) for release gates and publication order.
 
 ## License
 
-Licensed under either [Apache-2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT), at your
-option.
+Licensed under the [Apache License 2.0](LICENSE).

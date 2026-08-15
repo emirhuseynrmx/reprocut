@@ -381,11 +381,7 @@ def _normalize_timestamp(match: re.Match[str]) -> str:
     is_envelope = all(character in " \t[" for character in prefix) and bool(
         _LOG_LEVEL.search(suffix)
     )
-    return (
-        "<timestamp>"
-        if _TIMESTAMP_FIELD.search(prefix) or is_envelope
-        else match.group(0)
-    )
+    return "<timestamp>" if _TIMESTAMP_FIELD.search(prefix) or is_envelope else match.group(0)
 
 
 def _current_line_prefix(match: re.Match[str]) -> str:

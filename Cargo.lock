@@ -1082,6 +1082,7 @@ dependencies = [
  "reprocut-core",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

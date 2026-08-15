@@ -1,8 +1,8 @@
 # ReproCut 0.1 release artifacts
 
 Every platform archive is built from the tagged commit and contains only the
-binary, four generated shell completions, README, dual licenses, and a version
-record binding the target, source revision, and `SOURCE_DATE_EPOCH`.
+binary, four generated shell completions, README, the Apache-2.0 license, and a version record
+binding the target, source revision, and `SOURCE_DATE_EPOCH`.
 
 `SHA256SUMS` covers each archive and SPDX JSON SBOM. `release-manifest.json`
 binds those files to all six required targets. GitHub's build-provenance

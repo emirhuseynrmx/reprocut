@@ -50,11 +50,11 @@ jobs:
             binary: target/x86_64-pc-windows-msvc/release/reprocut.exe
             launcher: "[]"
           - target: x86_64-apple-darwin
-            runner: macos-13
+            runner: macos-15-intel
             binary: target/x86_64-apple-darwin/release/reprocut
             launcher: "[]"
           - target: aarch64-apple-darwin
-            runner: macos-14
+            runner: macos-15
             binary: target/aarch64-apple-darwin/release/reprocut
             launcher: "[]"
     runs-on: ${{ matrix.runner }}

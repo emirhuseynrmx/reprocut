@@ -51,35 +51,24 @@ jobs:
         run: |
           rustup toolchain install 1.85.0 --profile minimal --component rustfmt,clippy
           rustup default 1.85.0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
       - name: Re-run publish-critical contracts
         run: |
           cargo metadata --locked --format-version 1 > /dev/null
           cargo fmt --all -- --check
           cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
           cargo test --locked --workspace --all-targets
-      - name: Publish in topological order and wait for index propagation
+      - name: Verify every packaged crate before the first upload
+        run: python scripts/release/publish_crates.py preflight --repository .
+      - name: Publish or resume the checksum-bound dependency chain
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: |
-          set -euo pipefail
-          for package in \
-            reprocut-core reprocut-report reprocut-oci reprocut-workspace \
-            reprocut-runner reprocut-state reprocut-syntax reprocut-adapters \
-            reprocut-engine reprocut
-          do
-            cargo publish --locked -p "${package}"
-            for attempt in $(seq 1 30)
-            do
-              status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
-                "https://crates.io/api/v1/crates/${package}/${REPROCUT_VERSION}")"
-              if test "${status}" = "200"; then break; fi
-              if test "${attempt}" = "30"; then
-                echo "registry propagation timed out for ${package}" >&2
-                exit 1
-              fi
-              sleep 10
-            done
-          done
+        run: >-
+          python scripts/release/publish_crates.py publish
+          --repository .
+          --expected-owner emirhuseynrmx
       - name: Clean install the public crate
         run: |
           cargo install reprocut --version "${REPROCUT_VERSION}" --locked
@@ -103,10 +92,10 @@ jobs:
             runner: windows-latest
             target: x86_64-pc-windows-msvc
           - platform: macos-x86_64
-            runner: macos-13
+            runner: macos-15-intel
             target: x86_64-apple-darwin
           - platform: macos-aarch64
-            runner: macos-14
+            runner: macos-15
             target: aarch64-apple-darwin
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
@@ -193,6 +182,20 @@ jobs:
           # `sdist` performs no dependency resolution and includes the committed Cargo.lock.
           maturin sdist --out dist
           python -m twine check dist/*
+      - name: Rebuild and smoke the sdist outside the repository
+        run: |
+          python -m pip wheel \
+            --no-deps \
+            --no-cache-dir \
+            "dist/reprocut-${REPROCUT_VERSION}.tar.gz" \
+            --wheel-dir /tmp/reprocut-sdist-wheel
+          python -m venv /tmp/reprocut-sdist-smoke
+          /tmp/reprocut-sdist-smoke/bin/python -m pip install \
+            --no-deps \
+            /tmp/reprocut-sdist-wheel/reprocut-*.whl
+          /tmp/reprocut-sdist-smoke/bin/python -m pip install pytest==8.4.2
+          REPROCUT_REQUIRE_NATIVE=1 \
+            /tmp/reprocut-sdist-smoke/bin/python -m pytest python/tests -q
       - name: Publish with short-lived OpenID Connect credentials
         uses: pypa/gh-action-pypi-publish@release/v1
         with:

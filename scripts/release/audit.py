@@ -130,6 +130,7 @@ def static_checks(root: Path) -> list[Check]:
         "gallery/scripts/build.js",
         "scripts/benchmark_release.py",
         "scripts/release/package_binary.py",
+        "scripts/release/publish_crates.py",
         "scripts/release/verify_archive.py",
         "scripts/release/build_manifest.py",
         "docs/RELEASING.md",
@@ -166,6 +167,8 @@ def static_checks(root: Path) -> list[Check]:
         )
     )
     checks.append(dependency_lock_check(root))
+    checks.append(single_license_check(root))
+    checks.append(registry_release_check(root))
 
     release_workflow = (root / ".github/workflows/release.yml").read_text(encoding="utf-8")
     checks.append(
@@ -226,6 +229,69 @@ def static_checks(root: Path) -> list[Check]:
     return checks
 
 
+def single_license_check(root: Path) -> Check:
+    if tomllib is None:
+        return check("single-license", False, "Python 3.11+ is required for TOML auditing")
+    cargo = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
+    python = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    editor = json.loads((root / "editors/vscode/package.json").read_text(encoding="utf-8"))
+    gallery = json.loads((root / "gallery/package.json").read_text(encoding="utf-8"))
+    release_readme = (root / "release/README.md").read_text(encoding="utf-8")
+    expected = "Apache-2.0"
+    passed = (
+        cargo["workspace"]["package"].get("license") == expected
+        and python["project"].get("license") == expected
+        and python["project"].get("license-files") == ["LICENSE"]
+        and editor.get("license") == expected
+        and gallery.get("license") == expected
+        and (root / "LICENSE").is_file()
+        and not (root / "LICENSE-MIT").exists()
+        and not (root / "LICENSE-APACHE").exists()
+        and "README, the Apache-2.0 license, and a version record" in release_readme
+        and "dual licenses" not in release_readme
+    )
+    return check(
+        "single-license",
+        passed,
+        "Apache-2.0 across source metadata and release copy",
+    )
+
+
+def registry_release_check(root: Path) -> Check:
+    publish = (root / ".github/workflows/publish-registries.yml").read_text(encoding="utf-8")
+    release = (root / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    ci = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    runner_contract = all(
+        "macos-13" not in workflow
+        and "runner: macos-15-intel" in workflow
+        and "runner: macos-15" in workflow
+        for workflow in (publish, release)
+    )
+    crate_contract = (
+        all("--no-verify" not in workflow for workflow in (publish, ci))
+        and all(
+            "scripts/release/publish_crates.py preflight" in workflow for workflow in (publish, ci)
+        )
+        and "scripts/release/publish_crates.py publish" in publish
+        and "--expected-owner emirhuseynrmx" in publish
+    )
+    sdist_markers = (
+        "python -m pip wheel",
+        "/tmp/reprocut-sdist-wheel",
+        "python -m venv /tmp/reprocut-sdist-smoke",
+        "REPROCUT_REQUIRE_NATIVE=1",
+    )
+    sdist_contract = all(
+        all(marker in workflow for marker in sdist_markers) for workflow in (publish, ci)
+    )
+    passed = runner_contract and crate_contract and sdist_contract
+    return check(
+        "registry-release",
+        passed,
+        "native runners, verified/resumable crates, and clean sdist smoke",
+    )
+
+
 def demo_artifact_manifest_check(root: Path) -> Check:
     artifact = root / "demo" / "result"
     envelope = artifact / "artifact-manifest.json"
@@ -264,6 +330,18 @@ def dependency_lock_check(root: Path) -> Check:
     lock = root / "Cargo.lock"
     if not lock.is_file() or lock.stat().st_size == 0:
         violations.append("Cargo.lock missing")
+    if tomllib is None:
+        violations.append("Python 3.11+ is required for TOML auditing")
+    else:
+        try:
+            pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+            maturin = pyproject.get("tool", {}).get("maturin", {})
+            if not isinstance(maturin, dict) or maturin.get("locked") is not True:
+                violations.append("pyproject.toml: tool.maturin.locked must be true")
+            if not isinstance(maturin, dict) or maturin.get("sdist-generator") != "git":
+                violations.append('pyproject.toml: tool.maturin.sdist-generator must be "git"')
+        except (OSError, tomllib.TOMLDecodeError) as error:
+            violations.append(f"pyproject.toml: cannot audit maturin lock: {error}")
     for workflow in workflows:
         content = workflow.read_text(encoding="utf-8")
         if "cargo generate-lockfile" in content:

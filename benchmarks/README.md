@@ -22,7 +22,7 @@ project. Every subject is linked to its public issue, pinned to one immutable
 Perses commit, and classified by its upstream layout.
 
 The Perses subjects are GPL-3.0-only, so they are deliberately not copied into
-ReproCut's MIT/Apache-2.0 source tree. Fetching requires an explicit license
+ReproCut's Apache-2.0 source tree. Fetching requires an explicit license
 acknowledgement:
 
 ```sh

@@ -193,16 +193,18 @@ fn fixture() -> ReductionEvidence {
             reject_patterns: Vec::new(),
             oracle_spec_sha256: "b".repeat(64),
         },
-        kept_files: vec![RetentionEvidence {
-            path: "bug.py".to_owned(),
-            observation: "Present in the final verified snapshot.".to_owned(),
-        }],
-        retained_manifest: RetainedManifest::new(vec![RetainedEntry::regular_file(
-            "bug.py",
-            &vec![0; 512],
-            0,
-        )
-        .expect("retained fixture")])
+        kept_files: ["bug.py", "config.ini", "data.txt"]
+            .into_iter()
+            .map(|path| RetentionEvidence {
+                path: path.to_owned(),
+                observation: "Present in the final verified snapshot.".to_owned(),
+            })
+            .collect(),
+        retained_manifest: RetainedManifest::new(vec![
+            RetainedEntry::regular_file("bug.py", &[0; 510], 0).expect("retained fixture"),
+            RetainedEntry::regular_file("config.ini", b"x", 0).expect("retained fixture"),
+            RetainedEntry::regular_file("data.txt", b"y", 0).expect("retained fixture"),
+        ])
         .expect("retained manifest"),
         final_observations: final_observations(),
         accepted_structured_edits: vec!["syntax:delete:bug.py:0..10".to_owned()],

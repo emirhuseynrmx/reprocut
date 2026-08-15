@@ -46,13 +46,11 @@ def test_typed_client_consumes_the_versioned_engine_protocol(tmp_path: Path) -> 
 
 
 @pytest.mark.parametrize("mode", ["missing_manifest", "missing_final_observation"])
-def test_typed_client_rejects_incomplete_schema_4_evidence(
-    tmp_path: Path, mode: str
-) -> None:
+def test_typed_client_rejects_incomplete_schema_4_evidence(tmp_path: Path, mode: str) -> None:
     fake = _write_fake_engine(tmp_path, mode=mode)
     request = ReductionRequest(root=tmp_path, output=tmp_path / "minimal")
 
-    with pytest.raises(ReproCutError, match="retained manifest|final observations"):
+    with pytest.raises(ReproCutError, match=r"retained manifest|final observations"):
         reduce(request, executable=[sys.executable, fake])
 
 

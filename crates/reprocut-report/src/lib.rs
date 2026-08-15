@@ -20,16 +20,14 @@ pub use manifest::{
     ArtifactManifest, ArtifactMember, ManifestError, RetainedEntry, RetainedEntryKind,
     RetainedManifest, ARTIFACT_MANIFEST_SCHEMA_VERSION,
 };
-pub use verify::{
-    build_artifact_manifest, verify_artifact, VerificationError, VerifiedArtifact,
-};
+pub use verify::{build_artifact_manifest, verify_artifact, VerificationError, VerifiedArtifact};
 
 /// Exact platform launchers deterministically derived from one argv vector.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReproductionScripts {
     /// POSIX shell launcher.
     pub shell: String,
-    /// PowerShell launcher.
+    /// `PowerShell` launcher.
     pub powershell: String,
 }
 

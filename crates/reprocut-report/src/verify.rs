@@ -19,7 +19,7 @@ const MANIFEST_PATH: &str = "artifact-manifest.json";
 const MAX_CONTROL_FILE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_MEMBER_BYTES: u64 = 1024 * 1024 * 1024;
 
-/// A structurally verified, content-addressed ReproCut artifact.
+/// A structurally verified, content-addressed `ReproCut` artifact.
 ///
 /// Values can only be constructed by [`verify_artifact`]. Keeping the fields private prevents
 /// publication APIs from accidentally accepting an unchecked directory.
@@ -248,6 +248,7 @@ fn collect_members(
 ) -> Result<Vec<ArtifactMember>, VerificationError> {
     let mut pending = vec![root.to_path_buf()];
     let mut members = Vec::new();
+    let mut stream_buffer = vec![0_u8; 64 * 1024];
     let mut saw_envelope = false;
     while let Some(directory) = pending.pop() {
         let entries = fs::read_dir(&directory)
@@ -283,7 +284,12 @@ fn collect_members(
             if metadata.len() > MAX_MEMBER_BYTES {
                 return Err(VerificationError::OversizedMember(path));
             }
-            members.push(stream_member(relative, &path, &metadata)?);
+            members.push(stream_member(
+                relative,
+                &path,
+                &metadata,
+                &mut stream_buffer,
+            )?);
         }
     }
     if require_manifest_envelope && !saw_envelope {
@@ -299,15 +305,15 @@ fn stream_member(
     relative: String,
     path: &Path,
     before: &fs::Metadata,
+    buffer: &mut [u8],
 ) -> Result<ArtifactMember, VerificationError> {
     let mut file =
         fs::File::open(path).map_err(|source| io_error("open artifact member", path, source))?;
     let mut hasher = ContentHasher::new();
     let mut size_bytes = 0_u64;
-    let mut buffer = [0_u8; 64 * 1024];
     loop {
         let read = file
-            .read(&mut buffer)
+            .read(buffer)
             .map_err(|source| io_error("read artifact member", path, source))?;
         if read == 0 {
             break;

@@ -54,9 +54,10 @@ Run **Publish registries (manual)** with:
 - confirmation: `PUBLISH_REPROCUT_0_1_0`
 
 The protected `crates-io` environment holds the least-scope
-`CARGO_REGISTRY_TOKEN`. After approval, the workflow reruns format, Clippy, and
-tests; publishes in this dependency order; waits for each registry entry; and
-performs a clean `cargo install reprocut --version 0.1.0 --locked`:
+`CARGO_REGISTRY_TOKEN`. Before the first upload, the workflow reruns format,
+Clippy, and tests and performs a verified `cargo package` for every publishable
+crate. It then publishes in dependency order and performs a clean
+`cargo install reprocut --version 0.1.0 --locked`:
 
 ```text
 reprocut-core → reprocut-report → reprocut-oci
@@ -79,6 +80,12 @@ cargo publish --locked -p reprocut-engine
 cargo publish --locked -p reprocut
 ```
 
+The workflow is safe to resume. Before each upload it queries the immutable
+`package/version` entry. An existing version is skipped only when its crates.io
+checksum matches the locally verified `.crate` and `emirhuseynrmx` remains an
+owner. A new upload is polled with fixed retry bounds and receives the same
+checksum and ownership verification before the next dependency is attempted.
+
 `reprocut-python` is intentionally `publish = false`; it is a Maturin build crate, not a
 user-facing crates.io package.
 
@@ -89,9 +96,11 @@ Publisher for project `reprocut`, environment `pypi`, then run the same manual
 workflow with registry `pypi` and the exact confirmation.
 
 The workflow builds ABI3-Python-3.9 wheels for manylinux x86_64/aarch64,
-Windows x86_64, and macOS x86_64/aarch64, builds the sdist, runs `twine check`,
-and uses a short-lived OpenID Connect credential. No long-lived PyPI token is
-stored.
+Windows x86_64, and macOS x86_64/aarch64, builds the sdist, and runs `twine
+check`. It then asks `pip wheel` to rebuild that exact sdist outside the
+repository, installs the resulting wheel into a fresh virtual environment, and
+runs the native Python suite before requesting a short-lived OpenID Connect
+credential. No long-lived PyPI token is stored.
 
 After publication, validate a clean supported environment:
 
@@ -104,3 +113,9 @@ reprocut-py --help
 The Python package contains the native oracle binding and typed shared-engine
 client. Full project reduction resolves the Rust `reprocut` CLI through
 `REPROCUT_BINARY` or `PATH`; it never falls back to a second Python reducer.
+
+## 5. License identity
+
+Every source package, Python wheel/sdist, editor surface, gallery surface, and
+binary archive declares the same `Apache-2.0` license and ships the root
+`LICENSE` text. `LICENSE-MIT` and dual-license metadata are release blockers.

@@ -10,7 +10,6 @@ import sys
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
-
 from release.schema_versions import EVIDENCE_SCHEMA
 
 ROOT = Path(__file__).resolve().parent.parent

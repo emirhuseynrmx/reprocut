@@ -466,10 +466,7 @@ fn freeze_wheelhouse(path: &Path) -> Result<(TempDir, ContentDigest), PythonPrep
         if !metadata.file_type().is_file() || !safe_wheel_name(name_text) {
             return Err(PythonPreparationError::UnsafeWheel { path: entry_path });
         }
-        let folded = name_text.to_ascii_lowercase();
-        if !names.insert(folded.clone()) {
-            return Err(PythonPreparationError::DuplicateWheel { name: folded });
-        }
+        record_wheel_name(&mut names, name_text)?;
         let bytes = fs::read(&entry_path).map_err(|error| PythonPreparationError::Io {
             operation: "read wheel",
             path: entry_path.clone(),
@@ -486,6 +483,18 @@ fn freeze_wheelhouse(path: &Path) -> Result<(TempDir, ContentDigest), PythonPrep
         })?;
     }
     Ok((owner, hasher.finalize()))
+}
+
+fn record_wheel_name(
+    names: &mut BTreeSet<String>,
+    name: &str,
+) -> Result<(), PythonPreparationError> {
+    let folded = name.to_ascii_lowercase();
+    if names.insert(folded.clone()) {
+        Ok(())
+    } else {
+        Err(PythonPreparationError::DuplicateWheel { name: folded })
+    }
 }
 
 fn probe_interpreter(
@@ -738,9 +747,10 @@ fn null_device() -> &'static OsStr {
 #[cfg(test)]
 mod tests {
     use super::{
-        freeze_wheelhouse, normalize_extra, read_prepare_spec, ContentDigest,
+        freeze_wheelhouse, normalize_extra, read_prepare_spec, record_wheel_name, ContentDigest,
         PythonPreparationError,
     };
+    use std::collections::BTreeSet;
     use std::fs;
 
     #[test]
@@ -756,23 +766,26 @@ mod tests {
     }
 
     #[test]
-    fn wheelhouse_rejects_non_wheels_and_case_collisions() {
+    fn wheelhouse_rejects_non_wheels() {
         let wheelhouse = tempfile::tempdir().expect("wheelhouse");
         fs::write(wheelhouse.path().join("demo-1-py3-none-any.whl"), b"wheel").expect("wheel");
         let (_, first) = freeze_wheelhouse(wheelhouse.path()).expect("frozen");
-        fs::write(wheelhouse.path().join("DEMO-1-PY3-NONE-ANY.WHL"), b"other").expect("collision");
-        assert!(matches!(
-            freeze_wheelhouse(wheelhouse.path()),
-            Err(PythonPreparationError::DuplicateWheel { .. })
-        ));
-        fs::remove_file(wheelhouse.path().join("DEMO-1-PY3-NONE-ANY.WHL"))
-            .expect("remove collision");
         fs::write(wheelhouse.path().join("README.txt"), b"noise").expect("noise");
         assert!(matches!(
             freeze_wheelhouse(wheelhouse.path()),
             Err(PythonPreparationError::UnsafeWheel { .. })
         ));
         assert_ne!(first, ContentDigest::of(b""));
+    }
+
+    #[test]
+    fn wheel_names_reject_case_insensitive_collisions_on_every_platform() {
+        let mut names = BTreeSet::new();
+        record_wheel_name(&mut names, "demo-1-py3-none-any.whl").expect("first name");
+        assert!(matches!(
+            record_wheel_name(&mut names, "DEMO-1-PY3-NONE-ANY.WHL"),
+            Err(PythonPreparationError::DuplicateWheel { .. })
+        ));
     }
 
     #[test]

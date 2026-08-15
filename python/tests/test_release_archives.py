@@ -46,8 +46,7 @@ def test_archive_is_reproducible_bounded_and_self_describing(tmp_path: Path) -> 
     assert result.binary == "reprocut"
     assert result.source_revision == "a" * 40
     assert result.members == (
-        "LICENSE-APACHE",
-        "LICENSE-MIT",
+        "LICENSE",
         "README.md",
         "VERSION.json",
         "completions/_reprocut",

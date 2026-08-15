@@ -352,7 +352,7 @@ fn termination_fields_agree(observation: &FinalObservationEvidence) -> bool {
     ) {
         (termination, Some(exit_code), None) => termination == format!("exit {exit_code}"),
         (termination, None, Some(signal)) => termination == format!("signal {signal}"),
-        ("timed out", None, None) | ("runner failure", None, None) => true,
+        ("timed out" | "runner failure", None, None) => true,
         _ => false,
     }
 }

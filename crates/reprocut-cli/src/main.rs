@@ -75,7 +75,7 @@ enum Action {
 
 #[derive(Debug, Args)]
 struct VerifyArgs {
-    /// Completed ReproCut artifact directory.
+    /// Completed `ReproCut` artifact directory.
     #[arg(value_name = "OUTPUT")]
     output: PathBuf,
 
@@ -450,7 +450,7 @@ fn execute(cli: Cli) -> Result<(), CliError> {
     match cli.action {
         Action::Minimize(arguments) | Action::Reduce(arguments) => reduce_project(arguments, false),
         Action::Resume(arguments) => reduce_project(arguments, true),
-        Action::Verify(arguments) => verify_completed_artifact(arguments),
+        Action::Verify(arguments) => verify_completed_artifact(&arguments),
         Action::Export(arguments) => export_artifact(arguments),
         Action::Protocol(arguments) => run_protocol(arguments),
         Action::Gallery(arguments) => run_gallery(arguments),
@@ -461,7 +461,7 @@ fn execute(cli: Cli) -> Result<(), CliError> {
     }
 }
 
-fn verify_completed_artifact(arguments: VerifyArgs) -> Result<(), CliError> {
+fn verify_completed_artifact(arguments: &VerifyArgs) -> Result<(), CliError> {
     let verified = verify_artifact(&arguments.output)?;
     if arguments.json {
         println!(
@@ -993,12 +993,8 @@ fn split_command(command: &[String]) -> (&str, &[String]) {
     (program, arguments)
 }
 
-fn build_evidence(
-    arguments: &ReduceArgs,
-    outcome: &ReductionOutcome,
-) -> Result<ReductionEvidence, CliError> {
-    let fingerprint = outcome.fingerprint();
-    let attempts = outcome
+fn build_attempt_summaries(outcome: &ReductionOutcome) -> Vec<AttemptSummary> {
+    outcome
         .attempt_events()
         .iter()
         .map(|event| AttemptSummary {
@@ -1011,23 +1007,31 @@ fn build_evidence(
             evidence: serde_json::from_str(event.evidence_json())
                 .unwrap_or_else(|_| serde_json::Value::String(event.evidence_json().to_owned())),
         })
-        .collect();
-    let mut accepted_file_sizes =
-        Vec::with_capacity(outcome.reduction().accepted_sizes().len().saturating_add(1));
-    accepted_file_sizes.push(outcome.original_files());
-    accepted_file_sizes.extend_from_slice(outcome.reduction().accepted_sizes());
+        .collect()
+}
 
-    let retained_manifest = RetainedManifest::new(
-        outcome
-            .snapshot()
-            .files()
-            .iter()
-            .map(|file| {
-                RetainedEntry::regular_file(file.path(), file.contents(), file.executable_mask())
-            })
-            .collect::<Result<Vec<_>, _>>()?,
-    )?;
-    let final_observations = outcome
+fn build_accepted_file_sizes(outcome: &ReductionOutcome) -> Vec<usize> {
+    let mut sizes =
+        Vec::with_capacity(outcome.reduction().accepted_sizes().len().saturating_add(1));
+    sizes.push(outcome.original_files());
+    sizes.extend_from_slice(outcome.reduction().accepted_sizes());
+    sizes
+}
+
+fn build_retained_manifest(outcome: &ReductionOutcome) -> Result<RetainedManifest, CliError> {
+    let entries = outcome
+        .snapshot()
+        .files()
+        .iter()
+        .map(|file| {
+            RetainedEntry::regular_file(file.path(), file.contents(), file.executable_mask())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(RetainedManifest::new(entries)?)
+}
+
+fn build_final_observations(outcome: &ReductionOutcome) -> Vec<FinalObservationEvidence> {
+    outcome
         .final_observations()
         .iter()
         .enumerate()
@@ -1048,7 +1052,18 @@ fn build_evidence(
                 stderr_bytes: u64::try_from(observation.stderr().len()).unwrap_or(u64::MAX),
             }
         })
-        .collect();
+        .collect()
+}
+
+fn build_evidence(
+    arguments: &ReduceArgs,
+    outcome: &ReductionOutcome,
+) -> Result<ReductionEvidence, CliError> {
+    let fingerprint = outcome.fingerprint();
+    let attempts = build_attempt_summaries(outcome);
+    let accepted_file_sizes = build_accepted_file_sizes(outcome);
+    let retained_manifest = build_retained_manifest(outcome)?;
+    let final_observations = build_final_observations(outcome);
 
     Ok(ReductionEvidence {
         schema_version: EVIDENCE_SCHEMA_VERSION,
@@ -1295,6 +1310,7 @@ fn write_reproduction_scripts(artifact: &Path, command: &[String]) -> Result<(),
     let scripts = render_reproduction_scripts(command);
     let shell_path = artifact.join("reproduce.sh");
     write_file(&shell_path, scripts.shell.as_bytes())?;
+    #[cfg(unix)]
     make_executable(&shell_path)?;
     write_file(
         &artifact.join("reproduce.ps1"),
@@ -1349,9 +1365,4 @@ fn make_executable(path: &Path) -> Result<(), CliError> {
     permissions.set_mode(0o755);
     fs::set_permissions(path, permissions)
         .map_err(|source| io_error("make reproduction script executable", path, source))
-}
-
-#[cfg(not(unix))]
-fn make_executable(_path: &Path) -> Result<(), CliError> {
-    Ok(())
 }

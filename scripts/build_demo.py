@@ -47,6 +47,7 @@ class DemoOracle(Protocol):
         truncated: bool = False,
     ) -> str: ...
 
+
 # The official Playground image has no Python executable. This adapter lets the
 # real Rust search engine execute a content-equivalent shell property there.
 # The builder separately runs both Python trees three times before publication.
@@ -281,16 +282,16 @@ def write_artifact_manifest(root: Path) -> None:
 
 def stable_python_failure(root: Path) -> DemoOracle:
     sys.path.insert(0, str(ROOT / "python"))
-    from reprocut import FailureOracle  # pyright: ignore[reportMissingImports]  # pylint: disable=import-outside-toplevel
+    from reprocut import (
+        FailureOracle,  # pyright: ignore[reportMissingImports]  # pylint: disable=import-outside-toplevel
+    )
 
     runs = [execute_python_failure(root) for _ in range(3)]
     if any(run.returncode == 0 for run in runs):
         raise RuntimeError("demo command unexpectedly succeeded")
     return cast(
         DemoOracle,
-        FailureOracle.from_baselines(
-            [(run.returncode, run.stdout, run.stderr) for run in runs]
-        ),
+        FailureOracle.from_baselines([(run.returncode, run.stdout, run.stderr) for run in runs]),
     )
 
 
@@ -382,10 +383,16 @@ fn demo_evidence(outcome: &ReductionOutcome) -> serde_json::Value {{
                     crate::reprocut_core::CandidateVerdict::Inconclusive => "inconclusive",
                 }}.to_owned(),
                 termination: match observation.termination() {{
-                    crate::reprocut_core::TerminationReason::ExitCode(code) => format!("exit {{code}}"),
-                    crate::reprocut_core::TerminationReason::UnixSignal(signal) => format!("signal {{signal}}"),
+                    crate::reprocut_core::TerminationReason::ExitCode(code) => {{
+                        format!("exit {{code}}")
+                    }}
+                    crate::reprocut_core::TerminationReason::UnixSignal(signal) => {{
+                        format!("signal {{signal}}")
+                    }}
                     crate::reprocut_core::TerminationReason::TimedOut => "timed out".to_owned(),
-                    crate::reprocut_core::TerminationReason::RunnerFailure => "runner failure".to_owned(),
+                    crate::reprocut_core::TerminationReason::RunnerFailure => {{
+                        "runner failure".to_owned()
+                    }}
                 }},
                 exit_code: observation.exit_code(),
                 signal: observation.signal(),
@@ -393,12 +400,20 @@ fn demo_evidence(outcome: &ReductionOutcome) -> serde_json::Value {{
                 streams_truncated: observation.streams_truncated(),
                 containment: match observation.containment() {{
                     crate::reprocut_core::ContainmentMechanism::DirectChild => "direct_child",
-                    crate::reprocut_core::ContainmentMechanism::PosixProcessGroup => "posix_process_group",
-                    crate::reprocut_core::ContainmentMechanism::WindowsJobObject => "windows_job_object",
+                    crate::reprocut_core::ContainmentMechanism::PosixProcessGroup => {{
+                        "posix_process_group"
+                    }}
+                    crate::reprocut_core::ContainmentMechanism::WindowsJobObject => {{
+                        "windows_job_object"
+                    }}
                 }}.to_owned(),
-                stdout_sha256: crate::reprocut_core::ContentDigest::of(observation.stdout()).to_hex(),
+                stdout_sha256: crate::reprocut_core::ContentDigest::of(
+                    observation.stdout()
+                ).to_hex(),
                 stdout_bytes: observation.stdout().len() as u64,
-                stderr_sha256: crate::reprocut_core::ContentDigest::of(observation.stderr()).to_hex(),
+                stderr_sha256: crate::reprocut_core::ContentDigest::of(
+                    observation.stderr()
+                ).to_hex(),
                 stderr_bytes: observation.stderr().len() as u64,
             }}
         }}
@@ -613,7 +628,10 @@ def between(output: str, start: str, end: str) -> str:
 def write_reproduction_scripts(artifact: Path) -> None:
     shell = artifact / "reproduce.sh"
     shell.write_text(
-        '#!/usr/bin/env sh\nset -eu\ncd -- "$(dirname -- "$0")/project"\nexec \'python\' \'bug.py\'\n',
+        "#!/usr/bin/env sh\n"
+        "set -eu\n"
+        'cd -- "$(dirname -- "$0")/project"\n'
+        "exec 'python' 'bug.py'\n",
         encoding="utf-8",
         newline="\n",
     )

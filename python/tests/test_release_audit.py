@@ -12,6 +12,7 @@ from audit import (  # noqa: E402
     ci_checks,
     demo_artifact_manifest_check,
     dependency_lock_check,
+    single_license_check,
     static_checks,
 )
 
@@ -85,6 +86,18 @@ def test_dependency_lock_check_rejects_missing_lock_and_unlocked_graph_commands(
         "      - run: maturin sdist --out dist\n",
         encoding="utf-8",
     )
+    assert not dependency_lock_check(tmp_path).passed
+
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.maturin]\nlocked = true\n",
+        encoding="utf-8",
+    )
+    assert not dependency_lock_check(tmp_path).passed
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.maturin]\nlocked = true\nsdist-generator = "git"\n',
+        encoding="utf-8",
+    )
     assert dependency_lock_check(tmp_path).passed
 
     workflow.write_text(
@@ -95,6 +108,37 @@ def test_dependency_lock_check_rejects_missing_lock_and_unlocked_graph_commands(
         encoding="utf-8",
     )
     assert not dependency_lock_check(tmp_path).passed
+
+
+def test_single_license_check_rejects_stale_dual_license_release_copy(tmp_path: Path) -> None:
+    (tmp_path / "editors" / "vscode").mkdir(parents=True)
+    (tmp_path / "gallery").mkdir()
+    (tmp_path / "release").mkdir()
+    (tmp_path / "Cargo.toml").write_text(
+        '[workspace.package]\nlicense = "Apache-2.0"\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nlicense = "Apache-2.0"\nlicense-files = ["LICENSE"]\n',
+        encoding="utf-8",
+    )
+    package = json.dumps({"license": "Apache-2.0"})
+    (tmp_path / "editors" / "vscode" / "package.json").write_text(package, encoding="utf-8")
+    (tmp_path / "gallery" / "package.json").write_text(package, encoding="utf-8")
+    (tmp_path / "LICENSE").write_text("Apache License\n", encoding="utf-8")
+    release_readme = tmp_path / "release" / "README.md"
+    release_readme.write_text(
+        "README, the Apache-2.0 license, and a version record\n",
+        encoding="utf-8",
+    )
+
+    assert single_license_check(tmp_path).passed
+
+    release_readme.write_text(
+        "README, dual licenses, and a version record\n",
+        encoding="utf-8",
+    )
+    assert not single_license_check(tmp_path).passed
 
 
 def test_demo_artifact_manifest_rejects_changed_retained_bytes(tmp_path: Path) -> None:

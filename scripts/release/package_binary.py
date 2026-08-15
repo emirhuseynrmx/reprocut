@@ -68,8 +68,7 @@ def package_binary(request: PackageRequest) -> Path:
         "source_date_epoch": request.source_date_epoch,
     }
     files = [
-        ("LICENSE-APACHE", read_regular(request.repository / "LICENSE-APACHE"), 0o644),
-        ("LICENSE-MIT", read_regular(request.repository / "LICENSE-MIT"), 0o644),
+        ("LICENSE", read_regular(request.repository / "LICENSE"), 0o644),
         ("README.md", read_regular(request.repository / "README.md"), 0o644),
         (
             "VERSION.json",

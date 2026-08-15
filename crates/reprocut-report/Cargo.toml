@@ -5,6 +5,7 @@ description = "Machine-readable evidence and self-contained reports for ReproCut
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+license-file.workspace = true
 authors.workspace = true
 repository.workspace = true
 

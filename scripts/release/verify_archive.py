@@ -65,8 +65,7 @@ def verify_archive(
 
     _archive_format, binary = target_layout(expected_target)
     expected = {
-        "LICENSE-APACHE",
-        "LICENSE-MIT",
+        "LICENSE",
         "README.md",
         "VERSION.json",
         binary,
