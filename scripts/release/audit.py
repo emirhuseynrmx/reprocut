@@ -11,11 +11,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from schema_versions import CI_EVIDENCE_SCHEMA, EVIDENCE_SCHEMA, NORMALIZATION_SCHEMA
+from toml_compat import load_toml_module
 
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover - Python 3.10 wheel job
-    tomllib = None
+tomllib = load_toml_module()
 
 VERSION = "0.1.0"
 REQUIRED_TARGETS = {
@@ -231,7 +229,7 @@ def static_checks(root: Path) -> list[Check]:
 
 def single_license_check(root: Path) -> Check:
     if tomllib is None:
-        return check("single-license", False, "Python 3.11+ is required for TOML auditing")
+        return check("single-license", False, "install tomli to audit TOML on Python <3.11")
     cargo = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
     python = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     editor = json.loads((root / "editors/vscode/package.json").read_text(encoding="utf-8"))
@@ -331,7 +329,7 @@ def dependency_lock_check(root: Path) -> Check:
     if not lock.is_file() or lock.stat().st_size == 0:
         violations.append("Cargo.lock missing")
     if tomllib is None:
-        violations.append("Python 3.11+ is required for TOML auditing")
+        violations.append("install tomli to audit TOML on Python <3.11")
     else:
         try:
             pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))

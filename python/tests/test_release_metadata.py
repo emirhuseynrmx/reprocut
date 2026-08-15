@@ -3,18 +3,18 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import sys
 from pathlib import Path
 
 import pytest
 
-try:
-    import tomllib
-except ModuleNotFoundError:
-    tomllib = None
-
-pytestmark = pytest.mark.skipif(tomllib is None, reason="stdlib tomllib requires Python 3.11+")
-
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts" / "release"))
+
+from toml_compat import load_toml_module  # noqa: E402
+
+tomllib = load_toml_module()
+pytestmark = pytest.mark.skipif(tomllib is None, reason="tomllib or tomli is required")
 CRATES = ROOT / "crates"
 PUBLISH_ORDER = [
     "reprocut-core",
@@ -96,6 +96,13 @@ def test_pypi_metadata_and_console_entrypoint_are_release_complete() -> None:
     assert pyproject["tool"]["maturin"]["module-name"] == "reprocut._native"
     assert pyproject["tool"]["maturin"]["locked"] is True
     assert pyproject["tool"]["maturin"]["sdist-generator"] == "git"
+    assert "tomli==2.4.1; python_version < '3.11'" in project["optional-dependencies"]["test"]
+
+
+def test_native_wheel_matrix_installs_the_toml_fallback_explicitly() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    assert "\"tomli==2.4.1; python_version < '3.11'\"" in workflow
 
 
 def test_all_project_metadata_uses_the_single_apache_2_license() -> None:
