@@ -11,10 +11,28 @@ after final verification satisfies the selected evaluation policy.
 
 ![A ReproCut run reducing 18 files to 3](assets/reprocut-demo.gif)
 
-The checked-in demo reduces a Python project from **18 files to 3** in **24
-candidate evaluations**, followed by **3/3 final verification runs**. The
-[evidence](demo/result/reduction.json), [attempt log](demo/result/attempts.jsonl),
-and [HTML report](demo/result/report.html) are included in the repository.
+The GIF is a tiny onboarding fixture: **18 files to 3**, from **55 lines** and
+**1,669 bytes**, in **24 candidate evaluations**, followed by **3/3 final
+verification runs**. Its [evidence](demo/result/reduction.json),
+[attempt log](demo/result/attempts.jsonl), and
+[HTML report](demo/result/report.html) are checked in. It demonstrates the user
+flow; it is not a large-project benchmark.
+
+## Evidence, without mixing unlike claims
+
+| Tier | Subject | Scale | What exists today |
+|---|---|---:|---|
+| Tiny onboarding fixture | Checked-in Python example | 18 → 3 files; 55 lines; 1,669 bytes | Complete evidence bundle |
+| Synthetic 312-file fixture | Deterministically generated Python project | 312 files; five fresh measured runs | Raw CI benchmark artifact |
+| Upstream real case | Pinned Perses `clang-26760` compiler bug | 2 C files; 33,171 lines; 1,933,944 source bytes | Download-only provenance; opt-in benchmark |
+| Independent | Third-party projects | **Independent validations: 0** | No external adoption claim yet |
+
+The 312-file fixture measures scale and repeatability, but it is generated and
+does not stand in for a complex production repository. The upstream row records
+real, pinned source provenance; reduction measurements remain unavailable until
+the opt-in historical-toolchain workflow completes successfully. A reviewed
+third-party evidence submission—not a self-authored example—is required before
+the independent count can increase.
 
 ReproCut 0.1.0 is a release candidate. The crates.io and PyPI packages have not
 been published.

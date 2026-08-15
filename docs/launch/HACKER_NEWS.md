@@ -16,10 +16,14 @@ the same fingerprint
 survives; timeout/truncation/runner errors are inconclusive. The final project
 must pass the oracle three more times before it is published.
 
-The checked-in demo goes from 18 files to 3 in 24 candidate evaluations. That is
-a fixture measurement, not a speed claim. Its JSON evidence, JSONL attempt
-ledger, standalone HTML report, issue body, and reproducer scripts are all in
-the repository.
+The checked-in demo is deliberately small: 18 files to 3, starting from 55
+lines and 1,669 bytes, in 24 candidate evaluations. That is an onboarding
+fixture measurement, not a speed or real-world-scale claim. Its JSON evidence,
+JSONL attempt ledger, standalone HTML report, issue body, and reproducer scripts
+are all in the repository. A separate generated 312-file benchmark measures
+repeatability, while a pinned Perses compiler case is reserved for the opt-in
+historical-toolchain workflow. There are currently zero independent validated
+runs.
 
 The systems parts I cared most about were bounded concurrent pipe draining,
 Unix/Windows descendant-process containment, deterministic parallel frontier

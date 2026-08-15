@@ -205,6 +205,24 @@ def static_checks(root: Path) -> list[Check]:
             "no stale scope or unmeasured speed claim",
         )
     )
+    evidence_disclosures = (
+        "55 lines",
+        "1,669 bytes",
+        "Synthetic 312-file fixture",
+        "Independent validations: 0",
+    )
+    inflated_demo_language = (
+        "large onboarding fixture",
+        "real-world onboarding fixture",
+    )
+    checks.append(
+        check(
+            "evidence-tier-copy",
+            all(value in readme for value in evidence_disclosures)
+            and not any(value in readme for value in inflated_demo_language),
+            "tiny, synthetic, upstream, and independent evidence are explicitly separated",
+        )
+    )
     return checks
 
 
