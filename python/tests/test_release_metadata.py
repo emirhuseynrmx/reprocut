@@ -167,10 +167,11 @@ def test_sdist_is_built_and_smoked_outside_the_repository() -> None:
 
 def test_registry_readme_links_and_install_contract_are_release_stable() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    pinned = "https://github.com/emirhuseynrmx/reprocut/raw/v0.1.0/"
+    asset_base = "https://raw.githubusercontent.com/emirhuseynrmx/reprocut/main/"
 
-    assert f"{pinned}assets/reprocut-banner.svg" in readme
-    assert f"{pinned}assets/reprocut-demo.gif" in readme
+    assert f"{asset_base}assets/reprocut-banner.svg" in readme
+    assert f"{asset_base}assets/reprocut-demo.gif" in readme
+    assert "/raw/v0.1.0/" not in readme
     assert "packages have not been published" not in readme
     assert "cargo install reprocut --version 0.1.0 --locked" in readme
     assert "python -m pip install reprocut==0.1.0" in readme

@@ -1,4 +1,4 @@
-![ReproCut - same failure, less project](https://github.com/emirhuseynrmx/reprocut/raw/v0.1.0/assets/reprocut-banner.svg)
+![ReproCut - same failure, less project](https://raw.githubusercontent.com/emirhuseynrmx/reprocut/main/assets/reprocut-banner.svg)
 
 # ReproCut
 
@@ -9,7 +9,7 @@ It works on a copy, not your checkout. It establishes a repeatable baseline,
 tests candidate reductions in fresh snapshots, and publishes a result only
 after final verification satisfies the selected evaluation policy.
 
-![A ReproCut run reducing 18 files to 3](https://github.com/emirhuseynrmx/reprocut/raw/v0.1.0/assets/reprocut-demo.gif)
+![A ReproCut run reducing 18 files to 3](https://raw.githubusercontent.com/emirhuseynrmx/reprocut/main/assets/reprocut-demo.gif)
 
 The GIF is a tiny onboarding fixture: **18 files to 3**, from **55 lines** and
 **1,669 bytes**, in **24 candidate evaluations**, followed by **3/3 final
