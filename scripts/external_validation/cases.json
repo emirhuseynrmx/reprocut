@@ -7,7 +7,7 @@
       "base_ref": "master",
       "head_sha": "1a0e915e4e0daa89cce0b97dc488801fe4225a0e",
       "ci_url": "https://github.com/redrose2100/openruyi-precommit-hooks/actions/runs/32953003565/job/98128456317",
-      "oracle_argv": ["pre-commit", "run", "--all-files", "--show-diff-on-failure"],
+      "oracle_argv": ["pre-commit", "run", "end-of-file-fixer", "--all-files", "--show-diff-on-failure"],
       "required_regex": ["files were modified by this hook", "Fixing (tests/)?check_spec_bcond"],
       "rejected_regex": ["Could not resolve host", "fatal: unable to access", "Executable .* not found", "No such file or directory"],
       "memory": "2g",

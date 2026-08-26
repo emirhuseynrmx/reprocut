@@ -7,30 +7,6 @@ attempt_timeout_ms="$(jq -r .attempt_timeout_ms /case.json)"
 timeout_minutes="$(jq -r .timeout_minutes /case.json)"
 mkdir -p /evidence/admission-logs /evidence/final-verification /work/cargo-home /work/cargo-target /work/pre-commit-cache
 
-copy_seed_tree() {
-  local source="$1" destination="$2"
-  cp -R --no-preserve=ownership,mode "$source"/. "$destination"/
-  chmod -R u+rwX "$destination"
-}
-
-if [ -d /opt/cargo ]; then
-  copy_seed_tree /opt/cargo /work/cargo-home
-fi
-if [ -d /opt/pre-commit-cache ]; then
-  copy_seed_tree /opt/pre-commit-cache /work/pre-commit-cache
-fi
-export CARGO_HOME=/work/cargo-home
-export CARGO_TARGET_DIR=/work/cargo-target
-export CARGO_NET_OFFLINE=true
-export PRE_COMMIT_HOME=/work/pre-commit-cache
-export PYTHONDONTWRITEBYTECODE=1
-export HOME=/work/home
-mkdir -p "$HOME"
-
-mapfile -t oracle_argv < <(jq -r '.oracle_argv[]' /case.json)
-mapfile -t required_regex < <(jq -r '.required_regex[]' /case.json)
-mapfile -t rejected_regex < <(jq -r '.rejected_regex[]' /case.json)
-
 finalize_evidence() {
   local container_rc="$1"
   CONTAINER_RC="$container_rc" python3 - <<'PY'
@@ -65,6 +41,30 @@ if not result_path.exists():
 PY
 }
 trap 'container_rc=$?; finalize_evidence "$container_rc"' EXIT
+
+copy_seed_tree() {
+  local source="$1" destination="$2"
+  cp -R --no-preserve=ownership,mode "$source"/. "$destination"/
+  chmod -R u+rwX "$destination"
+}
+
+if [ -d /opt/cargo ]; then
+  copy_seed_tree /opt/cargo /work/cargo-home
+fi
+if [ -d /opt/pre-commit-cache ]; then
+  copy_seed_tree /opt/pre-commit-cache /work/pre-commit-cache
+fi
+export CARGO_HOME=/work/cargo-home
+export CARGO_TARGET_DIR=/work/cargo-target
+export CARGO_NET_OFFLINE=true
+export PRE_COMMIT_HOME=/work/pre-commit-cache
+export PYTHONDONTWRITEBYTECODE=1
+export HOME=/work/home
+mkdir -p "$HOME"
+
+mapfile -t oracle_argv < <(jq -r '.oracle_argv[]' /case.json)
+mapfile -t required_regex < <(jq -r '.required_regex[]' /case.json)
+mapfile -t rejected_regex < <(jq -r '.rejected_regex[]' /case.json)
 
 prepare_snapshot() {
   local source="$1" destination="$2"
@@ -136,7 +136,6 @@ case "$case_id" in
       --python-wheelhouse /opt/wheelhouse
       --prepare-spec /opt/openruyi-prepare.json
     )
-    reduction_argv=(/opt/precommit/bin/pre-commit run --all-files --show-diff-on-failure)
     ;;
   ipe)
     reprocut_args+=(--ecosystem none --prepare none)

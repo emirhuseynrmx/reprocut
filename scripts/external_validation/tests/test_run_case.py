@@ -195,6 +195,17 @@ class BuildContextTests(unittest.TestCase):
         self.assertNotIn("cp -a /opt/", entrypoint)
         self.assertNotIn('cp -a "$source"', entrypoint)
 
+    def test_openruyi_bootstrap_is_targeted_and_failures_are_captured_early(self):
+        dockerfile = (SCRIPT_DIR / "Dockerfile").read_text(encoding="utf-8")
+        entrypoint = (SCRIPT_DIR / "container_entrypoint.sh").read_text(encoding="utf-8")
+
+        self.assertIn("pre-commit run end-of-file-fixer --all-files", dockerfile)
+        self.assertNotIn("reduction_argv=(/opt/precommit/bin/pre-commit run", entrypoint)
+        self.assertLess(
+            entrypoint.index("trap 'container_rc=$?"),
+            entrypoint.index("copy_seed_tree /opt/pre-commit-cache"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

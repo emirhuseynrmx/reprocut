@@ -39,7 +39,7 @@ RUN set -eux; \
         cp -a /inputs/head/. /tmp/openruyi-warm/; \
         cd /tmp/openruyi-warm; \
         git init -q; git add -A; \
-        PRE_COMMIT_HOME=/opt/pre-commit-cache /opt/precommit/bin/pre-commit run --all-files || true; \
+        PRE_COMMIT_HOME=/opt/pre-commit-cache /opt/precommit/bin/pre-commit run end-of-file-fixer --all-files || true; \
         printf '%s\n' '{"schema":1,"commands":[["git","init","-q"],["git","add","-A"]]}' > /opt/openruyi-prepare.json; \
         rm -rf /tmp/openruyi-warm ;; \
       ipe) \

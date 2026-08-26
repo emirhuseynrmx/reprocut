@@ -60,6 +60,15 @@ class CatalogTests(unittest.TestCase):
             ],
         )
 
+    def test_openruyi_oracle_targets_the_reproduced_mutating_hook(self):
+        cases = self.validation.load_cases(CATALOG)
+        openruyi = self.validation.select_case(cases, "openruyi")
+
+        self.assertEqual(
+            list(openruyi.oracle_argv),
+            ["pre-commit", "run", "end-of-file-fixer", "--all-files", "--show-diff-on-failure"],
+        )
+
     def test_rejects_unpinned_head(self):
         path = self.write_catalog([valid_case(head_sha="main")])
         with self.assertRaisesRegex(self.validation.CatalogError, "head_sha"):
