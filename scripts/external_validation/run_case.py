@@ -78,11 +78,11 @@ def docker_create_argv(case: CaseSpec, image: str) -> list[str]:
         "10001:10001",
         "--read-only",
         "--tmpfs",
-        "/work:rw,exec,nosuid,nodev,size=12g",
+        "/work:rw,exec,nosuid,nodev,size=12g,uid=10001,gid=10001,mode=1770",
         "--tmpfs",
-        "/tmp:rw,exec,nosuid,nodev,size=2g",
+        "/tmp:rw,exec,nosuid,nodev,size=2g,uid=10001,gid=10001,mode=1770",
         "--tmpfs",
-        "/evidence:rw,nosuid,nodev,size=1g",
+        "/evidence:rw,nosuid,nodev,size=1g,uid=10001,gid=10001,mode=1770",
         image,
     ]
 

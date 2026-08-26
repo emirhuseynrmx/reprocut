@@ -47,9 +47,14 @@ class DockerBoundaryTests(unittest.TestCase):
             index = argv.index(flag)
             self.assertEqual(argv[index + 1], value)
         self.assertIn("--read-only", argv)
-        self.assertIn("/evidence:rw,nosuid,nodev,size=1g", argv)
-        evidence_tmpfs = argv.index("/evidence:rw,nosuid,nodev,size=1g")
-        self.assertEqual(argv[evidence_tmpfs - 1], "--tmpfs")
+        expected_tmpfs = (
+            "/work:rw,exec,nosuid,nodev,size=12g,uid=10001,gid=10001,mode=1770",
+            "/tmp:rw,exec,nosuid,nodev,size=2g,uid=10001,gid=10001,mode=1770",
+            "/evidence:rw,nosuid,nodev,size=1g,uid=10001,gid=10001,mode=1770",
+        )
+        for value in expected_tmpfs:
+            self.assertIn(value, argv)
+            self.assertEqual(argv[argv.index(value) - 1], "--tmpfs")
         self.assertNotIn("--privileged", argv)
         self.assertNotIn("--mount", argv)
         self.assertNotIn("-v", argv)
