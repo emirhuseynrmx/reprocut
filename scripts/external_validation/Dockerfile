@@ -55,7 +55,7 @@ RUN set -eux; \
     chmod 0555 /opt/reprocut/reprocut /usr/local/bin/reprocut-validation; \
     useradd --uid 10001 --user-group --create-home --shell /usr/sbin/nologin validator; \
     chown -R root:root /inputs /opt/reprocut /opt/precommit /opt/pre-commit-cache /opt/wheelhouse /opt/cargo /opt/rustup 2>/dev/null || true; \
-    chmod -R a-w /inputs /opt/reprocut /opt/precommit /opt/pre-commit-cache /opt/wheelhouse /opt/cargo /opt/rustup 2>/dev/null || true; \
+    chmod -R a+rX,a-w /inputs /opt/reprocut /opt/precommit /opt/pre-commit-cache /opt/wheelhouse /opt/cargo /opt/rustup 2>/dev/null || true; \
     rm -rf /root/.cache /tmp/*
 
 USER 10001:10001

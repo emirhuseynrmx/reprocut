@@ -178,6 +178,15 @@ class BuildContextTests(unittest.TestCase):
         self.assertEqual(case_document["reprocut_sha"], "b" * 40)
         self.assertEqual(case_document["case_id"], "ipe")
 
+    def test_runtime_seed_caches_are_root_owned_but_validator_readable(self):
+        dockerfile = (SCRIPT_DIR / "Dockerfile").read_text(encoding="utf-8")
+
+        self.assertIn("chown -R root:root /inputs /opt/reprocut", dockerfile)
+        self.assertIn(
+            "chmod -R a+rX,a-w /inputs /opt/reprocut /opt/precommit /opt/pre-commit-cache",
+            dockerfile,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
