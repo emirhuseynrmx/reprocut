@@ -182,10 +182,8 @@ class BuildContextTests(unittest.TestCase):
         dockerfile = (SCRIPT_DIR / "Dockerfile").read_text(encoding="utf-8")
 
         self.assertIn("chown -R root:root /inputs /opt/reprocut", dockerfile)
-        self.assertIn(
-            "chmod -R a+rX,a-w /inputs /opt/reprocut /opt/precommit /opt/pre-commit-cache",
-            dockerfile,
-        )
+        self.assertIn("chmod -R a+rX,a-w /inputs /opt/reprocut /opt/precommit", dockerfile)
+        self.assertNotIn("/opt/pre-commit-cache", dockerfile)
 
     def test_runtime_copies_immutable_seeds_without_preserving_owner_or_mode(self):
         entrypoint = (SCRIPT_DIR / "container_entrypoint.sh").read_text(encoding="utf-8")
@@ -198,12 +196,17 @@ class BuildContextTests(unittest.TestCase):
     def test_openruyi_bootstrap_is_targeted_and_failures_are_captured_early(self):
         dockerfile = (SCRIPT_DIR / "Dockerfile").read_text(encoding="utf-8")
         entrypoint = (SCRIPT_DIR / "container_entrypoint.sh").read_text(encoding="utf-8")
+        oracle = (SCRIPT_DIR / "openruyi_eof_oracle.sh").read_text(encoding="utf-8")
 
-        self.assertIn("pre-commit run end-of-file-fixer --all-files", dockerfile)
+        self.assertIn("pre-commit-hooks==6.0.0", dockerfile)
+        self.assertNotIn("PRE_COMMIT_HOME=/opt/pre-commit-cache", dockerfile)
+        self.assertIn("end-of-file-fixer", oracle)
+        self.assertIn("files were modified by this hook", oracle)
         self.assertNotIn("reduction_argv=(/opt/precommit/bin/pre-commit run", entrypoint)
+        self.assertIn("reprocut_args+=(--ecosystem none --prepare none)", entrypoint)
         self.assertLess(
             entrypoint.index("trap 'container_rc=$?"),
-            entrypoint.index("copy_seed_tree /opt/pre-commit-cache"),
+            entrypoint.index("copy_seed_tree /opt/cargo"),
         )
 
 

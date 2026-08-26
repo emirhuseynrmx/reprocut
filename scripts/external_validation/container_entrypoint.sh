@@ -5,7 +5,7 @@ umask 077
 case_id="$(jq -r .case_id /case.json)"
 attempt_timeout_ms="$(jq -r .attempt_timeout_ms /case.json)"
 timeout_minutes="$(jq -r .timeout_minutes /case.json)"
-mkdir -p /evidence/admission-logs /evidence/final-verification /work/cargo-home /work/cargo-target /work/pre-commit-cache
+mkdir -p /evidence/admission-logs /evidence/final-verification /work/cargo-home /work/cargo-target
 
 finalize_evidence() {
   local container_rc="$1"
@@ -51,13 +51,9 @@ copy_seed_tree() {
 if [ -d /opt/cargo ]; then
   copy_seed_tree /opt/cargo /work/cargo-home
 fi
-if [ -d /opt/pre-commit-cache ]; then
-  copy_seed_tree /opt/pre-commit-cache /work/pre-commit-cache
-fi
 export CARGO_HOME=/work/cargo-home
 export CARGO_TARGET_DIR=/work/cargo-target
 export CARGO_NET_OFFLINE=true
-export PRE_COMMIT_HOME=/work/pre-commit-cache
 export PYTHONDONTWRITEBYTECODE=1
 export HOME=/work/home
 mkdir -p "$HOME"
@@ -71,9 +67,6 @@ prepare_snapshot() {
   rm -rf "$destination"
   mkdir -p "$destination"
   copy_seed_tree "$source" "$destination"
-  if [ "$case_id" = openruyi ]; then
-    (cd "$destination" && git init -q && git add -A)
-  fi
 }
 
 matches_contract() {
@@ -128,16 +121,7 @@ for pattern in "${rejected_regex[@]}"; do reprocut_args+=(--reject-regex "$patte
 
 reduction_argv=("${oracle_argv[@]}")
 case "$case_id" in
-  openruyi)
-    reprocut_args+=(
-      --ecosystem python
-      --prepare isolated-python
-      --python-executable /usr/bin/python3
-      --python-wheelhouse /opt/wheelhouse
-      --prepare-spec /opt/openruyi-prepare.json
-    )
-    ;;
-  ipe)
+  openruyi|ipe)
     reprocut_args+=(--ecosystem none --prepare none)
     ;;
   bevy)

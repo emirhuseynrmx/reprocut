@@ -66,7 +66,7 @@ class CatalogTests(unittest.TestCase):
 
         self.assertEqual(
             list(openruyi.oracle_argv),
-            ["pre-commit", "run", "end-of-file-fixer", "--all-files", "--show-diff-on-failure"],
+            ["/usr/local/bin/openruyi-eof-oracle"],
         )
 
     def test_rejects_unpinned_head(self):

@@ -191,12 +191,12 @@ Expected: FAIL because `Dockerfile` and `container_entrypoint.sh` do not exist. 
 
 Start from `ubuntu:24.04`, install pinned apt package names needed by Python, Cargo/Clippy, Bevy Linux linking, and Ipe scripts, install Rust through the repository toolchain, create UID/GID 10001, and copy both immutable snapshots. During the network-enabled build phase:
 
-- OpenRuyi installs pre-commit and warms only the reproduced mutating `end-of-file-fixer` hook; unrelated hook environments are intentionally excluded from the offline runtime cache.
+- OpenRuyi installs the upstream `pre-commit-hooks==6.0.0` package pinned by its configuration and invokes `end-of-file-fixer` through an argv-safe wrapper; no mutable pre-commit cache is copied into runtime memory.
 - Ipe installs script prerequisites and performs no upstream mirror fetch.
 - Bevy runs `cargo fetch --locked` and a non-fatal warm-up of its CI lint command to populate Cargo artifacts.
 - ReproCut is built from the current repository commit and copied to `/opt/reprocut/reprocut`.
 
-The final runtime stage contains Git only because OpenRuyi's targeted pre-commit oracle requires working-tree enumeration. ReproCut's argv-only isolated-Python preparation spec runs `git init -q` and `git add -A` for every candidate; the runtime contains no GitHub CLI, SSH credentials, Git credential helper, token, or package-manager credentials, and Docker disables its network.
+The OpenRuyi oracle enumerates candidate files deterministically and invokes the pinned upstream hook directly, so candidate preparation requires neither Git metadata nor a Python environment rebuild. The runtime contains no GitHub CLI, SSH credentials, Git credential helper, token, or package-manager credentials, and Docker disables its network.
 
 - [ ] **Step 4: Implement admission and reduction entrypoint**
 

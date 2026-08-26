@@ -13,7 +13,7 @@ This is a release gate, not a benchmark marketing claim. A candidate counts only
 
 | Tier | Repository and pull request | Pinned head | Initial oracle | Purpose |
 | --- | --- | --- | --- | --- |
-| Small Python | `redrose2100/openruyi-precommit-hooks#28` | `1a0e915e4e0daa89cce0b97dc488801fe4225a0e` | `pre-commit run end-of-file-fixer --all-files --show-diff-on-failure` | Deterministic, mutation-producing CI hook failure and fresh-snapshot containment without materializing unrelated hook environments |
+| Small Python | `redrose2100/openruyi-precommit-hooks#28` | `1a0e915e4e0daa89cce0b97dc488801fe4225a0e` | pinned `pre-commit-hooks==6.0.0` `end-of-file-fixer` wrapper | Deterministic, mutation-producing CI hook failure and fresh-snapshot containment without a mutable pre-commit cache |
 | Medium Rust | `arthurmaciel/ipe-lang#1370` | `072f647ca425694728de3aa6f508f1c3820681f1` | Exact failing Ubuntu CI command, extracted from the completed run | Medium workspace and platform-sensitive CI behavior |
 | Large Rust | `bevyengine/bevy#25553` | `762326968f6fac9e69c81a831ab91ab29afb9933` | `cargo run -p ci -- lints` with the five `undocumented_unsafe_blocks` diagnostics | Large, well-known workspace with a narrow PR-introduced failure |
 

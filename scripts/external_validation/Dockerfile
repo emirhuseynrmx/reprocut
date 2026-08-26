@@ -12,7 +12,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PATH=/opt/precommit/bin:/opt/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     CARGO_HOME=/opt/cargo \
     RUSTUP_HOME=/opt/rustup \
-    PRE_COMMIT_HOME=/opt/pre-commit-cache \
     CARGO_NET_OFFLINE=true \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
@@ -27,21 +26,13 @@ COPY base/ /inputs/base/
 COPY head/ /inputs/head/
 COPY case.json /case.json
 COPY reprocut/scripts/external_validation/container_entrypoint.sh /usr/local/bin/reprocut-validation
+COPY reprocut/scripts/external_validation/openruyi_eof_oracle.sh /usr/local/bin/openruyi-eof-oracle
 
 RUN set -eux; \
     case "$CASE_ID" in \
       openruyi) \
         python3 -m venv /opt/precommit; \
-        /opt/precommit/bin/pip install --no-cache-dir pre-commit; \
-        mkdir -p /opt/wheelhouse /tmp/openruyi-warm; \
-        /opt/precommit/bin/pip wheel --wheel-dir /opt/wheelhouse /inputs/head; \
-        /opt/precommit/bin/pip download --dest /opt/wheelhouse setuptools wheel pip; \
-        cp -a /inputs/head/. /tmp/openruyi-warm/; \
-        cd /tmp/openruyi-warm; \
-        git init -q; git add -A; \
-        PRE_COMMIT_HOME=/opt/pre-commit-cache /opt/precommit/bin/pre-commit run end-of-file-fixer --all-files || true; \
-        printf '%s\n' '{"schema":1,"commands":[["git","init","-q"],["git","add","-A"]]}' > /opt/openruyi-prepare.json; \
-        rm -rf /tmp/openruyi-warm ;; \
+        /opt/precommit/bin/pip install --no-cache-dir pre-commit-hooks==6.0.0 ;; \
       ipe) \
         true ;; \
       bevy) \
@@ -52,10 +43,10 @@ RUN set -eux; \
       *) \
         echo "unsupported CASE_ID: $CASE_ID" >&2; exit 2 ;; \
     esac; \
-    chmod 0555 /opt/reprocut/reprocut /usr/local/bin/reprocut-validation; \
+    chmod 0555 /opt/reprocut/reprocut /usr/local/bin/reprocut-validation /usr/local/bin/openruyi-eof-oracle; \
     useradd --uid 10001 --user-group --create-home --shell /usr/sbin/nologin validator; \
-    chown -R root:root /inputs /opt/reprocut /opt/precommit /opt/pre-commit-cache /opt/wheelhouse /opt/cargo /opt/rustup 2>/dev/null || true; \
-    chmod -R a+rX,a-w /inputs /opt/reprocut /opt/precommit /opt/pre-commit-cache /opt/wheelhouse /opt/cargo /opt/rustup 2>/dev/null || true; \
+    chown -R root:root /inputs /opt/reprocut /opt/precommit /opt/cargo /opt/rustup 2>/dev/null || true; \
+    chmod -R a+rX,a-w /inputs /opt/reprocut /opt/precommit /opt/cargo /opt/rustup 2>/dev/null || true; \
     rm -rf /root/.cache /tmp/*
 
 USER 10001:10001
