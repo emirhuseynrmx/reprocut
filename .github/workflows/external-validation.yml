@@ -1,0 +1,94 @@
+name: External CI validation
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/external-validation.yml"
+      - "scripts/external_validation/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: external-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  openruyi:
+    name: OpenRuyi isolated reduction
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Validate trusted runner contracts
+        run: |
+          python -m unittest discover -s scripts/external_validation/tests -v
+          python scripts/external_validation/validate_cases.py
+      - name: Run OpenRuyi case
+        run: python scripts/external_validation/run_case.py --case openruyi --output external-validation-output/openruyi
+      - name: Upload sanitized OpenRuyi evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: external-validation-openruyi
+          path: external-validation-output/openruyi
+          if-no-files-found: warn
+          retention-days: 14
+
+  ipe:
+    name: Ipe-lang isolated reduction
+    needs: openruyi
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Validate trusted runner contracts
+        run: |
+          python -m unittest discover -s scripts/external_validation/tests -v
+          python scripts/external_validation/validate_cases.py
+      - name: Run Ipe-lang case
+        run: python scripts/external_validation/run_case.py --case ipe --output external-validation-output/ipe
+      - name: Upload sanitized Ipe-lang evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: external-validation-ipe
+          path: external-validation-output/ipe
+          if-no-files-found: warn
+          retention-days: 14
+
+  bevy:
+    name: Bevy isolated reduction
+    needs: ipe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Free runner disk for the large workspace
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /usr/share/swift
+          sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/microsoft /opt/google/chrome
+          sudo apt-get clean
+          df -h /
+      - name: Validate trusted runner contracts
+        run: |
+          python -m unittest discover -s scripts/external_validation/tests -v
+          python scripts/external_validation/validate_cases.py
+      - name: Run Bevy case
+        run: python scripts/external_validation/run_case.py --case bevy --output external-validation-output/bevy
+      - name: Upload sanitized Bevy evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: external-validation-bevy
+          path: external-validation-output/bevy
+          if-no-files-found: warn
+          retention-days: 14
