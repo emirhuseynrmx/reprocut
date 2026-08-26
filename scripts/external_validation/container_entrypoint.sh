@@ -7,11 +7,17 @@ attempt_timeout_ms="$(jq -r .attempt_timeout_ms /case.json)"
 timeout_minutes="$(jq -r .timeout_minutes /case.json)"
 mkdir -p /evidence/admission-logs /evidence/final-verification /work/cargo-home /work/cargo-target /work/pre-commit-cache
 
+copy_seed_tree() {
+  local source="$1" destination="$2"
+  cp -R --no-preserve=ownership,mode "$source"/. "$destination"/
+  chmod -R u+rwX "$destination"
+}
+
 if [ -d /opt/cargo ]; then
-  cp -a /opt/cargo/. /work/cargo-home/
+  copy_seed_tree /opt/cargo /work/cargo-home
 fi
 if [ -d /opt/pre-commit-cache ]; then
-  cp -a /opt/pre-commit-cache/. /work/pre-commit-cache/
+  copy_seed_tree /opt/pre-commit-cache /work/pre-commit-cache
 fi
 export CARGO_HOME=/work/cargo-home
 export CARGO_TARGET_DIR=/work/cargo-target
@@ -64,7 +70,7 @@ prepare_snapshot() {
   local source="$1" destination="$2"
   rm -rf "$destination"
   mkdir -p "$destination"
-  cp -a "$source"/. "$destination"/
+  copy_seed_tree "$source" "$destination"
   if [ "$case_id" = openruyi ]; then
     (cd "$destination" && git init -q && git add -A)
   fi

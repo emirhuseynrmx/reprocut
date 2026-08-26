@@ -187,6 +187,14 @@ class BuildContextTests(unittest.TestCase):
             dockerfile,
         )
 
+    def test_runtime_copies_immutable_seeds_without_preserving_owner_or_mode(self):
+        entrypoint = (SCRIPT_DIR / "container_entrypoint.sh").read_text(encoding="utf-8")
+
+        self.assertIn('cp -R --no-preserve=ownership,mode "$source"/. "$destination"/', entrypoint)
+        self.assertIn('chmod -R u+rwX "$destination"', entrypoint)
+        self.assertNotIn("cp -a /opt/", entrypoint)
+        self.assertNotIn('cp -a "$source"', entrypoint)
+
 
 if __name__ == "__main__":
     unittest.main()
