@@ -196,7 +196,7 @@ Start from `ubuntu:24.04`, install pinned apt package names needed by Python, Ca
 - Bevy runs `cargo fetch --locked` and a non-fatal warm-up of its CI lint command to populate Cargo artifacts.
 - ReproCut is built from the current repository commit and copied to `/opt/reprocut/reprocut`.
 
-The final runtime stage contains no Git, GitHub CLI, curl, wget, SSH client, token, or package-manager credentials.
+The final runtime stage contains Git only because OpenRuyi's exact pre-commit oracle requires working-tree enumeration. ReproCut's argv-only isolated-Python preparation spec runs `git init -q` and `git add -A` for every candidate; the runtime contains no GitHub CLI, SSH credentials, Git credential helper, token, or package-manager credentials, and Docker disables its network.
 
 - [ ] **Step 4: Implement admission and reduction entrypoint**
 

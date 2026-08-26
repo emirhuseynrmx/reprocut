@@ -3,16 +3,19 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
 import shutil
 import stat
 import subprocess
+import tempfile
+from dataclasses import asdict
 from pathlib import Path
 from typing import Sequence
 
-from validate_cases import CaseSpec
+from validate_cases import CaseSpec, load_cases, select_case
 
 
 MAX_EVIDENCE_BYTES = 1024 * 1024 * 1024
@@ -78,6 +81,8 @@ def docker_create_argv(case: CaseSpec, image: str) -> list[str]:
         "/work:rw,exec,nosuid,nodev,size=12g",
         "--tmpfs",
         "/tmp:rw,exec,nosuid,nodev,size=2g",
+        "--tmpfs",
+        "/evidence:rw,nosuid,nodev,size=1g",
         image,
     ]
 
@@ -143,3 +148,152 @@ def sanitize_evidence(source: Path, destination: Path) -> dict[str, str]:
         newline="\n",
     )
     return inventory
+
+
+def prepare_build_context(
+    *,
+    case: CaseSpec,
+    repo_root: Path,
+    base_snapshot: Path,
+    head_snapshot: Path,
+    destination: Path,
+    base_sha: str,
+    reprocut_sha: str,
+) -> None:
+    """Assemble a bounded Docker context from pinned, metadata-free inputs."""
+    if destination.exists():
+        raise EvidenceError(f"build context already exists: {destination}")
+    destination.mkdir(parents=True)
+    shutil.copytree(
+        repo_root,
+        destination / "reprocut",
+        ignore=shutil.ignore_patterns(".git", "target", "external-validation-output", "__pycache__"),
+    )
+    shutil.copytree(base_snapshot, destination / "base", ignore=shutil.ignore_patterns(".git"))
+    shutil.copytree(head_snapshot, destination / "head", ignore=shutil.ignore_patterns(".git"))
+    document = asdict(case)
+    document.update({"base_sha": base_sha, "reprocut_sha": reprocut_sha, "schema_version": 1})
+    (destination / "case.json").write_text(
+        json.dumps(document, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def materialize_snapshots(case: CaseSpec, workspace: Path) -> tuple[Path, Path, str]:
+    """Fetch the pinned head and resolve one immutable base snapshot."""
+    repository = workspace / "repository"
+    base_snapshot = workspace / "base-snapshot"
+    head_snapshot = workspace / "head-snapshot"
+    run_argv(["git", "init", str(repository)], check=True)
+    run_argv(["git", "-C", str(repository), "remote", "add", "origin", case.repository], check=True)
+    run_argv(
+        ["git", "-C", str(repository), "fetch", "--depth", "1", "--no-tags", "origin", case.head_sha],
+        check=True,
+        timeout=600,
+    )
+    fetched_head = run_argv(
+        ["git", "-C", str(repository), "rev-parse", "FETCH_HEAD"], check=True
+    ).stdout.strip()
+    if fetched_head != case.head_sha:
+        raise CommandError(f"fetched head {fetched_head} does not match pinned {case.head_sha}")
+    run_argv(
+        ["git", "-C", str(repository), "fetch", "--depth", "1", "--no-tags", "origin", case.base_ref],
+        check=True,
+        timeout=600,
+    )
+    base_sha = run_argv(
+        ["git", "-C", str(repository), "rev-parse", "FETCH_HEAD"], check=True
+    ).stdout.strip()
+    run_argv(
+        ["git", "-C", str(repository), "worktree", "add", "--detach", str(base_snapshot), base_sha],
+        check=True,
+    )
+    run_argv(
+        ["git", "-C", str(repository), "worktree", "add", "--detach", str(head_snapshot), case.head_sha],
+        check=True,
+    )
+    return base_snapshot, head_snapshot, base_sha
+
+
+def execute_case(case: CaseSpec, repo_root: Path, output: Path) -> None:
+    """Build and run one isolated validation case, preserving evidence on failure."""
+    if output.exists():
+        raise EvidenceError(f"output already exists: {output}")
+    docker_probe = run_argv(["docker", "version", "--format", "{{.Server.Version}}"])
+    if docker_probe.returncode != 0:
+        raise CommandError(f"Docker is unavailable: {docker_probe.stderr.strip()}")
+    reprocut_sha = run_argv(["git", "-C", str(repo_root), "rev-parse", "HEAD"], check=True).stdout.strip()
+    image = f"reprocut-validation:{case.case_id}-{reprocut_sha[:12]}"
+    container_name = f"reprocut-validation-{case.case_id}"
+
+    with tempfile.TemporaryDirectory(prefix=f"reprocut-{case.case_id}-") as temporary:
+        workspace = Path(temporary)
+        base_snapshot, head_snapshot, base_sha = materialize_snapshots(case, workspace)
+        context = workspace / "context"
+        prepare_build_context(
+            case=case,
+            repo_root=repo_root,
+            base_snapshot=base_snapshot,
+            head_snapshot=head_snapshot,
+            destination=context,
+            base_sha=base_sha,
+            reprocut_sha=reprocut_sha,
+        )
+        dockerfile = context / "reprocut" / "scripts" / "external_validation" / "Dockerfile"
+        build = run_argv(
+            [
+                "docker", "build", "--pull", "--file", str(dockerfile),
+                "--build-arg", f"CASE_ID={case.case_id}", "--tag", image, str(context),
+            ],
+            timeout=max(1800, case.timeout_minutes * 60),
+        )
+        print(build.stdout, end="")
+        print(build.stderr, end="", file=os.sys.stderr)
+        if build.returncode != 0:
+            raise CommandError(f"Docker image build failed with exit code {build.returncode}")
+
+        run_argv(["docker", "rm", "--force", container_name])
+        created = False
+        container_exit = 125
+        try:
+            run_argv(docker_create_argv(case, image), check=True)
+            created = True
+            started = run_argv(
+                ["docker", "start", "--attach", container_name],
+                timeout=(case.timeout_minutes * 60) + 120,
+            )
+            container_exit = started.returncode
+            print(started.stdout, end="")
+            print(started.stderr, end="", file=os.sys.stderr)
+            raw = workspace / "raw-evidence"
+            raw.mkdir()
+            copied = run_argv(
+                ["docker", "cp", f"{container_name}:/evidence/.", str(raw)],
+                timeout=300,
+            )
+            if copied.returncode != 0:
+                raise CommandError(f"cannot extract evidence: {copied.stderr.strip()}")
+            sanitize_evidence(raw, output)
+        finally:
+            if created:
+                run_argv(["docker", "rm", "--force", container_name])
+            run_argv(["docker", "image", "rm", "--force", image])
+        if container_exit != 0:
+            raise CommandError(f"validation container exited {container_exit}; sanitized evidence is at {output}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--case", required=True)
+    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--catalog", type=Path, default=Path(__file__).with_name("cases.json"))
+    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[2])
+    arguments = parser.parse_args()
+    case = select_case(load_cases(arguments.catalog), arguments.case)
+    execute_case(case, arguments.repo_root.resolve(), arguments.output.resolve())
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

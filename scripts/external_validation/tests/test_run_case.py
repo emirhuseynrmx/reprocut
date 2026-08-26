@@ -47,6 +47,9 @@ class DockerBoundaryTests(unittest.TestCase):
             index = argv.index(flag)
             self.assertEqual(argv[index + 1], value)
         self.assertIn("--read-only", argv)
+        self.assertIn("/evidence:rw,nosuid,nodev,size=1g", argv)
+        evidence_tmpfs = argv.index("/evidence:rw,nosuid,nodev,size=1g")
+        self.assertEqual(argv[evidence_tmpfs - 1], "--tmpfs")
         self.assertNotIn("--privileged", argv)
         self.assertNotIn("--mount", argv)
         self.assertNotIn("-v", argv)
@@ -119,6 +122,56 @@ class EvidenceSanitizerTests(unittest.TestCase):
         destination.mkdir()
         with self.assertRaisesRegex(self.runner.EvidenceError, "already exists"):
             self.runner.sanitize_evidence(source, destination)
+
+
+class BuildContextTests(unittest.TestCase):
+    def setUp(self):
+        self.runner = load_runner_module()
+        self.assertIsNotNone(self.runner, "run_case module must implement build-context creation")
+        self.assertTrue(
+            hasattr(self.runner, "prepare_build_context"),
+            "run_case must expose prepare_build_context",
+        )
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.case = select_case(load_cases(SCRIPT_DIR / "cases.json"), "ipe")
+
+    def test_context_contains_pinned_inputs_without_repository_metadata(self):
+        reprocut = self.root / "reprocut"
+        base = self.root / "base"
+        head = self.root / "head"
+        context = self.root / "context"
+        (reprocut / ".git").mkdir(parents=True)
+        (reprocut / "target").mkdir()
+        (reprocut / "scripts").mkdir()
+        (reprocut / "Cargo.toml").write_text("[workspace]\n", encoding="utf-8")
+        (reprocut / ".git" / "config").write_text("secret", encoding="utf-8")
+        (reprocut / "target" / "large").write_text("cache", encoding="utf-8")
+        base.mkdir()
+        head.mkdir()
+        (base / "version.txt").write_text("base", encoding="utf-8")
+        (head / "version.txt").write_text("head", encoding="utf-8")
+
+        self.runner.prepare_build_context(
+            case=self.case,
+            repo_root=reprocut,
+            base_snapshot=base,
+            head_snapshot=head,
+            destination=context,
+            base_sha="a" * 40,
+            reprocut_sha="b" * 40,
+        )
+
+        self.assertEqual((context / "base" / "version.txt").read_text(encoding="utf-8"), "base")
+        self.assertEqual((context / "head" / "version.txt").read_text(encoding="utf-8"), "head")
+        self.assertTrue((context / "reprocut" / "Cargo.toml").is_file())
+        self.assertFalse((context / "reprocut" / ".git").exists())
+        self.assertFalse((context / "reprocut" / "target").exists())
+        case_document = json.loads((context / "case.json").read_text(encoding="utf-8"))
+        self.assertEqual(case_document["base_sha"], "a" * 40)
+        self.assertEqual(case_document["reprocut_sha"], "b" * 40)
+        self.assertEqual(case_document["case_id"], "ipe")
 
 
 if __name__ == "__main__":
