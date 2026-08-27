@@ -20,7 +20,7 @@
       "base_ref": "888559b248b047529e8ba4e31a002eed99fbd7f0",
       "head_sha": "072f647ca425694728de3aa6f508f1c3820681f1",
       "ci_url": "https://github.com/arthurmaciel/ipe-lang/actions/runs/32952534290/job/98127026437",
-      "oracle_argv": ["bash", "tools/scripts/regen-sky-examples.sh", "--check"],
+      "oracle_argv": ["/usr/local/bin/ipe-regen-oracle"],
       "required_regex": ["regen --check: committed ports are stale vs rename-map/ipe-edits"],
       "rejected_regex": ["original/ missing", "cannot read manifest", "transform/edits failed", "Could not resolve host", "No such file or directory"],
       "memory": "4g",

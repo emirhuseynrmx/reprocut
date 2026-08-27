@@ -221,6 +221,7 @@ class BuildContextTests(unittest.TestCase):
     def test_ipe_bootstrap_builds_snapshot_specific_clis(self):
         dockerfile = (SCRIPT_DIR / "Dockerfile").read_text(encoding="utf-8")
         entrypoint = (SCRIPT_DIR / "container_entrypoint.sh").read_text(encoding="utf-8")
+        oracle = (SCRIPT_DIR / "ipe_regen_oracle.sh").read_text(encoding="utf-8")
 
         self.assertIn("cp -R /inputs/base /tmp/ipe-base-build", dockerfile)
         self.assertIn("cd /tmp/ipe-base-build; cargo build --release -p ipe", dockerfile)
@@ -231,6 +232,9 @@ class BuildContextTests(unittest.TestCase):
         self.assertIn('IPE_BIN="/usr/local/bin/ipe-${label}"', entrypoint)
         self.assertIn("reduction_argv=(env IPE_BIN=/usr/local/bin/ipe-head", entrypoint)
         self.assertIn("final_oracle_argv=(env IPE_BIN=/usr/local/bin/ipe-head", entrypoint)
+        self.assertIn("COPY reprocut/scripts/external_validation/ipe_regen_oracle.sh", dockerfile)
+        self.assertIn("tools/scripts/regen-sky-examples.sh", oracle)
+        self.assertIn("scripts/regen-sky-examples.sh", oracle)
 
 
 if __name__ == "__main__":

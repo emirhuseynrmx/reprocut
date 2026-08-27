@@ -69,6 +69,12 @@ class CatalogTests(unittest.TestCase):
             ["/usr/local/bin/openruyi-eof-oracle"],
         )
 
+    def test_ipe_oracle_is_snapshot_path_compatible(self):
+        cases = self.validation.load_cases(CATALOG)
+        ipe = self.validation.select_case(cases, "ipe")
+
+        self.assertEqual(list(ipe.oracle_argv), ["/usr/local/bin/ipe-regen-oracle"])
+
     def test_rejects_unpinned_head(self):
         path = self.write_catalog([valid_case(head_sha="main")])
         with self.assertRaisesRegex(self.validation.CatalogError, "head_sha"):
