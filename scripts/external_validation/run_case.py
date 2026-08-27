@@ -11,12 +11,11 @@ import shutil
 import stat
 import subprocess
 import tempfile
+from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
-from typing import Sequence
 
 from validate_cases import CaseSpec, load_cases, select_case
-
 
 MAX_EVIDENCE_BYTES = 1024 * 1024 * 1024
 
@@ -44,8 +43,7 @@ def run_argv(
         check=False,
         shell=False,
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
     )
     if check and completed.returncode != 0:
         diagnostic = completed.stderr.strip() or completed.stdout.strip() or "no diagnostic output"
@@ -105,7 +103,9 @@ def _inventory_regular_files(source: Path) -> list[tuple[str, Path, int]]:
             if stat.S_ISLNK(mode):
                 raise EvidenceError(f"evidence contains symlink: {path.relative_to(source)}")
             if not stat.S_ISDIR(mode):
-                raise EvidenceError(f"evidence contains non-directory entry: {path.relative_to(source)}")
+                raise EvidenceError(
+                    f"evidence contains non-directory entry: {path.relative_to(source)}"
+                )
         for name in file_names:
             path = root_path / name
             metadata = path.lstat()
@@ -172,7 +172,9 @@ def prepare_build_context(
     shutil.copytree(
         repo_root,
         destination / "reprocut",
-        ignore=shutil.ignore_patterns(".git", "target", "external-validation-output", "__pycache__"),
+        ignore=shutil.ignore_patterns(
+            ".git", "target", "external-validation-output", "__pycache__"
+        ),
     )
     shutil.copytree(base_snapshot, destination / "base", ignore=shutil.ignore_patterns(".git"))
     shutil.copytree(head_snapshot, destination / "head", ignore=shutil.ignore_patterns(".git"))
@@ -193,7 +195,17 @@ def materialize_snapshots(case: CaseSpec, workspace: Path) -> tuple[Path, Path, 
     run_argv(["git", "init", str(repository)], check=True)
     run_argv(["git", "-C", str(repository), "remote", "add", "origin", case.repository], check=True)
     run_argv(
-        ["git", "-C", str(repository), "fetch", "--depth", "1", "--no-tags", "origin", case.head_sha],
+        [
+            "git",
+            "-C",
+            str(repository),
+            "fetch",
+            "--depth",
+            "1",
+            "--no-tags",
+            "origin",
+            case.head_sha,
+        ],
         check=True,
         timeout=600,
     )
@@ -203,7 +215,17 @@ def materialize_snapshots(case: CaseSpec, workspace: Path) -> tuple[Path, Path, 
     if fetched_head != case.head_sha:
         raise CommandError(f"fetched head {fetched_head} does not match pinned {case.head_sha}")
     run_argv(
-        ["git", "-C", str(repository), "fetch", "--depth", "1", "--no-tags", "origin", case.base_ref],
+        [
+            "git",
+            "-C",
+            str(repository),
+            "fetch",
+            "--depth",
+            "1",
+            "--no-tags",
+            "origin",
+            case.base_ref,
+        ],
         check=True,
         timeout=600,
     )
@@ -215,7 +237,16 @@ def materialize_snapshots(case: CaseSpec, workspace: Path) -> tuple[Path, Path, 
         check=True,
     )
     run_argv(
-        ["git", "-C", str(repository), "worktree", "add", "--detach", str(head_snapshot), case.head_sha],
+        [
+            "git",
+            "-C",
+            str(repository),
+            "worktree",
+            "add",
+            "--detach",
+            str(head_snapshot),
+            case.head_sha,
+        ],
         check=True,
     )
     return base_snapshot, head_snapshot, base_sha
@@ -228,7 +259,9 @@ def execute_case(case: CaseSpec, repo_root: Path, output: Path) -> None:
     docker_probe = run_argv(["docker", "version", "--format", "{{.Server.Version}}"])
     if docker_probe.returncode != 0:
         raise CommandError(f"Docker is unavailable: {docker_probe.stderr.strip()}")
-    reprocut_sha = run_argv(["git", "-C", str(repo_root), "rev-parse", "HEAD"], check=True).stdout.strip()
+    reprocut_sha = run_argv(
+        ["git", "-C", str(repo_root), "rev-parse", "HEAD"], check=True
+    ).stdout.strip()
     image = f"reprocut-validation:{case.case_id}-{reprocut_sha[:12]}"
     container_name = f"reprocut-validation-{case.case_id}"
 
@@ -248,8 +281,16 @@ def execute_case(case: CaseSpec, repo_root: Path, output: Path) -> None:
         dockerfile = context / "reprocut" / "scripts" / "external_validation" / "Dockerfile"
         build = run_argv(
             [
-                "docker", "build", "--pull", "--file", str(dockerfile),
-                "--build-arg", f"CASE_ID={case.case_id}", "--tag", image, str(context),
+                "docker",
+                "build",
+                "--pull",
+                "--file",
+                str(dockerfile),
+                "--build-arg",
+                f"CASE_ID={case.case_id}",
+                "--tag",
+                image,
+                str(context),
             ],
             timeout=max(1800, case.timeout_minutes * 60),
         )
@@ -285,7 +326,9 @@ def execute_case(case: CaseSpec, repo_root: Path, output: Path) -> None:
                 run_argv(docker_remove_argv(container_name))
             run_argv(["docker", "image", "rm", "--force", image])
         if container_exit != 0:
-            raise CommandError(f"validation container exited {container_exit}; sanitized evidence is at {output}")
+            raise CommandError(
+                f"validation container exited {container_exit}; sanitized evidence is at {output}"
+            )
 
 
 def main() -> int:

@@ -6,10 +6,9 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, fields
 from pathlib import Path
-from typing import Sequence
-
 
 DEFAULT_ORDER = ("openruyi", "ipe", "bevy")
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
@@ -49,6 +48,14 @@ def _require_string_list(case_id: str, key: str, value: object) -> list[str]:
     return list(value)
 
 
+def _validate_regex_patterns(case_id: str, key: str, patterns: list[str]) -> None:
+    try:
+        for pattern in patterns:
+            re.compile(pattern)
+    except re.error as error:
+        raise CatalogError(f"{case_id}.{key} contains invalid regex: {error}") from error
+
+
 def _parse_case(raw: object) -> CaseSpec:
     if not isinstance(raw, dict):
         raise CatalogError("each case must be an object")
@@ -79,20 +86,24 @@ def _parse_case(raw: object) -> CaseSpec:
     required_regex = _require_string_list(case_id, "required_regex", raw["required_regex"])
     rejected_regex = _require_string_list(case_id, "rejected_regex", raw["rejected_regex"])
     for key, patterns in (("required_regex", required_regex), ("rejected_regex", rejected_regex)):
-        try:
-            for pattern in patterns:
-                re.compile(pattern)
-        except re.error as error:
-            raise CatalogError(f"{case_id}.{key} contains invalid regex: {error}") from error
+        _validate_regex_patterns(case_id, key, patterns)
 
     memory = raw["memory"]
     if not isinstance(memory, str) or not MEMORY_PATTERN.fullmatch(memory):
         raise CatalogError(f"{case_id}.memory must use a positive m or g suffix")
     timeout_minutes = raw["timeout_minutes"]
     attempt_timeout_ms = raw["attempt_timeout_ms"]
-    if isinstance(timeout_minutes, bool) or not isinstance(timeout_minutes, int) or timeout_minutes <= 0:
+    if (
+        isinstance(timeout_minutes, bool)
+        or not isinstance(timeout_minutes, int)
+        or timeout_minutes <= 0
+    ):
         raise CatalogError(f"{case_id}.timeout_minutes must be positive")
-    if isinstance(attempt_timeout_ms, bool) or not isinstance(attempt_timeout_ms, int) or attempt_timeout_ms <= 0:
+    if (
+        isinstance(attempt_timeout_ms, bool)
+        or not isinstance(attempt_timeout_ms, int)
+        or attempt_timeout_ms <= 0
+    ):
         raise CatalogError(f"{case_id}.attempt_timeout_ms must be positive")
 
     return CaseSpec(
@@ -139,7 +150,9 @@ def select_case(cases: Sequence[CaseSpec], case_id: str) -> CaseSpec:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("catalog", nargs="?", type=Path, default=Path(__file__).with_name("cases.json"))
+    parser.add_argument(
+        "catalog", nargs="?", type=Path, default=Path(__file__).with_name("cases.json")
+    )
     arguments = parser.parse_args()
     cases = load_cases(arguments.catalog)
     print(json.dumps({"schema_version": 1, "case_ids": [case.case_id for case in cases]}))

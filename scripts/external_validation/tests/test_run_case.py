@@ -1,17 +1,17 @@
 import importlib
 import json
 import os
-import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-
 SCRIPT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from validate_cases import load_cases, select_case
+catalog = importlib.import_module("validate_cases")
+load_cases = catalog.load_cases
+select_case = catalog.select_case
 
 
 def load_runner_module():
@@ -25,7 +25,9 @@ class DockerBoundaryTests(unittest.TestCase):
     def setUp(self):
         self.runner = load_runner_module()
         self.assertIsNotNone(self.runner, "run_case module must implement the Docker boundary")
-        self.assertTrue(hasattr(self.runner, "run_argv"), "run_case must expose shell-free run_argv")
+        self.assertTrue(
+            hasattr(self.runner, "run_argv"), "run_case must expose shell-free run_argv"
+        )
         self.assertTrue(hasattr(self.runner, "CommandError"), "run_case must expose CommandError")
         cases = load_cases(SCRIPT_DIR / "cases.json")
         self.bevy = select_case(cases, "bevy")
@@ -85,7 +87,11 @@ class DockerBoundaryTests(unittest.TestCase):
     def test_command_runner_raises_with_captured_stderr(self):
         with self.assertRaisesRegex(self.runner.CommandError, "stable failure"):
             self.runner.run_argv(
-                [sys.executable, "-c", "import sys; print('stable failure', file=sys.stderr); raise SystemExit(7)"],
+                [
+                    sys.executable,
+                    "-c",
+                    "import sys; print('stable failure', file=sys.stderr); raise SystemExit(7)",
+                ],
                 check=True,
             )
 
@@ -111,10 +117,11 @@ class EvidenceSanitizerTests(unittest.TestCase):
         (source / "nested" / "result.txt").write_bytes(b"safe")
 
         inventory = self.runner.sanitize_evidence(source, destination)
+        safe_digest = "8b3369944dd2a3fab39e32d1aeb1f763946a458ae3e6368a46432adc8f3a0860"
 
         self.assertEqual(
             inventory,
-            {"nested/result.txt": "8b3369944dd2a3fab39e32d1aeb1f763946a458ae3e6368a46432adc8f3a0860"},
+            {"nested/result.txt": safe_digest},
         )
         self.assertEqual((destination / "nested" / "result.txt").read_bytes(), b"safe")
         envelope = json.loads((destination / "integrity.json").read_text(encoding="utf-8"))
@@ -241,16 +248,18 @@ class BuildContextTests(unittest.TestCase):
         dockerfile = (SCRIPT_DIR / "Dockerfile").read_text(encoding="utf-8")
 
         self.assertIn("--component clippy --component rustfmt", dockerfile)
-        self.assertIn("libxkbcommon-dev libx264-dev libfontconfig1-dev clang libclang-dev", dockerfile)
+        self.assertIn(
+            "libxkbcommon-dev libx264-dev libfontconfig1-dev clang libclang-dev", dockerfile
+        )
         fetch = "if [ -f Cargo.lock ]; then cargo fetch --locked; else cargo fetch; fi"
         self.assertEqual(dockerfile.count(fetch), 2)
         self.assertNotIn("cd /inputs/head; cargo fetch --locked", dockerfile)
         self.assertNotIn("cd /inputs/base; cargo fetch --locked", dockerfile)
 
     def test_external_cases_run_independently(self):
-        workflow = (SCRIPT_DIR.parents[1] / ".github" / "workflows" / "external-validation.yml").read_text(
-            encoding="utf-8"
-        )
+        workflow = (
+            SCRIPT_DIR.parents[1] / ".github" / "workflows" / "external-validation.yml"
+        ).read_text(encoding="utf-8")
 
         self.assertNotIn("needs: openruyi", workflow)
         self.assertNotIn("needs: ipe", workflow)

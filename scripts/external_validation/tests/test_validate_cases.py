@@ -5,7 +5,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 SCRIPT_DIR = Path(__file__).resolve().parents[1]
 CATALOG = SCRIPT_DIR / "cases.json"
 sys.path.insert(0, str(SCRIPT_DIR))
@@ -54,9 +53,21 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(
             [(case.case_id, case.base_ref, case.head_sha) for case in cases],
             [
-                ("openruyi", "19d328ca44ee6066afb3909d1533c919681c311b", "1a0e915e4e0daa89cce0b97dc488801fe4225a0e"),
-                ("ipe", "e0ffbbb33b3a9404b14c914e69ee39821e3d0f1a", "072f647ca425694728de3aa6f508f1c3820681f1"),
-                ("bevy", "0de26631b0603acdc945aeae5e05b07ce58bc4dc", "762326968f6fac9e69c81a831ab91ab29afb9933"),
+                (
+                    "openruyi",
+                    "19d328ca44ee6066afb3909d1533c919681c311b",
+                    "1a0e915e4e0daa89cce0b97dc488801fe4225a0e",
+                ),
+                (
+                    "ipe",
+                    "e0ffbbb33b3a9404b14c914e69ee39821e3d0f1a",
+                    "072f647ca425694728de3aa6f508f1c3820681f1",
+                ),
+                (
+                    "bevy",
+                    "0de26631b0603acdc945aeae5e05b07ce58bc4dc",
+                    "762326968f6fac9e69c81a831ab91ab29afb9933",
+                ),
             ],
         )
 
