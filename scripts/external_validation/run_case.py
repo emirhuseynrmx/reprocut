@@ -85,6 +85,13 @@ def docker_create_argv(case: CaseSpec, image: str) -> list[str]:
     ]
 
 
+def container_timeout_seconds(case: CaseSpec) -> int:
+    """Allow admission and shutdown to finish outside the reducer budget."""
+    reduction_seconds = case.timeout_minutes * 60
+    two_oracle_attempts = (case.attempt_timeout_ms // 1000) * 2
+    return reduction_seconds + max(900, two_oracle_attempts)
+
+
 def docker_remove_argv(container_name: str) -> list[str]:
     """Remove a validation container and its anonymous evidence volume."""
     return ["docker", "rm", "--force", "--volumes", container_name]
@@ -302,16 +309,21 @@ def execute_case(case: CaseSpec, repo_root: Path, output: Path) -> None:
         run_argv(docker_remove_argv(container_name))
         created = False
         container_exit = 125
+        host_timed_out = False
         try:
             run_argv(docker_create_argv(case, image), check=True)
             created = True
-            started = run_argv(
-                ["docker", "start", "--attach", container_name],
-                timeout=(case.timeout_minutes * 60) + 120,
-            )
-            container_exit = started.returncode
-            print(started.stdout, end="")
-            print(started.stderr, end="", file=os.sys.stderr)
+            try:
+                started = run_argv(
+                    ["docker", "start", "--attach", container_name],
+                    timeout=container_timeout_seconds(case),
+                )
+                container_exit = started.returncode
+                print(started.stdout, end="")
+                print(started.stderr, end="", file=os.sys.stderr)
+            except subprocess.TimeoutExpired:
+                host_timed_out = True
+                run_argv(["docker", "stop", "--time", "30", container_name], timeout=60)
             raw = workspace / "raw-evidence"
             raw.mkdir()
             copied = run_argv(
@@ -325,6 +337,10 @@ def execute_case(case: CaseSpec, repo_root: Path, output: Path) -> None:
             if created:
                 run_argv(docker_remove_argv(container_name))
             run_argv(["docker", "image", "rm", "--force", image])
+        if host_timed_out:
+            raise CommandError(
+                f"validation container exceeded host timeout; sanitized evidence is at {output}"
+            )
         if container_exit != 0:
             raise CommandError(
                 f"validation container exited {container_exit}; sanitized evidence is at {output}"

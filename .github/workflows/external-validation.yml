@@ -65,7 +65,7 @@ jobs:
   bevy:
     name: Bevy isolated reduction
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v5
         with:
@@ -88,5 +88,5 @@ jobs:
         with:
           name: external-validation-bevy
           path: external-validation-output/bevy
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14

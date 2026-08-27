@@ -101,6 +101,15 @@ class DockerBoundaryTests(unittest.TestCase):
         self.assertEqual(argv[name_index + 1], "reprocut-validation-bevy")
         self.assertEqual(argv[-1], "reprocut-validation:bevy")
 
+    def test_host_timeout_leaves_room_for_admission_and_container_shutdown(self):
+        reduction_seconds = self.bevy.timeout_minutes * 60
+        two_oracle_attempts = (self.bevy.attempt_timeout_ms // 1000) * 2
+
+        self.assertGreaterEqual(
+            self.runner.container_timeout_seconds(self.bevy),
+            reduction_seconds + two_oracle_attempts,
+        )
+
 
 class EvidenceSanitizerTests(unittest.TestCase):
     def setUp(self):
@@ -263,6 +272,8 @@ class BuildContextTests(unittest.TestCase):
 
         self.assertNotIn("needs: openruyi", workflow)
         self.assertNotIn("needs: ipe", workflow)
+        self.assertIn("timeout-minutes: 240", workflow)
+        self.assertIn("if-no-files-found: error", workflow)
 
 
 if __name__ == "__main__":
