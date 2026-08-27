@@ -218,6 +218,12 @@ class BuildContextTests(unittest.TestCase):
         )
         self.assertIn("install -d -o 10001 -g 10001 -m 0700 /evidence", dockerfile)
 
+    def test_ipe_bootstrap_builds_the_cli_expected_by_upstream_scripts(self):
+        dockerfile = (SCRIPT_DIR / "Dockerfile").read_text(encoding="utf-8")
+
+        self.assertIn("cd /inputs/head; cargo build --locked --release -p ipe", dockerfile)
+        self.assertIn("install -m 0555 target/release/ipe /usr/local/bin/ipe", dockerfile)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -34,7 +34,10 @@ RUN set -eux; \
         python3 -m venv /opt/precommit; \
         /opt/precommit/bin/pip install --no-cache-dir pre-commit-hooks==6.0.0 ;; \
       ipe) \
-        true ;; \
+        export CARGO_NET_OFFLINE=false; \
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable; \
+        cd /inputs/head; cargo build --locked --release -p ipe; \
+        install -m 0555 target/release/ipe /usr/local/bin/ipe ;; \
       bevy) \
         export CARGO_NET_OFFLINE=false; \
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable --component clippy; \
