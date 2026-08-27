@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       bash ca-certificates coreutils diffutils findutils git grep jq ripgrep \
       python3 python3-pip python3-venv sed util-linux \
       build-essential curl pkg-config libasound2-dev libudev-dev libwayland-dev \
-      libxkbcommon-dev libx264-dev libfontconfig1-dev \
+      libxkbcommon-dev libx264-dev libfontconfig1-dev clang libclang-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=reprocut-builder /src/target/release/reprocut /opt/reprocut/reprocut

@@ -241,7 +241,7 @@ class BuildContextTests(unittest.TestCase):
         dockerfile = (SCRIPT_DIR / "Dockerfile").read_text(encoding="utf-8")
 
         self.assertIn("--component clippy --component rustfmt", dockerfile)
-        self.assertIn("libxkbcommon-dev libx264-dev libfontconfig1-dev", dockerfile)
+        self.assertIn("libxkbcommon-dev libx264-dev libfontconfig1-dev clang libclang-dev", dockerfile)
         fetch = "if [ -f Cargo.lock ]; then cargo fetch --locked; else cargo fetch; fi"
         self.assertEqual(dockerfile.count(fetch), 2)
         self.assertNotIn("cd /inputs/head; cargo fetch --locked", dockerfile)
