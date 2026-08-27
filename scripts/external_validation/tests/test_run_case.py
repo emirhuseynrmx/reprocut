@@ -253,6 +253,17 @@ class BuildContextTests(unittest.TestCase):
         self.assertIn("tools/scripts/regen-sky-examples.sh", oracle)
         self.assertIn("scripts/regen-sky-examples.sh", oracle)
 
+    def test_rustup_bootstrap_retries_without_masking_download_failures(self):
+        dockerfile = (SCRIPT_DIR / "Dockerfile").read_text(encoding="utf-8")
+
+        download = (
+            "curl --retry 5 --retry-all-errors --proto '=https' --tlsv1.2 "
+            "-sSf https://sh.rustup.rs -o /tmp/rustup-init.sh"
+        )
+        self.assertEqual(dockerfile.count(download), 2)
+        self.assertEqual(dockerfile.count("sh /tmp/rustup-init.sh -y --profile minimal"), 2)
+        self.assertNotIn("https://sh.rustup.rs | sh", dockerfile)
+
     def test_bevy_bootstrap_supports_snapshots_without_a_lockfile(self):
         dockerfile = (SCRIPT_DIR / "Dockerfile").read_text(encoding="utf-8")
         entrypoint = (SCRIPT_DIR / "container_entrypoint.sh").read_text(encoding="utf-8")

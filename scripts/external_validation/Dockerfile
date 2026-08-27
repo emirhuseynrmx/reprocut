@@ -38,7 +38,8 @@ RUN set -eux; \
         /opt/precommit/bin/pip install --no-cache-dir pre-commit-hooks==6.0.0 ;; \
       ipe) \
         export CARGO_NET_OFFLINE=false; \
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable; \
+        curl --retry 5 --retry-all-errors --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh; \
+        sh /tmp/rustup-init.sh -y --profile minimal --default-toolchain stable; \
         cp -R /inputs/base /tmp/ipe-base-build; \
         cd /tmp/ipe-base-build; cargo build --release -p ipe; \
         install -m 0555 target/release/ipe /usr/local/bin/ipe-base; \
@@ -46,7 +47,8 @@ RUN set -eux; \
         install -m 0555 target/release/ipe /usr/local/bin/ipe-head ;; \
       bevy) \
         export CARGO_NET_OFFLINE=false; \
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable --component clippy --component rustfmt; \
+        curl --retry 5 --retry-all-errors --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh; \
+        sh /tmp/rustup-init.sh -y --profile minimal --default-toolchain stable --component clippy --component rustfmt; \
         cd /inputs/head; if [ -f Cargo.lock ]; then cargo fetch --locked; else cargo fetch; fi; \
         cd /inputs/base; if [ -f Cargo.lock ]; then cargo fetch --locked; else cargo fetch; fi ;; \
       *) \
