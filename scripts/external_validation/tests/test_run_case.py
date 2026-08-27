@@ -237,6 +237,14 @@ class BuildContextTests(unittest.TestCase):
         self.assertIn("tools/scripts/regen-sky-examples.sh", oracle)
         self.assertIn("scripts/regen-sky-examples.sh", oracle)
 
+    def test_bevy_bootstrap_supports_snapshots_without_a_lockfile(self):
+        dockerfile = (SCRIPT_DIR / "Dockerfile").read_text(encoding="utf-8")
+
+        fetch = "if [ -f Cargo.lock ]; then cargo fetch --locked; else cargo fetch; fi"
+        self.assertEqual(dockerfile.count(fetch), 2)
+        self.assertNotIn("cd /inputs/head; cargo fetch --locked", dockerfile)
+        self.assertNotIn("cd /inputs/base; cargo fetch --locked", dockerfile)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -45,8 +45,8 @@ RUN set -eux; \
       bevy) \
         export CARGO_NET_OFFLINE=false; \
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable --component clippy; \
-        cd /inputs/head; cargo fetch --locked; \
-        cd /inputs/base; cargo fetch --locked ;; \
+        cd /inputs/head; if [ -f Cargo.lock ]; then cargo fetch --locked; else cargo fetch; fi; \
+        cd /inputs/base; if [ -f Cargo.lock ]; then cargo fetch --locked; else cargo fetch; fi ;; \
       *) \
         echo "unsupported CASE_ID: $CASE_ID" >&2; exit 2 ;; \
     esac; \
