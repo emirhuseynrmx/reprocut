@@ -40,7 +40,7 @@ Third-party code must never execute directly on the Windows host. Every build, o
 - network access only during an explicit dependency-preload phase;
 - network disabled during the admission oracle and every reduction attempt;
 - CPU, memory, process-count, disk, and wall-clock limits;
-- no privileged mode and no host filesystem mounts beyond explicit input/output directories;
+- no privileged mode or host bind mounts; raw evidence uses a short-lived anonymous Docker volume removed immediately after trusted extraction;
 - captured stdout, stderr, exit status, tool versions, and resource-limit events.
 
 Dependencies downloaded during preload are treated as experiment inputs and their lockfiles or resolved identities are captured in the evidence manifest.

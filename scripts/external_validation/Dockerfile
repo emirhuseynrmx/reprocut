@@ -45,6 +45,7 @@ RUN set -eux; \
     esac; \
     chmod 0555 /opt/reprocut/reprocut /usr/local/bin/reprocut-validation /usr/local/bin/openruyi-eof-oracle; \
     useradd --uid 10001 --user-group --create-home --shell /usr/sbin/nologin validator; \
+    install -d -o 10001 -g 10001 -m 0700 /evidence; \
     chown -R root:root /inputs /opt/reprocut /opt/precommit /opt/cargo /opt/rustup 2>/dev/null || true; \
     chmod -R a+rX,a-w /inputs /opt/reprocut /opt/precommit /opt/cargo /opt/rustup 2>/dev/null || true; \
     rm -rf /root/.cache /tmp/*

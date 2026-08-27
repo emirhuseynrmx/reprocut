@@ -50,16 +50,24 @@ class DockerBoundaryTests(unittest.TestCase):
         expected_tmpfs = (
             "/work:rw,exec,nosuid,nodev,size=12g,uid=10001,gid=10001,mode=1770",
             "/tmp:rw,exec,nosuid,nodev,size=2g,uid=10001,gid=10001,mode=1770",
-            "/evidence:rw,nosuid,nodev,size=1g,uid=10001,gid=10001,mode=1770",
         )
         for value in expected_tmpfs:
             self.assertIn(value, argv)
             self.assertEqual(argv[argv.index(value) - 1], "--tmpfs")
         self.assertNotIn("--privileged", argv)
-        self.assertNotIn("--mount", argv)
+        evidence_mount = "type=volume,destination=/evidence"
+        self.assertIn(evidence_mount, argv)
+        self.assertEqual(argv[argv.index(evidence_mount) - 1], "--mount")
+        self.assertFalse(any("type=bind" in value for value in argv))
         self.assertNotIn("-v", argv)
         self.assertFalse(any("GITHUB_TOKEN" in value for value in argv))
         self.assertFalse(any("docker.sock" in value for value in argv))
+
+    def test_container_cleanup_removes_anonymous_evidence_volume(self):
+        self.assertEqual(
+            self.runner.docker_remove_argv("reprocut-validation-ipe"),
+            ["docker", "rm", "--force", "--volumes", "reprocut-validation-ipe"],
+        )
 
     def test_command_runner_treats_shell_metacharacters_as_literal_argv(self):
         completed = self.runner.run_argv(
@@ -208,6 +216,7 @@ class BuildContextTests(unittest.TestCase):
             entrypoint.index("trap 'container_rc=$?"),
             entrypoint.index("copy_seed_tree /opt/cargo"),
         )
+        self.assertIn("install -d -o 10001 -g 10001 -m 0700 /evidence", dockerfile)
 
 
 if __name__ == "__main__":

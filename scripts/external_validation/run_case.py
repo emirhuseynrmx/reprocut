@@ -81,10 +81,15 @@ def docker_create_argv(case: CaseSpec, image: str) -> list[str]:
         "/work:rw,exec,nosuid,nodev,size=12g,uid=10001,gid=10001,mode=1770",
         "--tmpfs",
         "/tmp:rw,exec,nosuid,nodev,size=2g,uid=10001,gid=10001,mode=1770",
-        "--tmpfs",
-        "/evidence:rw,nosuid,nodev,size=1g,uid=10001,gid=10001,mode=1770",
+        "--mount",
+        "type=volume,destination=/evidence",
         image,
     ]
+
+
+def docker_remove_argv(container_name: str) -> list[str]:
+    """Remove a validation container and its anonymous evidence volume."""
+    return ["docker", "rm", "--force", "--volumes", container_name]
 
 
 def _inventory_regular_files(source: Path) -> list[tuple[str, Path, int]]:
@@ -253,7 +258,7 @@ def execute_case(case: CaseSpec, repo_root: Path, output: Path) -> None:
         if build.returncode != 0:
             raise CommandError(f"Docker image build failed with exit code {build.returncode}")
 
-        run_argv(["docker", "rm", "--force", container_name])
+        run_argv(docker_remove_argv(container_name))
         created = False
         container_exit = 125
         try:
@@ -277,7 +282,7 @@ def execute_case(case: CaseSpec, repo_root: Path, output: Path) -> None:
             sanitize_evidence(raw, output)
         finally:
             if created:
-                run_argv(["docker", "rm", "--force", container_name])
+                run_argv(docker_remove_argv(container_name))
             run_argv(["docker", "image", "rm", "--force", image])
         if container_exit != 0:
             raise CommandError(f"validation container exited {container_exit}; sanitized evidence is at {output}")

@@ -146,7 +146,7 @@ Use `subprocess.run(argv, shell=False, check=False, timeout=...)`. Fetch into a 
 
 - [ ] **Step 4: Implement isolated container creation**
 
-Create, start, and wait for the container separately; use `docker cp CONTAINER:/evidence/. RAW_DIR` only after it stops. Always remove the stopped container. Do not bind-mount host output into the candidate container.
+Create, start, and wait for the container separately. Store `/evidence` in an isolated anonymous Docker volume so it survives container exit, then use `docker cp CONTAINER:/evidence/. RAW_DIR` only after the container stops. Always remove the stopped container with `--volumes`; never bind-mount host output into the candidate container.
 
 - [ ] **Step 5: Implement evidence sanitation and SHA-256 inventory**
 
