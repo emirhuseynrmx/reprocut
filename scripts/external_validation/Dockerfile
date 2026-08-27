@@ -44,7 +44,7 @@ RUN set -eux; \
         install -m 0555 target/release/ipe /usr/local/bin/ipe-head ;; \
       bevy) \
         export CARGO_NET_OFFLINE=false; \
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable --component clippy; \
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable --component clippy --component rustfmt; \
         cd /inputs/head; if [ -f Cargo.lock ]; then cargo fetch --locked; else cargo fetch; fi; \
         cd /inputs/base; if [ -f Cargo.lock ]; then cargo fetch --locked; else cargo fetch; fi ;; \
       *) \

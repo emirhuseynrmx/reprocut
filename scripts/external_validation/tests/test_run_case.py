@@ -240,6 +240,7 @@ class BuildContextTests(unittest.TestCase):
     def test_bevy_bootstrap_supports_snapshots_without_a_lockfile(self):
         dockerfile = (SCRIPT_DIR / "Dockerfile").read_text(encoding="utf-8")
 
+        self.assertIn("--component clippy --component rustfmt", dockerfile)
         fetch = "if [ -f Cargo.lock ]; then cargo fetch --locked; else cargo fetch; fi"
         self.assertEqual(dockerfile.count(fetch), 2)
         self.assertNotIn("cd /inputs/head; cargo fetch --locked", dockerfile)
