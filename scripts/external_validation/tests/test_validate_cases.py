@@ -88,6 +88,8 @@ class CatalogTests(unittest.TestCase):
                 "bevy_ecs",
                 "--all-targets",
                 "--all-features",
+                "--features",
+                "bevy_reflect/auto_register_static",
                 "--",
                 "-Dwarnings",
             ],
