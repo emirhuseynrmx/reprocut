@@ -91,9 +91,14 @@ observe() {
   local source="$1" label="$2" expected="$3" index="$4"
   local candidate="/work/observation-${label}-${index}"
   local log="/evidence/admission-logs/${label}-${index}.log"
+  local -a observation_argv=("${oracle_argv[@]}")
+  if [ "$case_id" = ipe ]; then
+    IPE_BIN="/usr/local/bin/ipe-${label}"
+    observation_argv=(env "IPE_BIN=$IPE_BIN" "${oracle_argv[@]}")
+  fi
   prepare_snapshot "$source" "$candidate"
   set +e
-  (cd "$candidate" && timeout --signal=TERM --kill-after=10s "$((attempt_timeout_ms / 1000))s" "${oracle_argv[@]}") >"$log" 2>&1
+  (cd "$candidate" && timeout --signal=TERM --kill-after=10s "$((attempt_timeout_ms / 1000))s" "${observation_argv[@]}") >"$log" 2>&1
   local rc=$?
   set -e
   printf '%s\t%s\t%s\t%s\n' "$label" "$index" "$rc" "$(matches_contract "$log" "$expected" "$rc" && echo true || echo false)" >> /evidence/admission.tsv
@@ -120,6 +125,9 @@ for pattern in "${required_regex[@]}"; do reprocut_args+=(--failure-regex "$patt
 for pattern in "${rejected_regex[@]}"; do reprocut_args+=(--reject-regex "$pattern"); done
 
 reduction_argv=("${oracle_argv[@]}")
+if [ "$case_id" = ipe ]; then
+  reduction_argv=(env IPE_BIN=/usr/local/bin/ipe-head "${oracle_argv[@]}")
+fi
 case "$case_id" in
   openruyi|ipe)
     reprocut_args+=(--ecosystem none --prepare none)
@@ -152,12 +160,16 @@ fi
 /opt/reprocut/reprocut verify /evidence/reprocut --json > /evidence/reprocut-verify.json
 
 : > /evidence/final-verification.tsv
+final_oracle_argv=("${oracle_argv[@]}")
+if [ "$case_id" = ipe ]; then
+  final_oracle_argv=(env IPE_BIN=/usr/local/bin/ipe-head "${oracle_argv[@]}")
+fi
 for index in 1 2 3; do
   candidate="/work/final-${index}"
   log="/evidence/final-verification/run-${index}.log"
   prepare_snapshot /evidence/reprocut/project "$candidate"
   set +e
-  (cd "$candidate" && timeout --signal=TERM --kill-after=10s "$((attempt_timeout_ms / 1000))s" "${oracle_argv[@]}") >"$log" 2>&1
+  (cd "$candidate" && timeout --signal=TERM --kill-after=10s "$((attempt_timeout_ms / 1000))s" "${final_oracle_argv[@]}") >"$log" 2>&1
   rc=$?
   set -e
   preserved="$(matches_contract "$log" fail "$rc" && echo true || echo false)"

@@ -36,8 +36,10 @@ RUN set -eux; \
       ipe) \
         export CARGO_NET_OFFLINE=false; \
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable; \
+        cd /inputs/base; cargo build --locked --release -p ipe; \
+        install -m 0555 target/release/ipe /usr/local/bin/ipe-base; \
         cd /inputs/head; cargo build --locked --release -p ipe; \
-        install -m 0555 target/release/ipe /usr/local/bin/ipe ;; \
+        install -m 0555 target/release/ipe /usr/local/bin/ipe-head ;; \
       bevy) \
         export CARGO_NET_OFFLINE=false; \
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable --component clippy; \

@@ -218,11 +218,17 @@ class BuildContextTests(unittest.TestCase):
         )
         self.assertIn("install -d -o 10001 -g 10001 -m 0700 /evidence", dockerfile)
 
-    def test_ipe_bootstrap_builds_the_cli_expected_by_upstream_scripts(self):
+    def test_ipe_bootstrap_builds_snapshot_specific_clis(self):
         dockerfile = (SCRIPT_DIR / "Dockerfile").read_text(encoding="utf-8")
+        entrypoint = (SCRIPT_DIR / "container_entrypoint.sh").read_text(encoding="utf-8")
 
+        self.assertIn("cd /inputs/base; cargo build --locked --release -p ipe", dockerfile)
+        self.assertIn("install -m 0555 target/release/ipe /usr/local/bin/ipe-base", dockerfile)
         self.assertIn("cd /inputs/head; cargo build --locked --release -p ipe", dockerfile)
-        self.assertIn("install -m 0555 target/release/ipe /usr/local/bin/ipe", dockerfile)
+        self.assertIn("install -m 0555 target/release/ipe /usr/local/bin/ipe-head", dockerfile)
+        self.assertIn('IPE_BIN="/usr/local/bin/ipe-${label}"', entrypoint)
+        self.assertIn("reduction_argv=(env IPE_BIN=/usr/local/bin/ipe-head", entrypoint)
+        self.assertIn("final_oracle_argv=(env IPE_BIN=/usr/local/bin/ipe-head", entrypoint)
 
 
 if __name__ == "__main__":
