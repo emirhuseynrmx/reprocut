@@ -246,6 +246,14 @@ class BuildContextTests(unittest.TestCase):
         self.assertNotIn("cd /inputs/head; cargo fetch --locked", dockerfile)
         self.assertNotIn("cd /inputs/base; cargo fetch --locked", dockerfile)
 
+    def test_external_cases_run_independently(self):
+        workflow = (SCRIPT_DIR.parents[1] / ".github" / "workflows" / "external-validation.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertNotIn("needs: openruyi", workflow)
+        self.assertNotIn("needs: ipe", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
