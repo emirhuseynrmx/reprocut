@@ -17,7 +17,7 @@
     {
       "case_id": "ipe",
       "repository": "https://github.com/arthurmaciel/ipe-lang.git",
-      "base_ref": "eba6ed15155e42b73c0df1b69ec19b82a35f852e",
+      "base_ref": "6e1a88738a9369e38b65d5e3ab073264fa576487",
       "head_sha": "072f647ca425694728de3aa6f508f1c3820681f1",
       "ci_url": "https://github.com/arthurmaciel/ipe-lang/actions/runs/32952534290/job/98127026437",
       "oracle_argv": ["/usr/local/bin/ipe-regen-oracle"],
