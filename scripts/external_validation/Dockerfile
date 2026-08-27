@@ -16,7 +16,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      bash ca-certificates coreutils diffutils findutils git grep jq \
+      bash ca-certificates coreutils diffutils findutils git grep jq ripgrep \
       python3 python3-pip python3-venv sed util-linux \
       build-essential curl pkg-config libasound2-dev libudev-dev libwayland-dev \
     && rm -rf /var/lib/apt/lists/*

@@ -233,6 +233,7 @@ class BuildContextTests(unittest.TestCase):
         self.assertIn("reduction_argv=(env IPE_BIN=/usr/local/bin/ipe-head", entrypoint)
         self.assertIn("final_oracle_argv=(env IPE_BIN=/usr/local/bin/ipe-head", entrypoint)
         self.assertIn("COPY reprocut/scripts/external_validation/ipe_regen_oracle.sh", dockerfile)
+        self.assertIn("git grep jq ripgrep", dockerfile)
         self.assertIn("tools/scripts/regen-sky-examples.sh", oracle)
         self.assertIn("scripts/regen-sky-examples.sh", oracle)
 
