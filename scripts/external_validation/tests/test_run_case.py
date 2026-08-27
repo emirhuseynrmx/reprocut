@@ -222,7 +222,9 @@ class BuildContextTests(unittest.TestCase):
         dockerfile = (SCRIPT_DIR / "Dockerfile").read_text(encoding="utf-8")
         entrypoint = (SCRIPT_DIR / "container_entrypoint.sh").read_text(encoding="utf-8")
 
-        self.assertIn("cd /inputs/base; cargo build --locked --release -p ipe", dockerfile)
+        self.assertIn("cp -R /inputs/base /tmp/ipe-base-build", dockerfile)
+        self.assertIn("cd /tmp/ipe-base-build; cargo build --release -p ipe", dockerfile)
+        self.assertNotIn("cd /inputs/base; cargo build", dockerfile)
         self.assertIn("install -m 0555 target/release/ipe /usr/local/bin/ipe-base", dockerfile)
         self.assertIn("cd /inputs/head; cargo build --locked --release -p ipe", dockerfile)
         self.assertIn("install -m 0555 target/release/ipe /usr/local/bin/ipe-head", dockerfile)
