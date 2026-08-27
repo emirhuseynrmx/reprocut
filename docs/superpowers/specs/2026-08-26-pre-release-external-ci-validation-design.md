@@ -17,7 +17,7 @@ This is a release gate, not a benchmark marketing claim. A candidate counts only
 | Medium Rust | `arthurmaciel/ipe-lang#1370` | `072f647ca425694728de3aa6f508f1c3820681f1` | Exact failing Ubuntu CI command, extracted from the completed run | Medium workspace and platform-sensitive CI behavior |
 | Large Rust | `bevyengine/bevy#25553` | `762326968f6fac9e69c81a831ab91ab29afb9933` | `cargo run -p ci -- lints` with the five `undocumented_unsafe_blocks` diagnostics | Large, well-known workspace with a narrow PR-introduced failure |
 
-The base refs are respectively `master`, `main`, and `main`. Their exact base commit SHAs will be recorded at experiment start so the evidence remains reproducible after branches move.
+The immutable base SHAs are respectively `19d328ca44ee6066afb3909d1533c919681c311b`, `cf94ee9314b59f2b5f34ca331c4ff097fb6c7aa5`, and `0de26631b0603acdc945aeae5e05b07ce58bc4dc`. OpenRuyi and Bevy use the failing head's parent; Ipe uses a commit whose sky-ports offline gate is recorded as passing.
 
 ## Candidate Admission Gate
 

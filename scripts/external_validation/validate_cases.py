@@ -66,8 +66,8 @@ def _parse_case(raw: object) -> CaseSpec:
     if not isinstance(repository, str) or not REPOSITORY_PATTERN.fullmatch(repository):
         raise CatalogError(f"{case_id}.repository must be an HTTPS GitHub repository URL")
     base_ref = raw["base_ref"]
-    if not isinstance(base_ref, str) or not base_ref or any(char.isspace() for char in base_ref):
-        raise CatalogError(f"{case_id}.base_ref is invalid")
+    if not isinstance(base_ref, str) or not SHA_PATTERN.fullmatch(base_ref):
+        raise CatalogError(f"{case_id}.base_ref must be a pinned 40-character SHA")
     head_sha = raw["head_sha"]
     if not isinstance(head_sha, str) or not SHA_PATTERN.fullmatch(head_sha):
         raise CatalogError(f"{case_id}.head_sha must be a pinned 40-character SHA")

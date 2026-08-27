@@ -22,7 +22,7 @@ def valid_case(case_id="openruyi", head_sha="1" * 40):
     return {
         "case_id": case_id,
         "repository": "https://github.com/example/project.git",
-        "base_ref": "main",
+        "base_ref": "2" * 40,
         "head_sha": head_sha,
         "ci_url": "https://github.com/example/project/actions/runs/1/job/2",
         "oracle_argv": ["python", "-m", "pytest"],
@@ -52,11 +52,11 @@ class CatalogTests(unittest.TestCase):
     def test_catalog_contains_exact_pinned_cases(self):
         cases = self.validation.load_cases(CATALOG)
         self.assertEqual(
-            [(case.case_id, case.head_sha) for case in cases],
+            [(case.case_id, case.base_ref, case.head_sha) for case in cases],
             [
-                ("openruyi", "1a0e915e4e0daa89cce0b97dc488801fe4225a0e"),
-                ("ipe", "072f647ca425694728de3aa6f508f1c3820681f1"),
-                ("bevy", "762326968f6fac9e69c81a831ab91ab29afb9933"),
+                ("openruyi", "19d328ca44ee6066afb3909d1533c919681c311b", "1a0e915e4e0daa89cce0b97dc488801fe4225a0e"),
+                ("ipe", "cf94ee9314b59f2b5f34ca331c4ff097fb6c7aa5", "072f647ca425694728de3aa6f508f1c3820681f1"),
+                ("bevy", "0de26631b0603acdc945aeae5e05b07ce58bc4dc", "762326968f6fac9e69c81a831ab91ab29afb9933"),
             ],
         )
 
@@ -72,6 +72,13 @@ class CatalogTests(unittest.TestCase):
     def test_rejects_unpinned_head(self):
         path = self.write_catalog([valid_case(head_sha="main")])
         with self.assertRaisesRegex(self.validation.CatalogError, "head_sha"):
+            self.validation.load_cases(path, expected_order=("openruyi",))
+
+    def test_rejects_unpinned_base(self):
+        case = valid_case()
+        case["base_ref"] = "main"
+        path = self.write_catalog([case])
+        with self.assertRaisesRegex(self.validation.CatalogError, "base_ref"):
             self.validation.load_cases(path, expected_order=("openruyi",))
 
     def test_rejects_shell_command_string(self):

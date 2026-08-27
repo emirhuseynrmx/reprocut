@@ -70,7 +70,7 @@ Expected: FAIL because `validate_cases` and the catalog do not exist.
 
 - [ ] **Step 3: Implement the strict dataclass parser**
 
-The parser must require 40-character lowercase hexadecimal SHAs, HTTPS GitHub repository URLs, argv arrays rather than shell strings, at least one required regex, unique case IDs, positive limits, and catalog order `openruyi`, `ipe`, `bevy`. Unknown JSON keys are errors.
+The parser must require 40-character lowercase hexadecimal SHAs for both base and head, HTTPS GitHub repository URLs, argv arrays rather than shell strings, at least one required regex, unique case IDs, positive limits, and catalog order `openruyi`, `ipe`, `bevy`. Unknown JSON keys are errors.
 
 - [ ] **Step 4: Add the three exact catalog entries**
 

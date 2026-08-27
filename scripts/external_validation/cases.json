@@ -4,7 +4,7 @@
     {
       "case_id": "openruyi",
       "repository": "https://github.com/redrose2100/openruyi-precommit-hooks.git",
-      "base_ref": "master",
+      "base_ref": "19d328ca44ee6066afb3909d1533c919681c311b",
       "head_sha": "1a0e915e4e0daa89cce0b97dc488801fe4225a0e",
       "ci_url": "https://github.com/redrose2100/openruyi-precommit-hooks/actions/runs/32953003565/job/98128456317",
       "oracle_argv": ["/usr/local/bin/openruyi-eof-oracle"],
@@ -17,7 +17,7 @@
     {
       "case_id": "ipe",
       "repository": "https://github.com/arthurmaciel/ipe-lang.git",
-      "base_ref": "main",
+      "base_ref": "cf94ee9314b59f2b5f34ca331c4ff097fb6c7aa5",
       "head_sha": "072f647ca425694728de3aa6f508f1c3820681f1",
       "ci_url": "https://github.com/arthurmaciel/ipe-lang/actions/runs/32952534290/job/98127026437",
       "oracle_argv": ["bash", "tools/scripts/regen-sky-examples.sh", "--check"],
@@ -30,7 +30,7 @@
     {
       "case_id": "bevy",
       "repository": "https://github.com/bevyengine/bevy.git",
-      "base_ref": "main",
+      "base_ref": "0de26631b0603acdc945aeae5e05b07ce58bc4dc",
       "head_sha": "762326968f6fac9e69c81a831ab91ab29afb9933",
       "ci_url": "https://github.com/bevyengine/bevy/actions/runs/32949752940/job/98118277748",
       "oracle_argv": ["cargo", "run", "-p", "ci", "--", "lints"],
