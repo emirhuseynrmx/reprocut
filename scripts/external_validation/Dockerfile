@@ -29,6 +29,7 @@ COPY case.json /case.json
 COPY reprocut/scripts/external_validation/container_entrypoint.sh /usr/local/bin/reprocut-validation
 COPY reprocut/scripts/external_validation/openruyi_eof_oracle.sh /usr/local/bin/openruyi-eof-oracle
 COPY reprocut/scripts/external_validation/ipe_regen_oracle.sh /usr/local/bin/ipe-regen-oracle
+COPY reprocut/scripts/external_validation/bevy_clippy_oracle.sh /usr/local/bin/bevy-clippy-oracle
 
 RUN set -eux; \
     case "$CASE_ID" in \
@@ -51,7 +52,7 @@ RUN set -eux; \
       *) \
         echo "unsupported CASE_ID: $CASE_ID" >&2; exit 2 ;; \
     esac; \
-    chmod 0555 /opt/reprocut/reprocut /usr/local/bin/reprocut-validation /usr/local/bin/openruyi-eof-oracle /usr/local/bin/ipe-regen-oracle; \
+    chmod 0555 /opt/reprocut/reprocut /usr/local/bin/reprocut-validation /usr/local/bin/openruyi-eof-oracle /usr/local/bin/ipe-regen-oracle /usr/local/bin/bevy-clippy-oracle; \
     useradd --uid 10001 --user-group --create-home --shell /usr/sbin/nologin validator; \
     install -d -o 10001 -g 10001 -m 0700 /evidence; \
     chown -R root:root /inputs /opt/reprocut /opt/precommit /opt/cargo /opt/rustup 2>/dev/null || true; \

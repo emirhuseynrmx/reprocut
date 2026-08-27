@@ -33,7 +33,7 @@
       "base_ref": "0de26631b0603acdc945aeae5e05b07ce58bc4dc",
       "head_sha": "762326968f6fac9e69c81a831ab91ab29afb9933",
       "ci_url": "https://github.com/bevyengine/bevy/actions/runs/32949752940/job/98118277748",
-      "oracle_argv": ["cargo", "clippy", "-p", "bevy_ecs", "--all-targets", "--all-features", "--features", "bevy_reflect/auto_register_static", "--", "-Dwarnings"],
+      "oracle_argv": ["/usr/local/bin/bevy-clippy-oracle"],
       "required_regex": ["unsafe block missing a safety comment", "undocumented_unsafe_blocks"],
       "rejected_regex": ["failed to (get|download)", "Could not resolve host", "linker .* not found", "pkg-config.*(failed|not found)"],
       "memory": "7g",

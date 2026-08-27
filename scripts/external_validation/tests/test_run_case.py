@@ -255,6 +255,8 @@ class BuildContextTests(unittest.TestCase):
 
     def test_bevy_bootstrap_supports_snapshots_without_a_lockfile(self):
         dockerfile = (SCRIPT_DIR / "Dockerfile").read_text(encoding="utf-8")
+        entrypoint = (SCRIPT_DIR / "container_entrypoint.sh").read_text(encoding="utf-8")
+        oracle = (SCRIPT_DIR / "bevy_clippy_oracle.sh").read_text(encoding="utf-8")
 
         self.assertIn("--component clippy --component rustfmt", dockerfile)
         self.assertIn(
@@ -264,6 +266,14 @@ class BuildContextTests(unittest.TestCase):
         self.assertEqual(dockerfile.count(fetch), 2)
         self.assertNotIn("cd /inputs/head; cargo fetch --locked", dockerfile)
         self.assertNotIn("cd /inputs/base; cargo fetch --locked", dockerfile)
+        self.assertIn("prepare_bevy_reduction_source", entrypoint)
+        self.assertIn("crates/bevy_ecs/src/archetype.rs", entrypoint)
+        self.assertIn("crates/bevy_ecs/src/world/despawn_all.rs", entrypoint)
+        self.assertIn("crates/bevy_ecs/src/world/mod.rs", entrypoint)
+        self.assertIn("COPY reprocut/scripts/external_validation/bevy_clippy_oracle.sh", dockerfile)
+        self.assertIn("/work/bevy-oracle-workspace", oracle)
+        self.assertIn('rm -f -- "$workspace/$path"', oracle)
+        self.assertIn("bevy_reflect/auto_register_static", oracle)
 
     def test_external_cases_run_independently(self):
         workflow = (

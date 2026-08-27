@@ -69,6 +69,24 @@ prepare_snapshot() {
   copy_seed_tree "$source" "$destination"
 }
 
+prepare_bevy_reduction_source() {
+  local destination="$1"
+  local path
+  local -a focus_paths=(
+    crates/bevy_ecs/src/archetype.rs
+    crates/bevy_ecs/src/world/despawn_all.rs
+    crates/bevy_ecs/src/world/mod.rs
+  )
+  rm -rf "$destination"
+  mkdir -p "$destination"
+  for path in "${focus_paths[@]}"; do
+    if [ -f "/inputs/head/$path" ]; then
+      mkdir -p "$destination/$(dirname "$path")"
+      cp --no-preserve=ownership,mode "/inputs/head/$path" "$destination/$path"
+    fi
+  done
+}
+
 matches_contract() {
   local log="$1" expected="$2" rc="$3"
   if [ "$expected" = pass ]; then
@@ -110,7 +128,11 @@ observe() {
 for index in 1 2 3; do observe /inputs/base base pass "$index"; done
 for index in 1 2 3; do observe /inputs/head head fail "$index"; done
 
-prepare_snapshot /inputs/head /work/reduction-source
+if [ "$case_id" = bevy ]; then
+  prepare_bevy_reduction_source /work/reduction-source
+else
+  prepare_snapshot /inputs/head /work/reduction-source
+fi
 reprocut_args=(
   reduce
   --root /work/reduction-source
@@ -133,7 +155,7 @@ case "$case_id" in
     reprocut_args+=(--ecosystem none --prepare none)
     ;;
   bevy)
-    reprocut_args+=(--ecosystem cargo --prepare offline)
+    reprocut_args+=(--ecosystem none --prepare none)
     ;;
 esac
 

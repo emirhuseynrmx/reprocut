@@ -86,25 +86,11 @@ class CatalogTests(unittest.TestCase):
 
         self.assertEqual(list(ipe.oracle_argv), ["/usr/local/bin/ipe-regen-oracle"])
 
-    def test_bevy_oracle_targets_the_changed_crate(self):
+    def test_bevy_oracle_uses_the_focused_workspace_wrapper(self):
         cases = self.validation.load_cases(CATALOG)
         bevy = self.validation.select_case(cases, "bevy")
 
-        self.assertEqual(
-            list(bevy.oracle_argv),
-            [
-                "cargo",
-                "clippy",
-                "-p",
-                "bevy_ecs",
-                "--all-targets",
-                "--all-features",
-                "--features",
-                "bevy_reflect/auto_register_static",
-                "--",
-                "-Dwarnings",
-            ],
-        )
+        self.assertEqual(list(bevy.oracle_argv), ["/usr/local/bin/bevy-clippy-oracle"])
 
     def test_rejects_unpinned_head(self):
         path = self.write_catalog([valid_case(head_sha="main")])
