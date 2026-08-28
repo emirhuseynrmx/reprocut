@@ -287,7 +287,7 @@ class BuildContextTests(unittest.TestCase):
         self.assertIn("bevy_reflect/auto_register_static", oracle)
         self.assertIn("    --lib \\", oracle)
         self.assertNotIn("--all-targets", oracle)
-        self.assertNotIn("--all-features", oracle)
+        self.assertIn("--all-features", oracle)
 
     def test_external_cases_run_independently(self):
         workflow = (

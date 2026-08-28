@@ -5,6 +5,7 @@ run_clippy() {
   exec cargo clippy \
     -p bevy_ecs \
     --lib \
+    --all-features \
     --features bevy_reflect/auto_register_static \
     -- \
     -Dwarnings
