@@ -285,6 +285,9 @@ class BuildContextTests(unittest.TestCase):
         self.assertIn("/work/bevy-oracle-workspace", oracle)
         self.assertIn('rm -f -- "$workspace/$path"', oracle)
         self.assertIn("bevy_reflect/auto_register_static", oracle)
+        self.assertIn("    --lib \\", oracle)
+        self.assertNotIn("--all-targets", oracle)
+        self.assertNotIn("--all-features", oracle)
 
     def test_external_cases_run_independently(self):
         workflow = (

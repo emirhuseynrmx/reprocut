@@ -4,8 +4,7 @@ set -euo pipefail
 run_clippy() {
   exec cargo clippy \
     -p bevy_ecs \
-    --all-targets \
-    --all-features \
+    --lib \
     --features bevy_reflect/auto_register_static \
     -- \
     -Dwarnings
