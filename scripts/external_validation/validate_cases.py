@@ -175,9 +175,7 @@ def main() -> int:
         # The workflow derives its matrix from the validated catalog, so adding a
         # case is a catalog edit rather than a workflow edit.
         selected = [
-            case
-            for case in cases
-            if arguments.matrix == "all" or case.tier == arguments.matrix
+            case for case in cases if arguments.matrix == "all" or case.tier == arguments.matrix
         ]
         print(
             json.dumps(
