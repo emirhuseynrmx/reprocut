@@ -253,16 +253,21 @@ class BuildContextTests(unittest.TestCase):
         self.assertIn("tools/scripts/regen-sky-examples.sh", oracle)
         self.assertIn("scripts/regen-sky-examples.sh", oracle)
 
-    def test_rustup_bootstrap_retries_without_masking_download_failures(self):
+    def test_rustup_bootstrap_is_pinned_and_checksum_verified(self):
         dockerfile = (SCRIPT_DIR / "Dockerfile").read_text(encoding="utf-8")
 
-        download = (
-            "curl --retry 5 --retry-all-errors --proto '=https' --tlsv1.2 "
-            "-sSf https://sh.rustup.rs -o /tmp/rustup-init.sh"
-        )
-        self.assertEqual(dockerfile.count(download), 2)
-        self.assertEqual(dockerfile.count("sh /tmp/rustup-init.sh -y --profile minimal"), 2)
+        # `sh.rustup.rs` serves whatever installer is current, so a pinned case
+        # could be replayed against a different toolchain than the one that
+        # observed the failure.
+        self.assertNotIn("https://sh.rustup.rs -o", dockerfile)
         self.assertNotIn("https://sh.rustup.rs | sh", dockerfile)
+        self.assertIn("static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}", dockerfile)
+        self.assertIn("ARG RUSTUP_VERSION=", dockerfile)
+        # A download that is not checked is a download that can be substituted.
+        self.assertIn("sha256sum -c -", dockerfile)
+        self.assertIn("--retry 5 --retry-all-errors", dockerfile)
+        # Both Rust cases bootstrap through the one verified path.
+        self.assertEqual(dockerfile.count("install_rustup;"), 2)
 
     def test_bevy_bootstrap_supports_snapshots_without_a_lockfile(self):
         dockerfile = (SCRIPT_DIR / "Dockerfile").read_text(encoding="utf-8")

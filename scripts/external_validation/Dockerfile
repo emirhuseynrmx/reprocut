@@ -35,15 +35,38 @@ COPY reprocut/scripts/external_validation/openruyi_eof_oracle.sh /usr/local/bin/
 COPY reprocut/scripts/external_validation/ipe_regen_oracle.sh /usr/local/bin/ipe-regen-oracle
 COPY reprocut/scripts/external_validation/bevy_clippy_oracle.sh /usr/local/bin/bevy-clippy-oracle
 
+# rustup is fetched as a pinned, checksum-verified binary rather than by piping
+# https://sh.rustup.rs into a shell. That endpoint serves whatever installer is
+# current, so the toolchain that observed a failure could change between replays
+# of the same pinned case.
+ARG RUSTUP_VERSION=1.29.1
+ARG RUSTUP_SHA256_X86_64=dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71
+ARG RUSTUP_SHA256_AARCH64=15f6e4ce9f583b929c996c91562bad6d4454f3281de858b02cdfdef615fac433
+
 RUN set -eux; \
+    install_rustup() { \
+      case "$(uname -m)" in \
+        x86_64) target=x86_64-unknown-linux-gnu; expected="$RUSTUP_SHA256_X86_64" ;; \
+        aarch64) target=aarch64-unknown-linux-gnu; expected="$RUSTUP_SHA256_AARCH64" ;; \
+        *) echo "unsupported architecture: $(uname -m)" >&2; exit 2 ;; \
+      esac; \
+      curl --retry 5 --retry-all-errors --proto '=https' --tlsv1.2 -sSf \
+        "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${target}/rustup-init" \
+        -o /tmp/rustup-init; \
+      echo "${expected}  /tmp/rustup-init" | sha256sum -c -; \
+      chmod +x /tmp/rustup-init; \
+      /tmp/rustup-init -y --no-modify-path --default-toolchain none; \
+      rm -f /tmp/rustup-init; \
+    }; \
     case "$CASE_ID" in \
       openruyi) \
         python3 -m venv /opt/precommit; \
         /opt/precommit/bin/pip install --no-cache-dir pre-commit-hooks==6.0.0 ;; \
       ipe) \
         export CARGO_NET_OFFLINE=false; \
-        curl --retry 5 --retry-all-errors --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh; \
-        sh /tmp/rustup-init.sh -y --profile minimal --default-toolchain stable; \
+        install_rustup; \
+        rustup toolchain install stable --profile minimal; \
+        rustup default stable; \
         cp -R /inputs/base /tmp/ipe-base-build; \
         cd /tmp/ipe-base-build; cargo build --release -p ipe; \
         install -m 0555 target/release/ipe /usr/local/bin/ipe-base; \
@@ -51,8 +74,9 @@ RUN set -eux; \
         install -m 0555 target/release/ipe /usr/local/bin/ipe-head ;; \
       bevy) \
         export CARGO_NET_OFFLINE=false; \
-        curl --retry 5 --retry-all-errors --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh; \
-        sh /tmp/rustup-init.sh -y --profile minimal --default-toolchain stable --component clippy --component rustfmt; \
+        install_rustup; \
+        rustup toolchain install stable --profile minimal --component clippy --component rustfmt; \
+        rustup default stable; \
         cd /inputs/head; if [ -f Cargo.lock ]; then cargo fetch --locked; else cargo fetch; fi; \
         cd /inputs/base; if [ -f Cargo.lock ]; then cargo fetch --locked; else cargo fetch; fi ;; \
       *) \
