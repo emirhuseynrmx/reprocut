@@ -1,11 +1,15 @@
 # syntax=docker/dockerfile:1.7
-FROM rust:1.85-bookworm AS reprocut-builder
+#
+# Both stages are pinned by digest, not tag. A tag is mutable, so a rebuilt
+# `rust:1.85-bookworm` would silently change the toolchain that produced the
+# reducer whose evidence this image exists to make reproducible.
+FROM rust:1.85-bookworm@sha256:e51d0265072d2d9d5d320f6a44dde6b9ef13653b035098febd68cce8fa7c0bc4 AS reprocut-builder
 
 WORKDIR /src
 COPY reprocut/ ./
 RUN cargo build --locked --release -p reprocut
 
-FROM ubuntu:24.04 AS validation-runtime
+FROM ubuntu:24.04@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517 AS validation-runtime
 
 ARG CASE_ID
 ENV DEBIAN_FRONTEND=noninteractive \
