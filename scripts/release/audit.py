@@ -132,7 +132,6 @@ def static_checks(root: Path) -> list[Check]:
         "scripts/release/verify_archive.py",
         "scripts/release/build_manifest.py",
         "docs/RELEASING.md",
-        "docs/launch/HACKER_NEWS.md",
     ]
     missing = [path for path in required if not (root / path).is_file()]
     checks.append(
