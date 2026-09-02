@@ -34,15 +34,24 @@ benchmark.
 |---|---|---:|---|
 | Tiny onboarding fixture | Checked-in Python example | 18 → 3 files; 55 lines; 1,669 bytes | Complete evidence bundle |
 | Synthetic 312-file fixture | Deterministically generated Python project | 312 files; five fresh measured runs | Raw CI benchmark artifact |
+| Upstream real case, reduced | Pinned `openruyi-precommit-hooks` regression | 95 → 1 files; 15,749 → 69 lines; 1,501,477 → 551 bytes | Verified evidence bundle from CI |
 | Upstream real case | Pinned Perses `clang-26760` compiler bug | 2 C files; 33,171 lines; 1,933,944 source bytes | Download-only provenance; opt-in benchmark |
 | Independent | Third-party projects | **Independent validations: 0** | No external adoption claim yet |
 
 The 312-file fixture measures scale and repeatability, but it is generated and
-does not stand in for a complex production repository. The upstream row records
-real, pinned source provenance; reduction measurements remain unavailable until
-the opt-in historical-toolchain workflow completes successfully. A reviewed
-third-party evidence submission—not a self-authored example—is required before
-the independent count can increase.
+does not stand in for a complex production repository.
+
+The reduced upstream row is a real third-party repository at pinned base and
+head commits, run in a network-disabled container: the base passed three times,
+the head failed three times, the reduction ran, and the minimized project failed
+the same way three more times. `reprocut verify` re-checked the bundle
+independently. The run is self-authored, so it does not move the independent
+count.
+
+The remaining upstream row records real, pinned source provenance; reduction
+measurements remain unavailable until the opt-in historical-toolchain workflow
+completes successfully. A reviewed third-party evidence submission—not a
+self-authored example—is required before the independent count can increase.
 
 ReproCut 0.1 is an alpha release focused on deterministic, evidence-backed
 project reduction. Its checked-in result uses schema-4 evidence. Failure
