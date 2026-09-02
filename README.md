@@ -2,12 +2,19 @@
 
 # ReproCut
 
-ReproCut removes parts of a failing project while checking that the original
-failure still occurs.
+Turn a failing repository into the smallest project that still fails the same
+way — with evidence that it is the same failure.
 
-It works on a copy, not your checkout. It establishes a repeatable baseline,
-tests candidate reductions in fresh snapshots, and publishes a result only
-after final verification satisfies the selected evaluation policy.
+ReproCut removes parts of a failing project while checking that the original
+failure still occurs. It works on a copy, not your checkout. It establishes a
+repeatable baseline, tests candidate reductions in fresh snapshots, and
+publishes a result only after final verification satisfies the selected
+evaluation policy.
+
+The result is not a claim to be trusted. It is an artifact anyone can re-run:
+`reprocut verify` re-checks the declared files, byte hashes, retained project,
+attempt ledger, and reproduction scripts independently of the run that made
+them.
 
 ![A ReproCut run reducing 18 files to 3](https://raw.githubusercontent.com/emirhuseynrmx/reprocut/main/assets/reprocut-demo.gif)
 
@@ -275,6 +282,32 @@ node --test gallery/test/*.test.js
 ```
 
 See [RELEASING.md](docs/RELEASING.md) for release gates and publication order.
+
+## Prior art
+
+Test-case reduction is a well-established field, and ReproCut is not an attempt
+to beat the tools that defined it.
+
+| | C-Reduce / C-Vise | Perses | treereduce | ReproCut |
+|---|---|---|---|---|
+| Input | One file | One file | One file | **A whole project** |
+| Languages | C/C++ (deep) | Grammar-driven | Tree-sitter grammars | 8 languages |
+| Build manifests | — | — | — | **Cargo, pyproject, package.json** |
+| Verifiable evidence | — | — | — | **Signed bundle plus `verify`** |
+| Resumable search | — | — | — | **Crash-safe journal** |
+
+On a single C or C++ translation unit, C-Reduce is the better tool and will
+usually produce a smaller result: it applies semantic, Clang-aware transforms
+that a syntax-node reducer cannot. C-Vise parallelizes the same approach.
+Perses and treereduce generalize syntax-guided reduction across grammars.
+
+ReproCut answers a different question. Not *"how small can this one file get?"*
+but *"which parts of this repository does the failure actually need?"* — files,
+directories, manifest entries, and syntax nodes together, with an artifact
+another person can verify without trusting the run that produced it.
+
+If your input is one file, use C-Reduce. If your input is a failing repository,
+that is the case ReproCut was built for.
 
 ## Limits
 
