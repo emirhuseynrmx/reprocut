@@ -22,6 +22,9 @@ class CatalogError(ValueError):
     """The external-validation catalog is unsafe or malformed."""
 
 
+TIERS = ("fast", "full")
+
+
 @dataclass(frozen=True)
 class CaseSpec:
     case_id: str
@@ -35,6 +38,9 @@ class CaseSpec:
     memory: str
     timeout_minutes: int
     attempt_timeout_ms: int
+    # Which schedule runs this case. `fast` cases also run on pull requests, so a
+    # case only belongs there when its budget keeps the pull-request signal quick.
+    tier: str
 
 
 CASE_KEYS = frozenset(field.name for field in fields(CaseSpec))
@@ -106,6 +112,10 @@ def _parse_case(raw: object) -> CaseSpec:
     ):
         raise CatalogError(f"{case_id}.attempt_timeout_ms must be positive")
 
+    tier = raw["tier"]
+    if tier not in TIERS:
+        raise CatalogError(f"{case_id}.tier must be one of {', '.join(TIERS)}")
+
     return CaseSpec(
         case_id=case_id,
         repository=repository,
@@ -118,6 +128,7 @@ def _parse_case(raw: object) -> CaseSpec:
         memory=memory,
         timeout_minutes=timeout_minutes,
         attempt_timeout_ms=attempt_timeout_ms,
+        tier=tier,
     )
 
 
@@ -153,8 +164,41 @@ def main() -> int:
     parser.add_argument(
         "catalog", nargs="?", type=Path, default=Path(__file__).with_name("cases.json")
     )
+    parser.add_argument(
+        "--matrix",
+        choices=(*TIERS, "all"),
+        help="emit a GitHub Actions matrix for one tier instead of the case listing",
+    )
     arguments = parser.parse_args()
     cases = load_cases(arguments.catalog)
+    if arguments.matrix:
+        # The workflow derives its matrix from the validated catalog, so adding a
+        # case is a catalog edit rather than a workflow edit.
+        selected = [
+            case
+            for case in cases
+            if arguments.matrix == "all" or case.tier == arguments.matrix
+        ]
+        print(
+            json.dumps(
+                {
+                    "include": [
+                        {
+                            "case_id": case.case_id,
+                            "case_timeout_minutes": case.timeout_minutes,
+                            # The job outlives the case budget on purpose: when a
+                            # container hits its own limit the step must still have
+                            # time to sanitize and upload the partial evidence.
+                            "job_timeout_minutes": case.timeout_minutes
+                            + max(15, case.timeout_minutes // 2),
+                            "tier": case.tier,
+                        }
+                        for case in selected
+                    ]
+                }
+            )
+        )
+        return 0
     print(json.dumps({"schema_version": 1, "case_ids": [case.case_id for case in cases]}))
     return 0
 

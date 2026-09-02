@@ -296,8 +296,30 @@ class BuildContextTests(unittest.TestCase):
 
         self.assertNotIn("needs: openruyi", workflow)
         self.assertNotIn("needs: ipe", workflow)
-        self.assertIn("timeout-minutes: 240", workflow)
+        # One case failing must not cancel the others, or a single flaky upstream
+        # would erase the evidence for every case beside it.
+        self.assertIn("fail-fast: false", workflow)
+        # Budgets come from the catalog so that adding a case never edits YAML.
+        self.assertIn("timeout-minutes: ${{ matrix.job_timeout_minutes }}", workflow)
         self.assertIn("if-no-files-found: error", workflow)
+
+    def test_scheduled_replay_keeps_published_evidence_current(self):
+        workflow = (
+            SCRIPT_DIR.parents[1] / ".github" / "workflows" / "external-validation.yml"
+        ).read_text(encoding="utf-8")
+
+        # Evidence that is only produced on demand goes stale silently.
+        self.assertIn("schedule:", workflow)
+        self.assertIn("cron:", workflow)
+
+    def test_every_case_declares_a_tier_the_workflow_can_select(self):
+        cases = load_cases(SCRIPT_DIR / "cases.json")
+
+        self.assertTrue(cases)
+        for case in cases:
+            self.assertIn(case.tier, catalog.TIERS)
+        # A tier nobody schedules would quietly stop being validated.
+        self.assertTrue(any(case.tier == "fast" for case in cases))
 
 
 if __name__ == "__main__":

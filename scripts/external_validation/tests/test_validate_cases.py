@@ -30,6 +30,7 @@ def valid_case(case_id="openruyi", head_sha="1" * 40):
         "memory": "1g",
         "timeout_minutes": 10,
         "attempt_timeout_ms": 30000,
+        "tier": "fast",
     }
 
 
