@@ -227,15 +227,38 @@ manifest.update({
 Path('/evidence/manifest.json').write_text(json.dumps(manifest, indent=2, sort_keys=True) + '\n')
 Path('/evidence/admission.json').write_text(json.dumps({'schema_version': 1, 'observations': admission_rows}, indent=2, sort_keys=True) + '\n')
 reduction = json.loads(Path('/evidence/reprocut/reduction.json').read_text())
-original_files = reduction['measurements']['original']['files']
-retained_files = reduction['measurements']['retained']['files']
-if retained_files >= original_files:
-    raise SystemExit(f'reduction is not strictly smaller by file count: {original_files} -> {retained_files}')
+original = reduction['measurements']['original']
+retained = reduction['measurements']['retained']
+# File count alone is the wrong question. Cutting one 100 MB source file down to
+# twelve lines leaves the count at 1 -> 1 and would be rejected, while deleting a
+# single empty file from a 200 MB tree would pass. A case counts as reduced when
+# no dimension grew and at least one shrank.
+DIMENSIONS = ('files', 'bytes', 'lines')
+measured = {
+    dimension: (original.get(dimension), retained.get(dimension))
+    for dimension in DIMENSIONS
+    if original.get(dimension) is not None and retained.get(dimension) is not None
+}
+if not measured:
+    raise SystemExit('reduction evidence reports no comparable size dimension')
+grew = {
+    dimension: pair for dimension, pair in measured.items() if pair[1] > pair[0]
+}
+if grew:
+    detail = ', '.join(f'{name}: {before} -> {after}' for name, (before, after) in sorted(grew.items()))
+    raise SystemExit(f'reduction grew in at least one dimension: {detail}')
+shrank = {
+    dimension: pair for dimension, pair in measured.items() if pair[1] < pair[0]
+}
+if not shrank:
+    detail = ', '.join(f'{name}: {before} -> {after}' for name, (before, after) in sorted(measured.items()))
+    raise SystemExit(f'reduction is not strictly smaller in any dimension: {detail}')
 Path('/evidence/result.json').write_text(json.dumps({
-    'schema_version': 1, 'status': 'passed', 'final_verification': final_rows,
-    'declared_metric': 'regular_file_count',
-    'original_files': original_files,
-    'retained_files': retained_files,
+    'schema_version': 2, 'status': 'passed', 'final_verification': final_rows,
+    'declared_metrics': sorted(measured),
+    'reduced_metrics': sorted(shrank),
+    'original': {name: original.get(name) for name in DIMENSIONS},
+    'retained': {name: retained.get(name) for name in DIMENSIONS},
     'reduction': reduction,
 }, indent=2, sort_keys=True) + '\n')
 PY
