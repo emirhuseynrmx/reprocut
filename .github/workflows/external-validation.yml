@@ -39,7 +39,7 @@ jobs:
       matrix: ${{ steps.select.outputs.matrix }}
       tier: ${{ steps.select.outputs.tier }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
       - name: Validate trusted runner contracts
@@ -67,7 +67,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
       - name: Free runner disk for large workspaces
@@ -87,7 +87,7 @@ jobs:
           --output external-validation-output/${{ matrix.case_id }}
       - name: Upload sanitized ${{ matrix.case_id }} evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: external-validation-${{ matrix.case_id }}
           path: external-validation-output/${{ matrix.case_id }}
