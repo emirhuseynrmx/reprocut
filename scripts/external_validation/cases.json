@@ -35,13 +35,11 @@
         "/usr/local/bin/ipe-regen-oracle"
       ],
       "required_regex": [
-        "regen --check: committed ports are stale vs rename-map/ipe-edits",
-        "examples/sky/ipe/08-notes-app differs from re-deriving it from original/",
-        "Files examples/sky/ipe/08-notes-app/src/Main\\.ipe and .* differ"
+        "IPE-ORACLE: exactly 08-notes-app is stale against a fresh transform"
       ],
       "rejected_regex": [
-        "missing \\(run regen\\)",
-        "Only in ",
+        "IPE-ORACLE: ports are absent",
+        "IPE-ORACLE: stale set is",
         "cannot read manifest",
         "transform/edits failed",
         "Could not resolve host",
