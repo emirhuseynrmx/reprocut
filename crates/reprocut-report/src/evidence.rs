@@ -98,7 +98,10 @@ pub struct SearchEvidence {
     /// Why exploration stopped: `converged`, or `budget_exhausted` when a wall-time
     /// budget elapsed with candidates still unexplored. A budgeted result is fully
     /// verified but is not the smallest the search would have reached.
-    #[serde(default = "default_completion")]
+    /// A converged search omits the field: its absence is the default, so every
+    /// artifact written before budgets existed stays byte-identical and still
+    /// verifies. Only a budgeted result has something extra to declare.
+    #[serde(default = "default_completion", skip_serializing_if = "is_converged")]
     pub completion: String,
     /// Original and successively accepted file counts.
     pub accepted_file_sizes: Vec<usize>,
@@ -109,6 +112,10 @@ pub struct SearchEvidence {
 /// Records written before budgets existed described a search that ran to convergence.
 fn default_completion() -> String {
     "converged".to_owned()
+}
+
+fn is_converged(completion: &String) -> bool {
+    completion == "converged"
 }
 
 /// Repeated-run threshold used to classify every candidate.
