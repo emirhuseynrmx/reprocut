@@ -35,18 +35,29 @@ benchmark.
 | Tiny onboarding fixture | Checked-in Python example | 18 → 3 files; 55 lines; 1,669 bytes | Complete evidence bundle |
 | Synthetic 312-file fixture | Deterministically generated Python project | 312 files; five fresh measured runs | Raw CI benchmark artifact |
 | Upstream real case, reduced | Pinned `openruyi-precommit-hooks` regression | 95 → 1 files; 15,749 → 69 lines; 1,501,477 → 551 bytes | Verified evidence bundle from CI |
+| Upstream real case, reduced | Pinned `ipe-lang` stale-port regression | 4,632 → 769 files; 2,801,354 → 101,808 lines; 481 → 5.6 MB | Verified bundle; budget ended the search |
 | Upstream real case | Pinned Perses `clang-26760` compiler bug | 2 C files; 33,171 lines; 1,933,944 source bytes | Download-only provenance; opt-in benchmark |
 | Independent | Third-party projects | **Independent validations: 0** | No external adoption claim yet |
 
 The 312-file fixture measures scale and repeatability, but it is generated and
 does not stand in for a complex production repository.
 
-The reduced upstream row is a real third-party repository at pinned base and
+Each reduced upstream row is a real third-party repository at pinned base and
 head commits, run in a network-disabled container: the base passed three times,
 the head failed three times, the reduction ran, and the minimized project failed
 the same way three more times. `reprocut verify` re-checked the bundle
-independently. The run is self-authored, so it does not move the independent
-count.
+independently, and in both cases the minimized project's diagnostic contained no
+line the original failure had not already printed. The runs are self-authored, so
+they do not move the independent count.
+
+Do not take those numbers on trust. The records are committed under
+[`benchmarks/external-validation/`](benchmarks/external-validation/): what was
+pinned, the oracle contract, and the failing command's own output on the original
+and on the minimized project, so the two can be read side by side.
+
+The `ipe-lang` search ended on its wall-time budget rather than converging, which
+its record states. Every retained file still passed final verification; a longer
+budget would reduce further.
 
 The remaining upstream row records real, pinned source provenance; reduction
 measurements remain unavailable until the opt-in historical-toolchain workflow

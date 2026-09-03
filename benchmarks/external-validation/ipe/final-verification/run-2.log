@@ -1,0 +1,10 @@
+regen --check: examples/sky/ipe/08-notes-app differs from re-deriving it from original/:
+  Files examples/sky/ipe/08-notes-app/src/Lib/Auth.ipe and /tmp/tmp.UGQowgKwWR/08-notes-app/src/Lib/Auth.ipe differ
+  Files examples/sky/ipe/08-notes-app/src/Lib/Db.ipe and /tmp/tmp.UGQowgKwWR/08-notes-app/src/Lib/Db.ipe differ
+  Files examples/sky/ipe/08-notes-app/src/Lib/Notes.ipe and /tmp/tmp.UGQowgKwWR/08-notes-app/src/Lib/Notes.ipe differ
+  Files examples/sky/ipe/08-notes-app/src/Lib/View.ipe and /tmp/tmp.UGQowgKwWR/08-notes-app/src/Lib/View.ipe differ
+  Files examples/sky/ipe/08-notes-app/src/Main.ipe and /tmp/tmp.UGQowgKwWR/08-notes-app/src/Main.ipe differ
+
+regen --check: committed ports are stale vs rename-map/ipe-edits. Run:
+  tools/scripts/regen-sky-examples.sh && git add examples/sky/original examples/sky/ipe
+IPE-ORACLE: exactly 08-notes-app is stale against a fresh transform
