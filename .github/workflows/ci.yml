@@ -284,6 +284,13 @@ jobs:
           observations = evidence["final_observations"]
           assert observations, "a published artifact must record final verification"
           assert all(o["verdict"] == "preserved" for o in observations), observations
+          # A drift measurement must reach the artifact, and this fixture reduces
+          # honestly, so it must report nothing. An absent block would mean the
+          # measurement silently stopped running.
+          drift = evidence["failure"].get("diagnostic_drift")
+          assert drift is not None, "every published reduction must measure drift"
+          assert drift["novel_lines"] == 0, drift
+          assert drift["reportable"] is False, drift
           PY
 
   release-benchmark:
