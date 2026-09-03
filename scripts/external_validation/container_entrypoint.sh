@@ -159,6 +159,16 @@ case "$case_id" in
     ;;
 esac
 
+# The outer timeout is a backstop that kills the run with nothing published. Give ReproCut
+# its own budget below that, so a case that cannot converge in time still publishes the best
+# snapshot it has already verified. The reserve covers the three final verification runs and
+# writing the artifact.
+attempt_timeout_seconds=$((attempt_timeout_ms / 1000))
+search_budget_seconds=$((timeout_minutes * 60 - attempt_timeout_seconds * 3 - 300))
+if [ "$search_budget_seconds" -gt 0 ]; then
+  reprocut_args+=(--max-duration-secs "$search_budget_seconds")
+fi
+
 set +e
 timeout --signal=TERM --kill-after=30s "$((timeout_minutes * 60))s" \
   /opt/reprocut/reprocut "${reprocut_args[@]}" -- "${reduction_argv[@]}" \
@@ -253,10 +263,25 @@ shrank = {
 if not shrank:
     detail = ', '.join(f'{name}: {before} -> {after}' for name, (before, after) in sorted(measured.items()))
     raise SystemExit(f'reduction is not strictly smaller in any dimension: {detail}')
+# The engine reports drift and never acts on it, because a real user's reduction may be
+# legitimate anyway. This corpus is different: it exists to demonstrate that ReproCut keeps
+# the failure, so a case whose minimized diagnostic no longer resembles the original is
+# evidence of a wrong oracle here, not a finding to weigh. The ipe case shipped exactly that.
+drift = reduction['failure'].get('diagnostic_drift')
+if drift is None:
+    raise SystemExit('reduction evidence carries no drift measurement')
+if drift['reportable']:
+    sample = '; '.join(drift['novel_sample']) or '(no sample captured)'
+    raise SystemExit(
+        f"minimized diagnostic drifted: {drift['novel_lines']} of {drift['final_lines']} "
+        f"line(s) never appeared in the original failure: {sample}"
+    )
 Path('/evidence/result.json').write_text(json.dumps({
-    'schema_version': 2, 'status': 'passed', 'final_verification': final_rows,
+    'schema_version': 3, 'status': 'passed', 'final_verification': final_rows,
     'declared_metrics': sorted(measured),
     'reduced_metrics': sorted(shrank),
+    'completion': reduction['search'].get('completion', 'converged'),
+    'diagnostic_drift': drift,
     'original': {name: original.get(name) for name in DIMENSIONS},
     'retained': {name: retained.get(name) for name in DIMENSIONS},
     'reduction': reduction,
