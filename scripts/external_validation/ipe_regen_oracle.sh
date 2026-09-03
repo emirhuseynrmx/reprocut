@@ -25,11 +25,23 @@ stale="$(
 )"
 stale="${stale% }"
 
+contents_differ=0
+if printf '%s\n' "$output" \
+  | grep -q '^ *Files examples/sky/ipe/08-notes-app/.* differ$'; then
+  contents_differ=1
+fi
+
 if printf '%s\n' "$output" | grep -q 'missing (run regen)'; then
   echo "IPE-ORACLE: ports are absent, not stale; not the defect under test" >&2
-elif [ "$stale" = "08-notes-app" ]; then
-  echo "IPE-ORACLE: exactly 08-notes-app is stale against a fresh transform" >&2
-else
+elif printf '%s\n' "$output" | grep -q '^ *Only in '; then
+  # Emptying a committed port also makes it differ from a fresh transform. That is a
+  # missing tree, not an out-of-date one, and it is not the defect under test.
+  echo "IPE-ORACLE: a port is missing entries, not stale; not the defect under test" >&2
+elif [ "$stale" != "08-notes-app" ]; then
   echo "IPE-ORACLE: stale set is [${stale}], not the defect under test" >&2
+elif [ "$contents_differ" -eq 0 ]; then
+  echo "IPE-ORACLE: 08-notes-app differs without a file content difference" >&2
+else
+  echo "IPE-ORACLE: exactly 08-notes-app is stale against a fresh transform" >&2
 fi
 exit "$status"

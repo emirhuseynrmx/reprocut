@@ -39,6 +39,8 @@
       ],
       "rejected_regex": [
         "IPE-ORACLE: ports are absent",
+        "IPE-ORACLE: a port is missing entries",
+        "IPE-ORACLE: 08-notes-app differs without",
         "IPE-ORACLE: stale set is",
         "cannot read manifest",
         "transform/edits failed",
