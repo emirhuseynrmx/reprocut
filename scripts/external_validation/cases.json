@@ -36,10 +36,12 @@
       ],
       "required_regex": [
         "regen --check: committed ports are stale vs rename-map/ipe-edits",
-        "differs from re-deriving it from original/"
+        "examples/sky/ipe/08-notes-app differs from re-deriving it from original/",
+        "Files examples/sky/ipe/08-notes-app/src/Main\\.ipe and .* differ"
       ],
       "rejected_regex": [
         "missing \\(run regen\\)",
+        "Only in ",
         "cannot read manifest",
         "transform/edits failed",
         "Could not resolve host",
