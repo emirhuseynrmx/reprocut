@@ -36,7 +36,9 @@ inputs:
     required: false
     default: "0"
   version:
-    description: ReproCut release to run.
+    description: >-
+      ReproCut release to run. Ignored when a `reprocut` binary is already on
+      PATH, which lets a workflow exercise a build it produced itself.
     required: false
     default: v0.1.0
   comment:
@@ -81,6 +83,14 @@ runs:
         REPROCUT_VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
+        # A binary already on PATH wins. It is how this repository tests the
+        # action against a build it just produced, and how a consumer pins a
+        # toolchain of its own without waiting for a release.
+        if command -v reprocut >/dev/null 2>&1; then
+          echo "reprocut: using $(command -v reprocut)"
+          reprocut --version
+          exit 0
+        fi
         case "$RUNNER_OS/$RUNNER_ARCH" in
           Linux/X64) target=x86_64-unknown-linux-gnu ;;
           Linux/ARM64) target=aarch64-unknown-linux-gnu ;;
@@ -135,19 +145,17 @@ runs:
           echo "reprocut: reduction did not publish an artifact (exit ${status})" >&2
           exit 0
         fi
-        python3 - "$REPROCUT_OUTPUT/reduction.json" >> "$GITHUB_OUTPUT" <<'PY'
-        import json, sys
-        evidence = json.load(open(sys.argv[1], encoding="utf-8"))
-        original = evidence["measurements"]["original"]
-        retained = evidence["measurements"]["retained"]
-        completion = evidence["search"].get("completion", "converged")
-        print(f"reduced={'true' if retained['bytes'] < original['bytes'] else 'false'}")
-        print(f"original-files={original['files']}")
-        print(f"retained-files={retained['files']}")
-        print(f"original-bytes={original['bytes']}")
-        print(f"retained-bytes={retained['bytes']}")
-        print(f"completion={completion}")
-        PY
+        # jq ships on every GitHub-hosted runner; python3 does not without
+        # `setup-python`, and this action must not require one.
+        jq -r '
+          .measurements as $m
+          | "reduced=\(if $m.retained.bytes < $m.original.bytes then "true" else "false" end)",
+            "original-files=\($m.original.files)",
+            "retained-files=\($m.retained.files)",
+            "original-bytes=\($m.original.bytes)",
+            "retained-bytes=\($m.retained.bytes)",
+            "completion=\(.search.completion // "converged")"
+        ' "$REPROCUT_OUTPUT/reduction.json" >> "$GITHUB_OUTPUT"
         echo "artifact=$REPROCUT_OUTPUT" >> "$GITHUB_OUTPUT"
 
     - name: Summarize the reduction
@@ -162,42 +170,34 @@ runs:
         COMPLETION: ${{ steps.reduce.outputs.completion }}
       run: |
         set -euo pipefail
-        python3 - >"$BODY_PATH" <<'PY'
-        import os
-
-        def mass(files, byte_count):
-            for unit in ("B", "KB", "MB", "GB"):
-                if byte_count < 1024 or unit == "GB":
-                    break
-                byte_count /= 1024
-            plural = "" if int(files) == 1 else "s"
-            return f"{files} file{plural} · {byte_count:.1f} {unit}"
-
-        before_files = int(os.environ["ORIGINAL_FILES"])
-        after_files = int(os.environ["RETAINED_FILES"])
-        before_bytes = int(os.environ["ORIGINAL_BYTES"])
-        after_bytes = int(os.environ["RETAINED_BYTES"])
-        shrink = 100 * (1 - after_bytes / before_bytes) if before_bytes else 0.0
-
-        lines = [
+        jq -rn \
+          --argjson before_files "$ORIGINAL_FILES" \
+          --argjson after_files "$RETAINED_FILES" \
+          --argjson before_bytes "$ORIGINAL_BYTES" \
+          --argjson after_bytes "$RETAINED_BYTES" \
+          --arg completion "$COMPLETION" '
+          def mass($files; $bytes):
+            ( if $bytes < 1024 then [$bytes, "B"]
+              elif $bytes < 1048576 then [$bytes / 1024, "KB"]
+              elif $bytes < 1073741824 then [$bytes / 1048576, "MB"]
+              else [$bytes / 1073741824, "GB"] end ) as [$value, $unit]
+            | "\($files) file\(if $files == 1 then "" else "s" end) · \($value * 10 | round / 10) \($unit)";
+          def shrink: if $before_bytes == 0 then 0
+                      else (1000 - ($after_bytes * 1000 / $before_bytes) | round / 10) end;
+          [
             "### ReproCut",
             "",
-            f"**{mass(before_files, before_bytes)}** → **{mass(after_files, after_bytes)}**"
-            f"  ({shrink:.1f}% smaller)",
+            "**\(mass($before_files; $before_bytes))** → **\(mass($after_files; $after_bytes))**"
+              + "  (\(shrink)% smaller)",
             "",
-            "The minimized project fails the same way: the stabilized failure "
-            "fingerprint was preserved through repeated final verification.",
-        ]
-        if os.environ.get("COMPLETION") == "budget_exhausted":
-            lines += [
-                "",
-                "> The wall-time budget elapsed with candidates unexplored. "
-                "Every retained file passed final verification, but a longer "
-                "budget may reduce further.",
-            ]
-        lines += ["", "The verified artifact is attached to this run.", ""]
-        print("\n".join(lines))
-        PY
+            "The minimized project fails the same way: the stabilized failure fingerprint was preserved through repeated final verification."
+          ]
+          + (if $completion == "budget_exhausted" then
+              ["", "> The wall-time budget elapsed with candidates unexplored. Every retained file passed final verification, but a longer budget may reduce further."]
+             else [] end)
+          + ["", "The verified artifact is attached to this run.", ""]
+          | join("\n")
+        ' >"$BODY_PATH"
         cat "$BODY_PATH" >> "$GITHUB_STEP_SUMMARY"
 
     - name: Comment on the pull request

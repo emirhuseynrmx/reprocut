@@ -234,6 +234,58 @@ jobs:
         env:
           TEST_PYTHON: python
 
+  action-contract:
+    name: GitHub Action end to end
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal
+          rustup default 1.85.0
+      # The action prefers a binary already on PATH, so it runs the build from
+      # this commit instead of a published release. That is what makes the action
+      # testable before the release it would otherwise download exists.
+      - name: Build and expose the CLI under test
+        run: |
+          cargo build --locked --release -p reprocut
+          echo "$GITHUB_WORKSPACE/target/release" >> "$GITHUB_PATH"
+      - name: Reduce a real failing fixture through the action
+        id: action
+        uses: ./
+        with:
+          root: tests/fixtures/python_failure
+          output: ${{ runner.temp }}/action-result
+          command: python bug.py
+          max-duration-seconds: "120"
+          comment: "false"
+      - name: Assert the action published a verified reduction
+        env:
+          RESULT: ${{ runner.temp }}/action-result
+          REDUCED: ${{ steps.action.outputs.reduced }}
+          RETAINED_FILES: ${{ steps.action.outputs.retained-files }}
+          ORIGINAL_FILES: ${{ steps.action.outputs.original-files }}
+          COMPLETION: ${{ steps.action.outputs.completion }}
+        run: |
+          set -euo pipefail
+          test "$REDUCED" = "true"
+          test "$RETAINED_FILES" -lt "$ORIGINAL_FILES"
+          test -n "$COMPLETION"
+          # The artifact the action hands a reviewer must verify on its own terms.
+          reprocut verify "$RESULT"
+          python - "$RESULT/reduction.json" <<'PY'
+          import json, sys
+          evidence = json.load(open(sys.argv[1], encoding="utf-8"))
+          assert evidence["failure"], "evidence must carry the stabilized failure"
+          observations = evidence["final_observations"]
+          assert observations, "a published artifact must record final verification"
+          assert all(o["verdict"] == "preserved" for o in observations), observations
+          PY
+
   release-benchmark:
     name: 312-file release benchmark
     runs-on: ubuntu-latest
