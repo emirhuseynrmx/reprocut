@@ -35,10 +35,11 @@
         "/usr/local/bin/ipe-regen-oracle"
       ],
       "required_regex": [
-        "regen --check: committed ports are stale vs rename-map/ipe-edits"
+        "regen --check: committed ports are stale vs rename-map/ipe-edits",
+        "differs from re-deriving it from original/"
       ],
       "rejected_regex": [
-        "original/ missing",
+        "missing \\(run regen\\)",
         "cannot read manifest",
         "transform/edits failed",
         "Could not resolve host",
