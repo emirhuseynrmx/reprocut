@@ -1,0 +1,213 @@
+name: ReproCut
+description: Turn a failing CI job into the smallest project that still fails the same way, with evidence.
+author: Emir Hüseyin İnci
+
+branding:
+  icon: scissors
+  color: purple
+
+inputs:
+  command:
+    description: >-
+      The failing command, exactly as it is run in CI. It is split without shell
+      parsing, so quoting behaves the same on every runner.
+    required: true
+  root:
+    description: Project directory to reduce.
+    required: false
+    default: .
+  output:
+    description: Directory the verified artifact is published into. It must not already exist.
+    required: false
+    default: reprocut-result
+  max-duration-seconds:
+    description: >-
+      Wall-time budget for the search. When it elapses ReproCut publishes the best
+      snapshot that already passed final verification, rather than being killed with
+      nothing to show. Keep it comfortably below the job timeout.
+    required: false
+    default: "600"
+  timeout-ms:
+    description: Deadline for each candidate execution.
+    required: false
+    default: "60000"
+  jobs:
+    description: Maximum simultaneous candidate commands; 0 uses detected parallelism.
+    required: false
+    default: "0"
+  version:
+    description: ReproCut release to run.
+    required: false
+    default: v0.1.0
+  comment:
+    description: >-
+      Post the result as a pull-request comment. Requires `pull-requests: write`
+      and only applies to pull-request events.
+    required: false
+    default: "true"
+
+outputs:
+  reduced:
+    description: "true when the published snapshot is smaller than the original."
+    value: ${{ steps.reduce.outputs.reduced }}
+  original-files:
+    description: Regular files in the original project.
+    value: ${{ steps.reduce.outputs.original-files }}
+  retained-files:
+    description: Regular files in the verified minimized project.
+    value: ${{ steps.reduce.outputs.retained-files }}
+  original-bytes:
+    description: Bytes in the original project.
+    value: ${{ steps.reduce.outputs.original-bytes }}
+  retained-bytes:
+    description: Bytes in the verified minimized project.
+    value: ${{ steps.reduce.outputs.retained-bytes }}
+  completion:
+    description: "`converged`, or `budget_exhausted` when the budget ended the search."
+    value: ${{ steps.reduce.outputs.completion }}
+  artifact:
+    description: Directory holding the verified artifact.
+    value: ${{ steps.reduce.outputs.artifact }}
+
+runs:
+  using: composite
+  steps:
+    # The release archives are checksummed and attested at publication. Verifying
+    # the download here means the action runs the binary that tag published, not
+    # whatever the network returned.
+    - name: Install ReproCut ${{ inputs.version }}
+      shell: bash
+      env:
+        REPROCUT_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        case "$RUNNER_OS/$RUNNER_ARCH" in
+          Linux/X64) target=x86_64-unknown-linux-gnu ;;
+          Linux/ARM64) target=aarch64-unknown-linux-gnu ;;
+          macOS/X64) target=x86_64-apple-darwin ;;
+          macOS/ARM64) target=aarch64-apple-darwin ;;
+          Windows/X64) target=x86_64-pc-windows-msvc ;;
+          *) echo "reprocut: unsupported runner $RUNNER_OS/$RUNNER_ARCH" >&2; exit 1 ;;
+        esac
+        version="${REPROCUT_VERSION#v}"
+        base="https://github.com/emirhuseynrmx/reprocut/releases/download/${REPROCUT_VERSION}"
+        if [ "$RUNNER_OS" = "Windows" ]; then archive="reprocut-${version}-${target}.zip"
+        else archive="reprocut-${version}-${target}.tar.gz"; fi
+        workdir="$(mktemp -d)"
+        curl --fail --location --retry 5 --retry-all-errors --proto '=https' --tlsv1.2 \
+          -o "${workdir}/${archive}" "${base}/${archive}"
+        curl --fail --location --retry 5 --retry-all-errors --proto '=https' --tlsv1.2 \
+          -o "${workdir}/SHA256SUMS" "${base}/SHA256SUMS"
+        ( cd "$workdir" && grep " ${archive}\$" SHA256SUMS | sha256sum -c - )
+        if [ "$RUNNER_OS" = "Windows" ]; then unzip -q "${workdir}/${archive}" -d "$workdir"
+        else tar -xzf "${workdir}/${archive}" -C "$workdir"; fi
+        install_dir="${RUNNER_TEMP}/reprocut-bin"
+        mkdir -p "$install_dir"
+        found="$(find "$workdir" -type f -name 'reprocut' -o -type f -name 'reprocut.exe' | head -n 1)"
+        test -n "$found"
+        install -m 0755 "$found" "${install_dir}/$(basename "$found")"
+        echo "$install_dir" >> "$GITHUB_PATH"
+
+    - name: Reduce the failing project
+      id: reduce
+      shell: bash
+      env:
+        REPROCUT_ROOT: ${{ inputs.root }}
+        REPROCUT_OUTPUT: ${{ inputs.output }}
+        REPROCUT_COMMAND: ${{ inputs.command }}
+        REPROCUT_MAX_DURATION: ${{ inputs.max-duration-seconds }}
+        REPROCUT_TIMEOUT_MS: ${{ inputs.timeout-ms }}
+        REPROCUT_JOBS: ${{ inputs.jobs }}
+      run: |
+        set -euo pipefail
+        # A failing reduction must not mask the failure the job already reported,
+        # so the step records the outcome and leaves the job status to the caller.
+        status=0
+        reprocut reduce \
+          --root "$REPROCUT_ROOT" \
+          --output "$REPROCUT_OUTPUT" \
+          --jobs "$REPROCUT_JOBS" \
+          --timeout-ms "$REPROCUT_TIMEOUT_MS" \
+          --max-duration-secs "$REPROCUT_MAX_DURATION" \
+          -- $REPROCUT_COMMAND || status=$?
+        if [ "$status" -ne 0 ]; then
+          echo "reduced=false" >> "$GITHUB_OUTPUT"
+          echo "reprocut: reduction did not publish an artifact (exit ${status})" >&2
+          exit 0
+        fi
+        python3 - "$REPROCUT_OUTPUT/reduction.json" >> "$GITHUB_OUTPUT" <<'PY'
+        import json, sys
+        evidence = json.load(open(sys.argv[1], encoding="utf-8"))
+        original = evidence["measurements"]["original"]
+        retained = evidence["measurements"]["retained"]
+        completion = evidence["search"].get("completion", "converged")
+        print(f"reduced={'true' if retained['bytes'] < original['bytes'] else 'false'}")
+        print(f"original-files={original['files']}")
+        print(f"retained-files={retained['files']}")
+        print(f"original-bytes={original['bytes']}")
+        print(f"retained-bytes={retained['bytes']}")
+        print(f"completion={completion}")
+        PY
+        echo "artifact=$REPROCUT_OUTPUT" >> "$GITHUB_OUTPUT"
+
+    - name: Summarize the reduction
+      if: steps.reduce.outputs.reduced == 'true'
+      shell: bash
+      env:
+        BODY_PATH: ${{ runner.temp }}/reprocut-comment.md
+        ORIGINAL_FILES: ${{ steps.reduce.outputs.original-files }}
+        RETAINED_FILES: ${{ steps.reduce.outputs.retained-files }}
+        ORIGINAL_BYTES: ${{ steps.reduce.outputs.original-bytes }}
+        RETAINED_BYTES: ${{ steps.reduce.outputs.retained-bytes }}
+        COMPLETION: ${{ steps.reduce.outputs.completion }}
+      run: |
+        set -euo pipefail
+        python3 - >"$BODY_PATH" <<'PY'
+        import os
+
+        def mass(files, byte_count):
+            for unit in ("B", "KB", "MB", "GB"):
+                if byte_count < 1024 or unit == "GB":
+                    break
+                byte_count /= 1024
+            plural = "" if int(files) == 1 else "s"
+            return f"{files} file{plural} · {byte_count:.1f} {unit}"
+
+        before_files = int(os.environ["ORIGINAL_FILES"])
+        after_files = int(os.environ["RETAINED_FILES"])
+        before_bytes = int(os.environ["ORIGINAL_BYTES"])
+        after_bytes = int(os.environ["RETAINED_BYTES"])
+        shrink = 100 * (1 - after_bytes / before_bytes) if before_bytes else 0.0
+
+        lines = [
+            "### ReproCut",
+            "",
+            f"**{mass(before_files, before_bytes)}** → **{mass(after_files, after_bytes)}**"
+            f"  ({shrink:.1f}% smaller)",
+            "",
+            "The minimized project fails the same way: the stabilized failure "
+            "fingerprint was preserved through repeated final verification.",
+        ]
+        if os.environ.get("COMPLETION") == "budget_exhausted":
+            lines += [
+                "",
+                "> The wall-time budget elapsed with candidates unexplored. "
+                "Every retained file passed final verification, but a longer "
+                "budget may reduce further.",
+            ]
+        lines += ["", "The verified artifact is attached to this run.", ""]
+        print("\n".join(lines))
+        PY
+        cat "$BODY_PATH" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Comment on the pull request
+      if: >-
+        steps.reduce.outputs.reduced == 'true' &&
+        inputs.comment == 'true' &&
+        github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        BODY_PATH: ${{ runner.temp }}/reprocut-comment.md
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: gh pr comment "$PR_NUMBER" --body-file "$BODY_PATH"

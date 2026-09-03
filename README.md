@@ -57,6 +57,36 @@ ReproCut 0.1 is an alpha release focused on deterministic, evidence-backed
 project reduction. Its checked-in result uses schema-4 evidence. Failure
 identity uses schema-5 normalized diagnostics.
 
+## In CI
+
+The place a failing project is most often in front of someone is a red CI job.
+Add the action after the step that failed:
+
+```yaml
+- name: Run tests
+  id: tests
+  run: cargo test
+
+- uses: emirhuseynrmx/reprocut@v0.1.0
+  if: failure() && steps.tests.outcome == 'failure'
+  with:
+    command: cargo test
+    max-duration-seconds: 600
+```
+
+It downloads the checksummed release binary for the runner, reduces the project
+inside the budget, writes the before/after mass into the job summary, and
+comments on the pull request:
+
+> **1,284 files · 37.4 MB** → **3 files · 11.8 KB**  (99.9% smaller)
+> The minimized project fails the same way.
+
+The budget matters in CI. Reduction converges asymptotically, so an unbounded run
+is eventually killed by the job timeout and yields nothing. On a 703-file project
+a two-minute budget reached 93.7% of the original mass removed; an unbounded run
+reached 96.3% after 64 minutes. The budgeted result is fully verified, and its
+evidence records that the budget, not the search, ended it.
+
 ## Quick start
 
 Install the Rust CLI with Cargo 1.85 or newer:
