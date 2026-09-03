@@ -56,8 +56,11 @@ pinned, the oracle contract, and the failing command's own output on the origina
 and on the minimized project, so the two can be read side by side.
 
 The `ipe-lang` search ended on its wall-time budget rather than converging, which
-its record states. Every retained file still passed final verification; a longer
-budget would reduce further.
+its record states. Every retained file still passed final verification, and a
+longer budget would reduce further. A budgeted run stops at a wall-clock instant
+rather than at a fixed point, so its exact retained size moves with the machine:
+a rerun of that case landed on 795 files instead of 769. The quoted figures are
+the run its record names, not a reproducible constant.
 
 The remaining upstream row records real, pinned source provenance; reduction
 measurements remain unavailable until the opt-in historical-toolchain workflow
