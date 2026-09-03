@@ -132,9 +132,7 @@ def compose_core() -> str:
     diagnostic = read("crates/reprocut-core/src/diagnostic.rs").replace(
         "use crate::{", "use super::{", 1
     )
-    drift = read("crates/reprocut-core/src/drift.rs").replace(
-        "use crate::{", "use super::{", 1
-    )
+    drift = read("crates/reprocut-core/src/drift.rs").replace("use crate::{", "use super::{", 1)
     model = (
         read("crates/reprocut-core/src/model.rs")
         .replace("crate::NORMALIZATION_SCHEMA", "super::NORMALIZATION_SCHEMA")
