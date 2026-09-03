@@ -154,7 +154,10 @@ runs:
             "retained-files=\($m.retained.files)",
             "original-bytes=\($m.original.bytes)",
             "retained-bytes=\($m.retained.bytes)",
-            "completion=\(.search.completion // "converged")"
+            "completion=\(.search.completion // "converged")",
+            "drift=\(.failure.diagnostic_drift.reportable // false)",
+            "drift-novel=\(.failure.diagnostic_drift.novel_lines // 0)",
+            "drift-total=\(.failure.diagnostic_drift.final_lines // 0)"
         ' "$REPROCUT_OUTPUT/reduction.json" >> "$GITHUB_OUTPUT"
         echo "artifact=$REPROCUT_OUTPUT" >> "$GITHUB_OUTPUT"
 
@@ -168,6 +171,9 @@ runs:
         ORIGINAL_BYTES: ${{ steps.reduce.outputs.original-bytes }}
         RETAINED_BYTES: ${{ steps.reduce.outputs.retained-bytes }}
         COMPLETION: ${{ steps.reduce.outputs.completion }}
+        DRIFT: ${{ steps.reduce.outputs.drift }}
+        DRIFT_NOVEL: ${{ steps.reduce.outputs.drift-novel }}
+        DRIFT_TOTAL: ${{ steps.reduce.outputs.drift-total }}
       run: |
         set -euo pipefail
         jq -rn \
@@ -175,7 +181,10 @@ runs:
           --argjson after_files "$RETAINED_FILES" \
           --argjson before_bytes "$ORIGINAL_BYTES" \
           --argjson after_bytes "$RETAINED_BYTES" \
-          --arg completion "$COMPLETION" '
+          --arg completion "$COMPLETION" \
+          --arg drift "$DRIFT" \
+          --argjson drift_novel "$DRIFT_NOVEL" \
+          --argjson drift_total "$DRIFT_TOTAL" '
           def mass($files; $bytes):
             ( if $bytes < 1024 then [$bytes, "B"]
               elif $bytes < 1048576 then [$bytes / 1024, "KB"]
@@ -190,8 +199,17 @@ runs:
             "**\(mass($before_files; $before_bytes))** → **\(mass($after_files; $after_bytes))**"
               + "  (\(shrink)% smaller)",
             "",
-            "The minimized project fails the same way: the stabilized failure fingerprint was preserved through repeated final verification."
+            (if $drift == "true" then
+               "The minimized project satisfies the same failure oracle, verified repeatedly — but read the note below before trusting it as the same bug."
+             else
+               "The minimized project fails the same way: the stabilized failure fingerprint was preserved through repeated final verification."
+             end)
           ]
+          + (if $drift == "true" then
+              ["",
+               "> [!WARNING]",
+               "> \($drift_novel) of the \($drift_total) diagnostic line(s) the minimized project prints never appeared when the original failed. The oracle still matches, but it may be matching something else. Consider tightening it."]
+             else [] end)
           + (if $completion == "budget_exhausted" then
               ["", "> The wall-time budget elapsed with candidates unexplored. Every retained file passed final verification, but a longer budget may reduce further."]
              else [] end)

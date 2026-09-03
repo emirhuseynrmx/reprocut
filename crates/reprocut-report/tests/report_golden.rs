@@ -1,6 +1,8 @@
 //! Byte-stable report golden contracts.
 
-use reprocut_report::{render_report, ChannelAnchor, ReportModel, RetentionEvidence};
+use reprocut_report::{
+    render_report, ChannelAnchor, DriftEvidence, ReportModel, RetentionEvidence,
+};
 
 fn fixture_model() -> ReportModel {
     ReportModel {
@@ -48,8 +50,51 @@ fn fixture_model() -> ReportModel {
         ],
         structured_edits: vec!["syntax:delete:bug.py:0..24".to_owned()],
         limitations: vec!["Timing is wall-clock, not a benchmark.".to_owned()],
+        diagnostic_drift: Some(DriftEvidence {
+            baseline_lines: 6,
+            final_lines: 4,
+            retained_lines: 4,
+            novel_lines: 0,
+            reportable: false,
+            novel_sample: Vec::new(),
+        }),
         issue_markdown: "# Minimal reproduction\n".to_owned(),
     }
+}
+
+fn drifted_model() -> ReportModel {
+    ReportModel {
+        diagnostic_drift: Some(DriftEvidence {
+            baseline_lines: 2,
+            final_lines: 4,
+            retained_lines: 1,
+            novel_lines: 3,
+            reportable: true,
+            novel_sample: vec!["examples/sky/original/00-standard-libs missing".to_owned()],
+        }),
+        ..fixture_model()
+    }
+}
+
+#[test]
+fn a_clean_reduction_reports_the_failure_as_verified() {
+    let report = render_report(&fixture_model());
+
+    assert!(report.contains("Same failure verified"));
+    assert!(!report.contains("id=\"drift-title\""));
+}
+
+// A reader who only sees the masthead must not be told the bug was preserved when the
+// minimized project's diagnostic no longer resembles the original's.
+#[test]
+fn a_drifted_reduction_says_so_in_the_masthead_and_the_body() {
+    let report = render_report(&drifted_model());
+
+    assert!(report.contains("Same oracle — review the drift"));
+    assert!(!report.contains("Same failure verified"));
+    assert!(report.contains("id=\"drift-title\""));
+    assert!(report.contains("3 of the 4 diagnostic line(s)"));
+    assert!(report.contains("examples/sky/original/00-standard-libs missing"));
 }
 
 #[test]

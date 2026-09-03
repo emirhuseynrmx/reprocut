@@ -1,6 +1,7 @@
 //! Correctness primitives for `ReproCut`.
 
 mod diagnostic;
+mod drift;
 mod model;
 mod oracle;
 mod policy;
@@ -11,6 +12,7 @@ mod transformation;
 mod winner;
 
 pub use diagnostic::normalize_diagnostic;
+pub use drift::DiagnosticDrift;
 pub use model::{
     CandidateVerdict, ContainmentMechanism, DiagnosticAnchor, DiagnosticChannel,
     ExecutionObservation, FailureFingerprint, OracleMode, TerminationReason,

@@ -6,12 +6,15 @@ from __future__ import annotations
 import json
 import urllib.request
 
-from playground_workspace_verify import ROOT, report_source, wrap
+from playground_workspace_verify import ROOT, compose_core, report_source, wrap
 
 
 def main() -> int:
     fixture = (ROOT / "scripts/verification/render_report_fixture.rs").read_text(encoding="utf-8")
-    code = "\n".join([wrap("reprocut_report", report_source()), fixture])
+    # The report crate reaches into reprocut_core for its schema constants and hashing, so the
+    # remote build needs both, exactly as compose_report() assembles them.
+    core = compose_core().replace("fn main() {}\n", "")
+    code = "\n".join([core, wrap("reprocut_report", report_source()), fixture])
     payload = json.dumps(
         {
             "channel": "stable",

@@ -15,9 +15,9 @@ use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{generate, Shell};
 use reprocut_adapters::{Adapter, AdapterError, Ecosystem, EcosystemSelection};
 use reprocut_core::{
-    CandidateVerdict, ContainmentMechanism, ContentDigest, DiagnosticChannel, EvaluationPolicy,
-    OracleError, OracleMode, OracleSpec, PolicyError, ProgressEventV1, ProtocolAction,
-    ProtocolError, ReductionRequestV1, TerminationReason, PROTOCOL_VERSION,
+    CandidateVerdict, ContainmentMechanism, ContentDigest, DiagnosticChannel, DiagnosticDrift,
+    EvaluationPolicy, OracleError, OracleMode, OracleSpec, PolicyError, ProgressEventV1,
+    ProtocolAction, ProtocolError, ReductionRequestV1, TerminationReason, PROTOCOL_VERSION,
 };
 use reprocut_engine::{
     Completion, EngineError, PreparationMode, PythonIsolationRequest, PythonPreparationError,
@@ -26,10 +26,11 @@ use reprocut_engine::{
 use reprocut_oci::{export_archive, Builder, OciError, OciRequest, RuntimeFamily};
 use reprocut_report::{
     build_artifact_manifest, render_issue, render_report, render_reproduction_scripts,
-    verify_artifact, write_attempts_jsonl, AttemptSummary, ChannelAnchor, EvaluationPolicyEvidence,
-    FailureEvidence, FinalObservationEvidence, ManifestError, MaterialMeasurement, MeasurementSet,
-    PreparationEvidence, ReductionEvidence, ReportModel, RetainedEntry, RetainedManifest,
-    RetentionEvidence, SearchEvidence, VerificationError, EVIDENCE_SCHEMA_VERSION,
+    verify_artifact, write_attempts_jsonl, AttemptSummary, ChannelAnchor, DriftEvidence,
+    EvaluationPolicyEvidence, FailureEvidence, FinalObservationEvidence, ManifestError,
+    MaterialMeasurement, MeasurementSet, PreparationEvidence, ReductionEvidence, ReportModel,
+    RetainedEntry, RetainedManifest, RetentionEvidence, SearchEvidence, VerificationError,
+    EVIDENCE_SCHEMA_VERSION,
 };
 use reprocut_workspace::{ProjectInventory, ProjectSnapshot, WorkspaceError};
 use serde::Serialize;
@@ -1137,6 +1138,7 @@ fn build_evidence(
             failure_patterns: fingerprint.failure_patterns().to_vec(),
             reject_patterns: fingerprint.reject_patterns().to_vec(),
             oracle_spec_sha256: fingerprint.oracle_spec_digest().to_hex(),
+            diagnostic_drift: Some(drift_evidence(outcome.diagnostic_drift())),
         },
         kept_files: outcome
             .snapshot()
@@ -1243,6 +1245,17 @@ const fn verdict_name(verdict: CandidateVerdict) -> &'static str {
         CandidateVerdict::Preserved => "preserved",
         CandidateVerdict::Rejected => "rejected",
         CandidateVerdict::Inconclusive => "inconclusive",
+    }
+}
+
+fn drift_evidence(drift: &DiagnosticDrift) -> DriftEvidence {
+    DriftEvidence {
+        baseline_lines: drift.baseline_lines(),
+        final_lines: drift.final_lines(),
+        retained_lines: drift.retained_lines(),
+        novel_lines: drift.novel_lines(),
+        reportable: drift.is_reportable(),
+        novel_sample: drift.novel_sample().to_vec(),
     }
 }
 

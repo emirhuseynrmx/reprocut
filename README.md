@@ -185,6 +185,37 @@ reprocut reduce \
 
 Only a preserved verdict can replace the current best snapshot.
 
+### Your oracle is the contract
+
+A reduction is only as precise as the failure definition it is given. A
+too-permissive contract can be satisfied by a cause the original run never had,
+and the reduction will be correct against that contract while no longer being
+your bug.
+
+The failure mode is concrete. An upstream check prints one summary line for two
+different problems — a file is stale, or a file is missing. A required
+expression matching only that summary line lets the search delete the input
+entirely: the line still appears, so every candidate is preserved.
+
+ReproCut measures this instead of leaving you to notice it. It compares the
+minimized failure's diagnostic against the original's. A shrinking diagnostic is
+expected. Lines the original never printed are not, and when they are the
+majority, the artifact, the issue text, and the pull-request comment all say so:
+
+```json
+"diagnostic_drift": {
+  "baseline_lines": 9, "final_lines": 56,
+  "retained_lines": 3, "novel_lines": 53,
+  "reportable": true,
+  "novel_sample": ["examples/original/00-standard-libs missing (run regen)"]
+}
+```
+
+This never rejects a reduction — a legitimate one can print incidental new text,
+and a heuristic must not overrule repeated verification. It reports, so you can
+tighten the contract and reduce again. An absent `diagnostic_drift` means drift
+was not measured, which is not the same as measuring it and finding none.
+
 ## Output
 
 ReproCut publishes a new directory. Existing output paths are not overwritten.

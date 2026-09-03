@@ -26,9 +26,9 @@ use std::{
 use reprocut_adapters::{Ecosystem, NpmManifest, PreparationPlan};
 use reprocut_core::{
     reduce_hierarchical_frontiers, AggregateDecision, AggregateEvidence, CandidateRank,
-    CandidateVerdict, ContentDigest, DiagnosticChannel, EvaluationPolicy, ExecutionObservation,
-    FailureFingerprint, FailureOracle, FrontierClass, OracleError, OracleMode, OracleSpec,
-    ReductionResult, ReductionUnit,
+    CandidateVerdict, ContentDigest, DiagnosticChannel, DiagnosticDrift, EvaluationPolicy,
+    ExecutionObservation, FailureFingerprint, FailureOracle, FrontierClass, OracleError,
+    OracleMode, OracleSpec, ReductionResult, ReductionUnit,
 };
 use reprocut_runner::{CommandSpec, ProcessRunner, RunnerError};
 use reprocut_state::{
@@ -285,6 +285,7 @@ pub struct ReductionOutcome {
     elapsed: Duration,
     attempt_events: Vec<AttemptEventRecord>,
     completion: Completion,
+    diagnostic_drift: DiagnosticDrift,
 }
 
 /// Why candidate exploration stopped.
@@ -395,6 +396,11 @@ impl ReductionOutcome {
     /// Returns accepted manifest/syntax edit keys in fixpoint order.
     pub fn accepted_structured_edits(&self) -> &[String] {
         &self.accepted_structured_edits
+    }
+
+    /// Returns how far the minimized failure's diagnostic moved from the original's.
+    pub const fn diagnostic_drift(&self) -> &DiagnosticDrift {
+        &self.diagnostic_drift
     }
 
     /// Returns end-to-end wall time including baseline and final verification.
@@ -757,6 +763,14 @@ impl ReductionEngine {
             .map(WriterHandle::attempt_events)
             .transpose()?
             .unwrap_or_default();
+        let diagnostic_drift = DiagnosticDrift::measure(
+            oracle.spec().channel(),
+            &baselines,
+            &final_observations
+                .iter()
+                .map(FinalVerificationObservation::observation)
+                .collect::<Vec<_>>(),
+        );
 
         Ok(ReductionOutcome {
             source_snapshot_digest: source_digest,
@@ -783,6 +797,7 @@ impl ReductionEngine {
             } else {
                 Completion::Converged
             },
+            diagnostic_drift,
         })
     }
 }

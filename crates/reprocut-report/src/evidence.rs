@@ -178,6 +178,35 @@ pub struct FailureEvidence {
     pub reject_patterns: Vec<String>,
     /// SHA-256 identity of the complete oracle configuration.
     pub oracle_spec_sha256: String,
+    /// How far the minimized failure's diagnostic moved from the original's.
+    ///
+    /// Absent means the reduction that produced this evidence did not measure drift, which is
+    /// not the same as measuring it and finding none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diagnostic_drift: Option<DriftEvidence>,
+}
+
+/// Overlap between the original failure's diagnostic and the minimized one's.
+///
+/// A minimized failure prints less than the original; that is the point. Printing text the
+/// original never printed is different, and it is the shape an over-permissive oracle takes:
+/// the required expressions still match, but something else is producing them.
+///
+/// This never rejects a reduction. It is reported so a reader can judge one.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DriftEvidence {
+    /// Distinct normalized diagnostic lines the original failure printed.
+    pub baseline_lines: usize,
+    /// Distinct normalized diagnostic lines the minimized failure prints.
+    pub final_lines: usize,
+    /// Minimized lines the original failure also printed.
+    pub retained_lines: usize,
+    /// Minimized lines the original failure never printed.
+    pub novel_lines: usize,
+    /// True when novel lines are the majority of the minimized diagnostic.
+    pub reportable: bool,
+    /// Up to eight novel lines, in normalized lexical order.
+    pub novel_sample: Vec<String>,
 }
 
 /// Honest evidence for a path present in the final verified snapshot.

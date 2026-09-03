@@ -1,15 +1,26 @@
-//! Real-filesystem structural verification and tamper contracts.
+﻿//! Real-filesystem structural verification and tamper contracts.
 
 use std::{fs, path::Path};
 
 use reprocut_report::{
     build_artifact_manifest, render_issue, render_report, render_reproduction_scripts,
-    verify_artifact, write_attempts_jsonl, AttemptSummary, ChannelAnchor, EvaluationPolicyEvidence,
-    FailureEvidence, FinalObservationEvidence, MaterialMeasurement, MeasurementSet,
-    PreparationEvidence, ReductionEvidence, ReportModel, RetainedEntry, RetainedManifest,
-    RetentionEvidence, SearchEvidence, VerificationError, EVIDENCE_SCHEMA_VERSION,
-    NORMALIZATION_SCHEMA_VERSION,
+    verify_artifact, write_attempts_jsonl, AttemptSummary, ChannelAnchor, DriftEvidence,
+    EvaluationPolicyEvidence, FailureEvidence, FinalObservationEvidence, MaterialMeasurement,
+    MeasurementSet, PreparationEvidence, ReductionEvidence, ReportModel, RetainedEntry,
+    RetainedManifest, RetentionEvidence, SearchEvidence, VerificationError,
+    EVIDENCE_SCHEMA_VERSION, NORMALIZATION_SCHEMA_VERSION,
 };
+
+fn no_drift() -> DriftEvidence {
+    DriftEvidence {
+        baseline_lines: 4,
+        final_lines: 3,
+        retained_lines: 3,
+        novel_lines: 0,
+        reportable: false,
+        novel_sample: Vec::new(),
+    }
+}
 use serde_json::json;
 
 #[test]
@@ -243,6 +254,7 @@ fn evidence(project_bytes: &[u8]) -> ReductionEvidence {
             failure_patterns: Vec::new(),
             reject_patterns: Vec::new(),
             oracle_spec_sha256: "b".repeat(64),
+            diagnostic_drift: Some(no_drift()),
         },
         kept_files: vec![RetentionEvidence {
             path: "bug.py".to_owned(),
