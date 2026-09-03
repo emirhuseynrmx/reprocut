@@ -168,6 +168,7 @@ fn fixture() -> ReductionEvidence {
             jobs: 4,
             state: Some("state.sqlite3".to_owned()),
             resumed: false,
+            completion: "converged".to_owned(),
             accepted_file_sizes: vec![18, 9, 5, 3],
             evaluation_policy: EvaluationPolicyEvidence {
                 mode: "strict".to_owned(),

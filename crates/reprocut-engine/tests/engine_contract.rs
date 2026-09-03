@@ -12,7 +12,9 @@ use std::{
 
 use reprocut_adapters::Ecosystem;
 use reprocut_core::{CandidateVerdict, ReductionUnit};
-use reprocut_engine::{EngineError, PreparationMode, ReductionEngine, ReductionRequest};
+use reprocut_engine::{
+    Completion, EngineError, PreparationMode, ReductionEngine, ReductionRequest,
+};
 
 #[test]
 fn real_python_failure_is_stabilized_reduced_and_verified() {
@@ -202,4 +204,46 @@ fn walk_files(root: &Path) -> Vec<std::path::PathBuf> {
         }
     }
     files
+}
+
+#[test]
+fn an_expired_budget_publishes_a_verified_result_instead_of_nothing() {
+    let source = fixture_copy();
+    // A budget that cannot outlive the first baseline run, so exploration is
+    // refused from the very first frontier.
+    let request = ReductionRequest::new(
+        source.path().to_path_buf(),
+        python_executable(),
+        vec![OsString::from("bug.py")],
+        Duration::from_secs(5),
+        64 * 1_024,
+    )
+    .with_max_duration(Duration::ZERO);
+
+    let outcome = ReductionEngine::run(&request).expect("an expired budget still publishes");
+
+    assert_eq!(outcome.completion(), Completion::BudgetExhausted);
+    // The point of the budget is that a time-boxed run yields a verified artifact
+    // rather than being killed with nothing to show.
+    assert_eq!(outcome.final_verifications(), 3);
+    assert!(outcome
+        .final_observations()
+        .iter()
+        .all(|observed| observed.verdict() == CandidateVerdict::Preserved));
+}
+
+#[test]
+fn an_unbudgeted_run_reports_that_the_search_converged() {
+    let source = fixture_copy();
+    let request = ReductionRequest::new(
+        source.path().to_path_buf(),
+        python_executable(),
+        vec![OsString::from("bug.py")],
+        Duration::from_secs(5),
+        64 * 1_024,
+    );
+
+    let outcome = ReductionEngine::run(&request).expect("reduction must complete");
+
+    assert_eq!(outcome.completion(), Completion::Converged);
 }

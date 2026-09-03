@@ -218,6 +218,7 @@ fn evidence(project_bytes: &[u8]) -> ReductionEvidence {
             jobs: 1,
             state: None,
             resumed: false,
+            completion: "converged".to_owned(),
             accepted_file_sizes: vec![2, 1],
             evaluation_policy: EvaluationPolicyEvidence {
                 mode: "strict".to_owned(),

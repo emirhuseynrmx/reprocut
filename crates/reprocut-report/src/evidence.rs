@@ -95,10 +95,20 @@ pub struct SearchEvidence {
     pub state: Option<String>,
     /// Whether compatible evidence was reused from an earlier session.
     pub resumed: bool,
+    /// Why exploration stopped: `converged`, or `budget_exhausted` when a wall-time
+    /// budget elapsed with candidates still unexplored. A budgeted result is fully
+    /// verified but is not the smallest the search would have reached.
+    #[serde(default = "default_completion")]
+    pub completion: String,
     /// Original and successively accepted file counts.
     pub accepted_file_sizes: Vec<usize>,
     /// Repeated-execution classification policy.
     pub evaluation_policy: EvaluationPolicyEvidence,
+}
+
+/// Records written before budgets existed described a search that ran to convergence.
+fn default_completion() -> String {
+    "converged".to_owned()
 }
 
 /// Repeated-run threshold used to classify every candidate.

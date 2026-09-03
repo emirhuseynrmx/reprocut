@@ -20,8 +20,8 @@ use reprocut_core::{
     ProtocolError, ReductionRequestV1, TerminationReason, PROTOCOL_VERSION,
 };
 use reprocut_engine::{
-    EngineError, PreparationMode, PythonIsolationRequest, PythonPreparationError, ReductionEngine,
-    ReductionOutcome, ReductionRequest, SessionMode,
+    Completion, EngineError, PreparationMode, PythonIsolationRequest, PythonPreparationError,
+    ReductionEngine, ReductionOutcome, ReductionRequest, SessionMode,
 };
 use reprocut_oci::{export_archive, Builder, OciError, OciRequest, RuntimeFamily};
 use reprocut_report::{
@@ -221,6 +221,10 @@ struct ReduceArgs {
     /// Deadline for each candidate execution.
     #[arg(long, default_value_t = DEFAULT_TIMEOUT_MS)]
     timeout_ms: u64,
+
+    /// Wall-time budget for the search; publishes the best verified result when it elapses.
+    #[arg(long)]
+    max_duration_secs: Option<u64>,
 
     /// Maximum captured bytes for each child output stream.
     #[arg(long, default_value_t = DEFAULT_CAPTURE_BYTES)]
@@ -573,6 +577,9 @@ fn protocol_reduce_args(request: ReductionRequestV1) -> Result<ReduceArgs, CliEr
         ecosystem,
         prepare,
         timeout_ms: request.timeout_ms,
+        // The protocol has no budget field yet; a client that wants one sets it
+        // through its own job timeout until the request schema carries it.
+        max_duration_secs: None,
         max_output_bytes: request.max_output_bytes,
         oracle_stream,
         oracle_mode,
@@ -919,6 +926,10 @@ fn execute_reduction(
     .with_runtime(arguments.jobs, session_mode(&arguments, resume))
     .with_inventory_policy(adapter.inventory_policy().clone())
     .with_ecosystem(adapter.ecosystem(), arguments.prepare.into());
+    let request = match arguments.max_duration_secs {
+        Some(budget) => request.with_max_duration(Duration::from_secs(budget)),
+        None => request,
+    };
     let request = if let Some(isolation) = python_isolation {
         request.with_python_isolation(isolation)
     } else {
@@ -1101,6 +1112,7 @@ fn build_evidence(
             jobs: arguments.jobs,
             state: outcome.state_path().map(|path| path.display().to_string()),
             resumed: outcome.resumed(),
+            completion: outcome.completion().as_str().to_owned(),
             accepted_file_sizes,
             evaluation_policy: policy_evidence(arguments),
         },
@@ -1140,13 +1152,22 @@ fn build_evidence(
         final_observations,
         accepted_structured_edits: outcome.accepted_structured_edits().to_vec(),
         attempts,
-        limitations: vec![
-            "Elapsed time is one wall-clock observation, not a benchmark.".to_owned(),
-            "Retained paths are observations from the verified final snapshot, not claims of semantic necessity."
-                .to_owned(),
-            "Syntax-node counts are omitted until a grammar-valid cross-language counter is available."
-                .to_owned(),
-        ],
+        limitations: {
+            let mut limitations = vec![
+                "Elapsed time is one wall-clock observation, not a benchmark.".to_owned(),
+                "Retained paths are observations from the verified final snapshot, not claims of semantic necessity."
+                    .to_owned(),
+                "Syntax-node counts are omitted until a grammar-valid cross-language counter is available."
+                    .to_owned(),
+            ];
+            if outcome.completion() == Completion::BudgetExhausted {
+                limitations.push(
+                    "The wall-time budget elapsed with candidates unexplored. Every retained file passed final verification, but a longer run may reduce further."
+                        .to_owned(),
+                );
+            }
+            limitations
+        },
     })
 }
 
