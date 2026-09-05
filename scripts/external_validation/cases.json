@@ -62,8 +62,7 @@
         "/usr/local/bin/bevy-clippy-oracle"
       ],
       "required_regex": [
-        "unsafe block missing a safety comment",
-        "undocumented_unsafe_blocks"
+        "^BEVY-ORACLE: exactly [0-9]+ undocumented unsafe block\\(s\\) in crates/bevy_ecs/src/world/despawn_all\\.rs$"
       ],
       "rejected_regex": [
         "failed to (get|download)",
