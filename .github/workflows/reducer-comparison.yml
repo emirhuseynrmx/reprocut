@@ -18,35 +18,35 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
 
-      - name: Install cvise
+      - name: Install the field
         run: |
           sudo apt-get update
-          sudo apt-get install -y cvise bc
-          cvise --version
+          sudo apt-get install -y bc default-jre-headless
+          for package in cvise creduce; do
+            sudo apt-get install -y "$package" || echo "$package is unavailable"
+          done
+          pipx install shrinkray || pip install --user shrinkray || echo "shrinkray is unavailable"
+          sudo mkdir -p /opt/perses
+          sudo curl -fsSL --retry 3 -o /opt/perses/perses_deploy.jar             https://github.com/uw-pluverse/perses/releases/download/v2.7/perses_deploy.jar             || echo "perses is unavailable"
+          echo "$HOME/.local/bin" >>"$GITHUB_PATH"
 
       - name: Build reprocut
         run: cargo build --release --locked -p reprocut --bin reprocut
 
-      - name: Run the comparison
-        run: bash scripts/benchmark/run.sh "${{ runner.temp }}/benchmark"
+      - name: Prepare the case
+        run: bash scripts/benchmark/prepare.sh "${{ runner.temp }}/benchmark"
 
-      - name: Publish the comparison
+      - name: Run the arena
+        run: python3 scripts/benchmark/arena.py "${{ runner.temp }}/benchmark"
+
+      - name: Publish the table
+        if: always()
         run: |
           {
-            echo '## Reduction head-to-head'
+            echo '## Reduction arena'
             echo
             echo '```'
-            python3 -c "
-          import json
-          d = json.load(open(r'${{ runner.temp }}/benchmark/comparison.json'))
-          o = d['original']
-          print(f\"original  {o['bytes']:>10,}{o['lines']:>8,}{o['tokens']:>9,}\")
-          print(f\"{'tool':<10}{'bytes':>10}{'lines':>8}{'tokens':>9}{'oracle':>8}{'seconds':>9}\")
-          for r in d['results']:
-              print(f\"{r['tool']:<10}{r['bytes']:>10,}{r['lines']:>8,}{r['tokens']:>9,}{r['oracle_calls']:>8,}{r['seconds']:>9.1f}\")
-          print()
-          print('drift:', d['reprocut_diagnostic_drift'])
-          "
+            python3 scripts/benchmark/arena.py --render "${{ runner.temp }}/benchmark" || true
             echo '```'
           } >>"$GITHUB_STEP_SUMMARY"
 
