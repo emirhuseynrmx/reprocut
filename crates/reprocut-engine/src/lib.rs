@@ -17,7 +17,7 @@ use std::{
     ffi::OsString,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Mutex,
     },
     time::{Duration, Instant},
@@ -26,9 +26,9 @@ use std::{
 use reprocut_adapters::{Ecosystem, NpmManifest, PreparationPlan};
 use reprocut_core::{
     reduce_hierarchical_frontiers, AggregateDecision, AggregateEvidence, CandidateRank,
-    CandidateVerdict, ContentDigest, DiagnosticChannel, EvaluationPolicy, ExecutionObservation,
-    FailureFingerprint, FailureOracle, FrontierClass, OracleError, OracleMode, OracleSpec,
-    ReductionResult, ReductionUnit,
+    CandidateVerdict, ContentDigest, DiagnosticChannel, DiagnosticDrift, EvaluationPolicy,
+    ExecutionObservation, FailureFingerprint, FailureOracle, FrontierClass, OracleError,
+    OracleMode, OracleSpec, ReductionResult, ReductionUnit,
 };
 use reprocut_runner::{CommandSpec, ProcessRunner, RunnerError};
 use reprocut_state::{
@@ -84,6 +84,7 @@ pub struct ReductionRequest {
     ecosystem: Ecosystem,
     preparation_mode: PreparationMode,
     python_isolation: Option<PythonIsolationRequest>,
+    max_duration: Option<Duration>,
 }
 
 impl ReductionRequest {
@@ -110,7 +111,27 @@ impl ReductionRequest {
             ecosystem: Ecosystem::None,
             preparation_mode: PreparationMode::None,
             python_isolation: None,
+            max_duration: None,
         }
+    }
+
+    /// Stops exploring new candidates once `budget` of wall time has elapsed.
+    ///
+    /// Reduction converges asymptotically: most of the size falls away early, and
+    /// the remainder can take orders of magnitude longer for a few percent. A run
+    /// without a bound is unusable inside a time-boxed CI job, where being killed
+    /// yields nothing at all. With a budget the run publishes the best snapshot it
+    /// has already verified and records that the budget, not the search, ended it.
+    #[must_use]
+    pub const fn with_max_duration(mut self, budget: Duration) -> Self {
+        self.max_duration = Some(budget);
+        self
+    }
+
+    /// Returns the wall-time budget for candidate exploration, if one was set.
+    #[must_use]
+    pub const fn max_duration(&self) -> Option<Duration> {
+        self.max_duration
     }
 
     /// Returns a request using an explicit failure channel and aggregate policy.
@@ -263,6 +284,32 @@ pub struct ReductionOutcome {
     accepted_structured_edits: Vec<String>,
     elapsed: Duration,
     attempt_events: Vec<AttemptEventRecord>,
+    completion: Completion,
+    diagnostic_drift: DiagnosticDrift,
+}
+
+/// Why candidate exploration stopped.
+///
+/// A budgeted result is still fully verified: every retained file survived the same
+/// final verification. It is not, however, the smallest result the search would have
+/// reached, and a report that cannot say so is misleading.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum Completion {
+    /// The search explored every transformation it had and none made the result smaller.
+    Converged,
+    /// The wall-time budget elapsed while candidates remained unexplored.
+    BudgetExhausted,
+}
+
+impl Completion {
+    /// Returns the stable identifier written into reduction evidence.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Converged => "converged",
+            Self::BudgetExhausted => "budget_exhausted",
+        }
+    }
 }
 
 impl ReductionOutcome {
@@ -351,9 +398,19 @@ impl ReductionOutcome {
         &self.accepted_structured_edits
     }
 
+    /// Returns how far the minimized failure's diagnostic moved from the original's.
+    pub const fn diagnostic_drift(&self) -> &DiagnosticDrift {
+        &self.diagnostic_drift
+    }
+
     /// Returns end-to-end wall time including baseline and final verification.
     pub const fn elapsed(&self) -> Duration {
         self.elapsed
+    }
+
+    /// Returns whether the search converged or ran out of its wall-time budget.
+    pub const fn completion(&self) -> Completion {
+        self.completion
     }
 
     /// Returns durable append-only attempt evidence, including resumed history.
@@ -497,6 +554,8 @@ impl ReductionEngine {
         let memory_cache = Mutex::new(HashMap::<ContentDigest, AttemptRecord>::new());
         let inconclusive_attempts = AtomicU64::new(0);
         let cache_hits = AtomicU64::new(0);
+        let deadline = request.max_duration().map(|budget| started + budget);
+        let budget_exhausted = AtomicBool::new(false);
         let mut from_digest = source_digest;
         let mut accepted_material_digests = HashSet::from([source_digest]);
         let mut transition_ordinal = 0_u64;
@@ -507,6 +566,14 @@ impl ReductionEngine {
         let reduction =
             reduce_hierarchical_frontiers(inventory.units(), &directory_groups, |frontier| {
                 if has_error(&first_error) {
+                    return vec![None; frontier.len()];
+                }
+                // An inconclusive verdict can never authorize a cut, so refusing the
+                // whole frontier unwinds the search while leaving every already
+                // verified acceptance in place. The budget stops exploration; it
+                // never weakens what a published result means.
+                if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                    budget_exhausted.store(true, Ordering::Relaxed);
                     return vec![None; frontier.len()];
                 }
                 let phase = frontier_phase;
@@ -650,6 +717,8 @@ impl ReductionEngine {
             first_error: &first_error,
             inconclusive_attempts: &inconclusive_attempts,
             cache_hits: &cache_hits,
+            deadline,
+            budget_exhausted: &budget_exhausted,
         };
         let structured_outcome = structured.reduce(
             snapshot,
@@ -694,6 +763,14 @@ impl ReductionEngine {
             .map(WriterHandle::attempt_events)
             .transpose()?
             .unwrap_or_default();
+        let diagnostic_drift = DiagnosticDrift::measure(
+            oracle.spec().channel(),
+            &baselines,
+            &final_observations
+                .iter()
+                .map(FinalVerificationObservation::observation)
+                .collect::<Vec<_>>(),
+        );
 
         Ok(ReductionOutcome {
             source_snapshot_digest: source_digest,
@@ -715,6 +792,12 @@ impl ReductionEngine {
             accepted_structured_edits: structured_outcome.accepted,
             elapsed: started.elapsed(),
             attempt_events,
+            completion: if budget_exhausted.load(Ordering::Relaxed) {
+                Completion::BudgetExhausted
+            } else {
+                Completion::Converged
+            },
+            diagnostic_drift,
         })
     }
 }
@@ -909,9 +992,23 @@ struct StructuredReductionContext<'a> {
     first_error: &'a Mutex<Option<EngineError>>,
     inconclusive_attempts: &'a AtomicU64,
     cache_hits: &'a AtomicU64,
+    deadline: Option<Instant>,
+    budget_exhausted: &'a AtomicBool,
 }
 
 impl StructuredReductionContext<'_> {
+    /// Reports whether the wall-time budget has elapsed, recording it the first time.
+    fn budget_expired(&self) -> bool {
+        if self
+            .deadline
+            .is_some_and(|deadline| Instant::now() >= deadline)
+        {
+            self.budget_exhausted.store(true, Ordering::Relaxed);
+            return true;
+        }
+        false
+    }
+
     fn reduce(
         &self,
         mut snapshot: ProjectSnapshot,
@@ -923,6 +1020,12 @@ impl StructuredReductionContext<'_> {
         let mut attempts = 0_u64;
         let mut accepted = Vec::new();
         'fixpoint: loop {
+            // The structured fixpoint is a second search after the file frontiers,
+            // and it can run far longer than they did. A budget that bounded only
+            // the first phase would not bound the run.
+            if self.budget_expired() {
+                break;
+            }
             let manifests = manifest_candidates(
                 &snapshot,
                 self.request.ecosystem(),
@@ -943,6 +1046,9 @@ impl StructuredReductionContext<'_> {
             }
 
             for syntax_phase in [SyntaxPhase::Delete, SyntaxPhase::Hoist] {
+                if self.budget_expired() {
+                    break 'fixpoint;
+                }
                 let syntax = syntax_candidates(&snapshot, syntax_phase)?;
                 let syntax_outcome = self.evaluate_frontier(
                     syntax,

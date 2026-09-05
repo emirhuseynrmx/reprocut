@@ -1,0 +1,118 @@
+name: Reducer comparison
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - scripts/benchmark/**
+      - .github/workflows/reducer-comparison.yml
+
+permissions:
+  contents: read
+
+jobs:
+  head-to-head:
+    name: cvise vs reprocut on one C file
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Install the field
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc default-jre-headless
+          for package in cvise creduce; do
+            sudo apt-get install -y "$package" || echo "$package is unavailable"
+          done
+          pipx install shrinkray || pip install --user shrinkray || echo "shrinkray is unavailable"
+          sudo mkdir -p /opt/perses
+          sudo curl -fsSL --retry 3 -o /opt/perses/perses_deploy.jar             https://github.com/uw-pluverse/perses/releases/download/v2.7/perses_deploy.jar             || echo "perses is unavailable"
+          echo "$HOME/.local/bin" >>"$GITHUB_PATH"
+
+      - name: Build reprocut
+        run: cargo build --release --locked -p reprocut --bin reprocut
+
+      - name: Prepare the case
+        run: bash scripts/benchmark/prepare.sh "${{ runner.temp }}/benchmark"
+
+      - name: Run the arena
+        run: python3 scripts/benchmark/arena.py "${{ runner.temp }}/benchmark"
+
+      - name: Publish the table
+        if: always()
+        run: |
+          {
+            echo '## Reduction arena'
+            echo
+            echo '```'
+            python3 scripts/benchmark/arena.py --render "${{ runner.temp }}/benchmark" || true
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: reducer-comparison
+          path: ${{ runner.temp }}/benchmark
+          retention-days: 14
+
+  repo-lane:
+    name: dustmite vs reprocut on a real repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Install DustMite
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ldc dub
+          git clone --depth 1 https://github.com/CyberShadow/DustMite /tmp/dustmite
+          cd /tmp/dustmite && ldc2 -O -of=dustmite *.d
+          sudo install -m 0755 /tmp/dustmite/dustmite /usr/local/bin/dustmite
+          dustmite --help | head -3 || true
+
+      - name: Install the hook the case fails on
+        run: |
+          python3 -m venv /opt/precommit
+          /opt/precommit/bin/pip install --quiet pre-commit-hooks==6.0.0
+          echo "FIXER=/opt/precommit/bin/end-of-file-fixer" >>"$GITHUB_ENV"
+
+      - name: Build reprocut
+        run: cargo build --release --locked -p reprocut --bin reprocut
+
+      - name: Fetch the case
+        run: bash scripts/benchmark/repo_case.sh "${{ runner.temp }}/repo"
+
+      - name: Run the repo arena
+        run: python3 scripts/benchmark/repo_arena.py "${{ runner.temp }}/repo"
+
+      - name: Publish the table
+        if: always()
+        run: |
+          {
+            echo '## Repository lane'
+            echo
+            echo '```'
+            python3 -c "
+          import json
+          d = json.load(open(r'${{ runner.temp }}/repo/repo-arena.json'))
+          o = d['original']
+          print(f\"{'':<11}{'files':>8}{'lines':>9}{'bytes':>11}{'oracle':>9}{'seconds':>9}\")
+          print(f\"{'original':<11}{o['files']:>8,}{o['lines']:>9,}{o['bytes']:>11,}\")
+          for r in d['results']:
+              if not r.get('produced_output'):
+                  print(f\"{r['tool']:<11}{'no output':>28}\")
+              else:
+                  print(f\"{r['tool']:<11}{r['files']:>8,}{r['lines']:>9,}{r['bytes']:>11,}{r['oracle_calls']:>9,}{r['seconds']:>9.1f}\")
+          " || true
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: repo-arena
+          path: ${{ runner.temp }}/repo
+          retention-days: 14

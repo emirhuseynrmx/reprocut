@@ -1,0 +1,331 @@
+    Checking bevy_ecs v0.20.0-dev (/work/bevy-oracle-workspace/crates/bevy_ecs)
+error: empty line after doc comment
+   --> crates/bevy_ecs/src/archetype.rs:262:5
+    |
+262 | /     /// from the source archetype.
+263 | |     
+    | |____^
+264 |       pub fn get_archetype_after_bundle_remove(
+    |       ---------------------------------------- the comment documents this function
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#empty_line_after_doc_comments
+    = note: `-D clippy::empty-line-after-doc-comments` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::empty_line_after_doc_comments)]`
+    = help: if the empty line is unintentional, remove it
+
+error: empty line after doc comment
+   --> crates/bevy_ecs/src/archetype.rs:271:5
+    |
+271 | /     /// Caches the target archetype when removing a bundle from the source archetype.
+272 | |     
+    | |____^
+273 |       pub(crate) fn cache_archetype_after_bundle_remove(
+    |       ------------------------------------------------- the comment documents this function
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#empty_line_after_doc_comments
+    = help: if the empty line is unintentional, remove it
+
+error: empty line after doc comment
+   --> crates/bevy_ecs/src/archetype.rs:291:5
+    |
+291 | /     /// from the source archetype.
+292 | |     
+    | |____^
+293 |       pub fn get_archetype_after_bundle_take(
+    |       -------------------------------------- the comment documents this function
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#empty_line_after_doc_comments
+    = help: if the empty line is unintentional, remove it
+
+error: empty line after doc comment
+   --> crates/bevy_ecs/src/archetype.rs:303:5
+    |
+303 | /     /// contains all of the components in the bundle.
+304 | |     
+    | |____^
+305 |       pub(crate) fn cache_archetype_after_bundle_take(
+    |       ----------------------------------------------- the comment documents this function
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#empty_line_after_doc_comments
+    = help: if the empty line is unintentional, remove it
+
+error: empty line after doc comment
+   --> crates/bevy_ecs/src/archetype.rs:322:5
+    |
+322 | /     /// The ID of the entity.
+323 | |     
+    | |____^
+324 |       pub const fn id(&self) -> Entity {
+    |       --------------- the comment documents this function
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#empty_line_after_doc_comments
+    = help: if the empty line is unintentional, remove it
+
+error: empty line after doc comment
+   --> crates/bevy_ecs/src/archetype.rs:330:5
+    |
+330 | /     /// [`Table`]: crate::storage::Table
+331 | |     
+    | |____^
+332 |       pub const fn table_row(&self) -> TableRow {
+    |       ---------------------- the comment documents this function
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#empty_line_after_doc_comments
+    = help: if the empty line is unintentional, remove it
+
+error: empty line after doc comment
+   --> crates/bevy_ecs/src/archetype.rs:415:5
+    |
+415 | /     /// Fetches the ID for the archetype.
+416 | |     
+    | |____^
+417 |       pub fn id(&self) -> ArchetypeId {
+    |       --------- the comment documents this function
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#empty_line_after_doc_comments
+    = help: if the empty line is unintentional, remove it
+
+error: empty line after doc comment
+   --> crates/bevy_ecs/src/archetype.rs:421:5
+    |
+421 | /     /// Fetches the flags for the archetype.
+422 | |     
+    | |____^
+423 |       pub(crate) fn flags(&self) -> ArchetypeFlags {
+    |       ------------------- the comment documents this function
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#empty_line_after_doc_comments
+    = help: if the empty line is unintentional, remove it
+
+error: empty line after doc comment
+   --> crates/bevy_ecs/src/archetype.rs:429:5
+    |
+429 | /     /// [`Table`]: crate::storage::Table
+430 | |     
+    | |____^
+431 |       pub fn table_id(&self) -> TableId {
+    |       --------------- the comment documents this function
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#empty_line_after_doc_comments
+    = help: if the empty line is unintentional, remove it
+
+error: empty line after doc comment
+   --> crates/bevy_ecs/src/archetype.rs:435:5
+    |
+435 | /     /// Fetches the entities contained in this archetype.
+436 | |     
+    | |____^
+437 |       pub fn entities(&self) -> &[ArchetypeEntity] {
+    |       --------------- the comment documents this function
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#empty_line_after_doc_comments
+    = help: if the empty line is unintentional, remove it
+
+error: empty line after doc comment
+   --> crates/bevy_ecs/src/archetype.rs:441:5
+    |
+441 | /     /// Fetches the entities contained in this archetype.
+442 | |     
+    | |____^
+443 |       pub fn entities_with_location(&self) -> impl Iterator<Item = (Entity, EntityLocation)> {
+    |       ----------------------------- the comment documents this function
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#empty_line_after_doc_comments
+    = help: if the empty line is unintentional, remove it
+
+error: empty line after doc comment
+   --> crates/bevy_ecs/src/archetype.rs:466:5
+    |
+466 | /     /// [`Table`]: crate::storage::Table
+467 | |     
+    | |____^
+468 |       pub fn table_components(&self) -> impl Iterator<Item = ComponentId> + '_ {
+    |       ----------------------- the comment documents this function
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#empty_line_after_doc_comments
+    = help: if the empty line is unintentional, remove it
+
+error: empty line after doc comment
+   --> crates/bevy_ecs/src/archetype.rs:479:5
+    |
+479 | /     /// [`ComponentSparseSet`]: crate::storage::ComponentSparseSet
+480 | |     
+    | |____^
+481 |       pub fn sparse_set_components(&self) -> impl Iterator<Item = ComponentId> + '_ {
+    |       ---------------------------- the comment documents this function
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#empty_line_after_doc_comments
+    = help: if the empty line is unintentional, remove it
+
+error: unused variable: `bundle_id`
+   --> crates/bevy_ecs/src/archetype.rs:241:9
+    |
+241 |         bundle_id: BundleId,
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_bundle_id`
+    |
+    = note: `-D unused-variables` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(unused_variables)]`
+
+error: unused variable: `archetype_id`
+   --> crates/bevy_ecs/src/archetype.rs:242:9
+    |
+242 |         archetype_id: ArchetypeId,
+    |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_archetype_id`
+
+error: unused variable: `bundle_status`
+   --> crates/bevy_ecs/src/archetype.rs:243:9
+    |
+243 |         bundle_status: impl Into<Box<[ComponentStatus]>>,
+    |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_bundle_status`
+
+error: unused variable: `required_components`
+   --> crates/bevy_ecs/src/archetype.rs:244:9
+    |
+244 |         required_components: impl Into<Box<[RequiredComponentConstructor]>>,
+    |         ^^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_required_components`
+
+error: unused variable: `added_len`
+   --> crates/bevy_ecs/src/archetype.rs:248:13
+    |
+248 |         let added_len = added.len();
+    |             ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_added_len`
+
+error: unused variable: `bundle_id`
+   --> crates/bevy_ecs/src/archetype.rs:275:9
+    |
+275 |         bundle_id: BundleId,
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_bundle_id`
+
+error: unused variable: `archetype_id`
+   --> crates/bevy_ecs/src/archetype.rs:276:9
+    |
+276 |         archetype_id: Option<ArchetypeId>,
+    |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_archetype_id`
+
+error: unused variable: `bundle_id`
+   --> crates/bevy_ecs/src/archetype.rs:307:9
+    |
+307 |         bundle_id: BundleId,
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_bundle_id`
+
+error: unused variable: `archetype_id`
+   --> crates/bevy_ecs/src/archetype.rs:308:9
+    |
+308 |         archetype_id: Option<ArchetypeId>,
+    |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_archetype_id`
+
+error: variable does not need to be mutable
+   --> crates/bevy_ecs/src/archetype.rs:400:13
+    |
+400 |         let mut flags = ArchetypeFlags::empty();
+    |             ----^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `-D unused-mut` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(unused_mut)]`
+
+error: variable does not need to be mutable
+   --> crates/bevy_ecs/src/archetype.rs:401:13
+    |
+401 |         let mut archetype_components = SparseSet::with_capacity(min_table + min_sparse);
+    |             ----^^^^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+error: unused variable: `components`
+   --> crates/bevy_ecs/src/archetype.rs:390:9
+    |
+390 |         components: &Components,
+    |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_components`
+
+error: unused variable: `component_index`
+   --> crates/bevy_ecs/src/archetype.rs:391:9
+    |
+391 |         component_index: &mut ComponentIndex,
+    |         ^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_component_index`
+
+error: unused variable: `observers`
+   --> crates/bevy_ecs/src/archetype.rs:392:9
+    |
+392 |         observers: &Observers,
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_observers`
+
+error: field `0` is never read
+  --> crates/bevy_ecs/src/archetype.rs:41:36
+   |
+41 | pub(crate) struct ArchetypeCreated(pub ArchetypeId);
+   |                   ---------------- ^^^^^^^^^^^^^^^
+   |                   |
+   |                   field in this struct
+   |
+   = help: consider removing this field
+   = note: `-D dead-code` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[expect(dead_code)]` or `#[allow(dead_code)]`
+
+error: method `update_archetype_flags` is never used
+   --> crates/bevy_ecs/src/component/info.rs:125:19
+    |
+ 41 | impl ComponentInfo {
+    | ------------------ method in this implementation
+...
+125 |     pub(crate) fn update_archetype_flags(&self, flags: &mut ArchetypeFlags) {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^
+
+error: method `update_archetype_flags` is never used
+  --> crates/bevy_ecs/src/observer/centralized_storage.rs:88:19
+   |
+38 | impl Observers {
+   | -------------- method in this implementation
+...
+88 |     pub(crate) fn update_archetype_flags(
+   |                   ^^^^^^^^^^^^^^^^^^^^^^
+
+error: unsafe block missing a safety comment
+  --> crates/bevy_ecs/src/world/despawn_all.rs:49:21
+   |
+49 |                     unsafe { ArchetypeRow::new(NonMaxU32::new_unchecked(idx as u32)) };
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: consider adding a safety comment on the preceding line
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#undocumented_unsafe_blocks
+   = note: `-D clippy::undocumented-unsafe-blocks` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::undocumented_unsafe_blocks)]`
+
+error: unsafe block missing a safety comment
+  --> crates/bevy_ecs/src/world/despawn_all.rs:62:17
+   |
+62 |                 unsafe {
+   |                 ^^^^^^^^
+   |
+   = help: consider adding a safety comment on the preceding line
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#undocumented_unsafe_blocks
+
+error: unsafe block missing a safety comment
+  --> crates/bevy_ecs/src/world/despawn_all.rs:85:36
+   |
+85 |                 let moved_entity = unsafe {
+   |                                    ^^^^^^^^
+   |
+   = help: consider adding a safety comment on the preceding line
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#undocumented_unsafe_blocks
+
+error: unsafe block missing a safety comment
+  --> crates/bevy_ecs/src/world/despawn_all.rs:92:21
+   |
+92 |                     unsafe {
+   |                     ^^^^^^^^
+   |
+   = help: consider adding a safety comment on the preceding line
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#undocumented_unsafe_blocks
+
+error: unsafe block missing a safety comment
+   --> crates/bevy_ecs/src/world/despawn_all.rs:107:17
+    |
+107 |                 unsafe {
+    |                 ^^^^^^^^
+    |
+    = help: consider adding a safety comment on the preceding line
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#undocumented_unsafe_blocks
+
+error: could not compile `bevy_ecs` (lib) due to 35 previous errors

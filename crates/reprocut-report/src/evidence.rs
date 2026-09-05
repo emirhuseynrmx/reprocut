@@ -95,10 +95,27 @@ pub struct SearchEvidence {
     pub state: Option<String>,
     /// Whether compatible evidence was reused from an earlier session.
     pub resumed: bool,
+    /// Why exploration stopped: `converged`, or `budget_exhausted` when a wall-time
+    /// budget elapsed with candidates still unexplored. A budgeted result is fully
+    /// verified but is not the smallest the search would have reached.
+    /// A converged search omits the field: its absence is the default, so every
+    /// artifact written before budgets existed stays byte-identical and still
+    /// verifies. Only a budgeted result has something extra to declare.
+    #[serde(default = "default_completion", skip_serializing_if = "is_converged")]
+    pub completion: String,
     /// Original and successively accepted file counts.
     pub accepted_file_sizes: Vec<usize>,
     /// Repeated-execution classification policy.
     pub evaluation_policy: EvaluationPolicyEvidence,
+}
+
+/// Records written before budgets existed described a search that ran to convergence.
+fn default_completion() -> String {
+    "converged".to_owned()
+}
+
+fn is_converged(completion: &String) -> bool {
+    completion == "converged"
 }
 
 /// Repeated-run threshold used to classify every candidate.
@@ -161,6 +178,35 @@ pub struct FailureEvidence {
     pub reject_patterns: Vec<String>,
     /// SHA-256 identity of the complete oracle configuration.
     pub oracle_spec_sha256: String,
+    /// How far the minimized failure's diagnostic moved from the original's.
+    ///
+    /// Absent means the reduction that produced this evidence did not measure drift, which is
+    /// not the same as measuring it and finding none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diagnostic_drift: Option<DriftEvidence>,
+}
+
+/// Overlap between the original failure's diagnostic and the minimized one's.
+///
+/// A minimized failure prints less than the original; that is the point. Printing text the
+/// original never printed is different, and it is the shape an over-permissive oracle takes:
+/// the required expressions still match, but something else is producing them.
+///
+/// This never rejects a reduction. It is reported so a reader can judge one.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct DriftEvidence {
+    /// Distinct normalized diagnostic lines the original failure printed.
+    pub baseline_lines: usize,
+    /// Distinct normalized diagnostic lines the minimized failure prints.
+    pub final_lines: usize,
+    /// Minimized lines the original failure also printed.
+    pub retained_lines: usize,
+    /// Minimized lines the original failure never printed.
+    pub novel_lines: usize,
+    /// True when novel lines are the majority of the minimized diagnostic.
+    pub reportable: bool,
+    /// Up to eight novel lines, in normalized lexical order.
+    pub novel_sample: Vec<String>,
 }
 
 /// Honest evidence for a path present in the final verified snapshot.

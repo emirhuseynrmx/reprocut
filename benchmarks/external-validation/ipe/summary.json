@@ -1,0 +1,104 @@
+{
+  "case_id": "ipe",
+  "ci_run": "https://github.com/emirhuseynrmx/reprocut/actions/runs/33730753401",
+  "failure": {
+    "diagnostic_drift": {
+      "baseline_lines": 9,
+      "final_lines": 9,
+      "novel_lines": 0,
+      "novel_sample": [],
+      "reportable": false,
+      "retained_lines": 9
+    },
+    "fingerprint_sha256": "cb3ec89cab5174f0bb806dfdeda39686b5525b43187fadc26f972541c36c0441",
+    "termination": "exit 1"
+  },
+  "isolation": {
+    "capabilities": "none",
+    "cpus": 2,
+    "memory": "4g",
+    "network": "none",
+    "no_new_privileges": true,
+    "pids_limit": 1024,
+    "runtime_uid": 10001
+  },
+  "measurements": {
+    "original": {
+      "bytes": 481166873,
+      "files": 4632,
+      "lines": 2801354
+    },
+    "reduced_metrics": [
+      "bytes",
+      "files",
+      "lines"
+    ],
+    "retained": {
+      "bytes": 5568292,
+      "files": 769,
+      "lines": 101808
+    }
+  },
+  "oracle": {
+    "argv": [
+      "/usr/local/bin/ipe-regen-oracle"
+    ],
+    "mode": "regex",
+    "rejected_regex": [
+      "IPE-ORACLE: ports are absent",
+      "IPE-ORACLE: a port is missing entries",
+      "IPE-ORACLE: 08-notes-app differs without",
+      "IPE-ORACLE: stale set is",
+      "cannot read manifest",
+      "transform/edits failed",
+      "Could not resolve host",
+      "No such file or directory"
+    ],
+    "required_regex": [
+      "IPE-ORACLE: exactly 08-notes-app is stale against a fresh transform"
+    ],
+    "spec_sha256": "9fae062d9c75a0ae9804713fbaed4ccfb7997590fcde5bbd54a4bbac91b4a9ef",
+    "stream": "combined"
+  },
+  "schema_version": 1,
+  "search": {
+    "attempts": 644,
+    "cache_hits": 61,
+    "completion": "budget_exhausted",
+    "elapsed_ms": 2620686,
+    "evaluation_policy": {
+      "mode": "strict",
+      "required": 3,
+      "runs": 3
+    },
+    "inconclusive_attempts": 0
+  },
+  "source_snapshot_sha256": "f40aa452712b1e2649c942afccb78f7abd4f482286fb4daf28d3dcadb68bbda1",
+  "upstream": {
+    "base_sha": "e0ffbbb33b3a9404b14c914e69ee39821e3d0f1a",
+    "ci_url": "https://github.com/arthurmaciel/ipe-lang/actions/runs/32952534290/job/98127026437",
+    "head_sha": "072f647ca425694728de3aa6f508f1c3820681f1",
+    "repository": "https://github.com/arthurmaciel/ipe-lang.git"
+  },
+  "verification": {
+    "artifact_id": "5a073730f391726646c6ee2ae96ed6d864f9a19f1784e3e27bf3794f467420b3",
+    "final_observations": [
+      {
+        "exit_code": 1,
+        "preserved": true,
+        "run": 1
+      },
+      {
+        "exit_code": 1,
+        "preserved": true,
+        "run": 2
+      },
+      {
+        "exit_code": 1,
+        "preserved": true,
+        "run": 3
+      }
+    ],
+    "verified": true
+  }
+}

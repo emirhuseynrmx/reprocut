@@ -132,6 +132,7 @@ def compose_core() -> str:
     diagnostic = read("crates/reprocut-core/src/diagnostic.rs").replace(
         "use crate::{", "use super::{", 1
     )
+    drift = read("crates/reprocut-core/src/drift.rs").replace("use crate::{", "use super::{", 1)
     model = (
         read("crates/reprocut-core/src/model.rs")
         .replace("crate::NORMALIZATION_SCHEMA", "super::NORMALIZATION_SCHEMA")
@@ -161,6 +162,7 @@ def compose_core() -> str:
     return f"""#![forbid(unsafe_code)]
 mod reprocut_core {{
 mod diagnostic {{ {diagnostic} }}
+mod drift {{ {drift} }}
 mod model {{ {model} }}
 mod oracle {{ {oracle} }}
 mod policy {{ {policy} }}
@@ -171,6 +173,7 @@ mod winner {{ {winner} }}
 {transformation}
 pub use model::*;
 pub use diagnostic::*;
+pub use drift::*;
 pub use oracle::*;
 pub use policy::*;
 pub use protocol::*;

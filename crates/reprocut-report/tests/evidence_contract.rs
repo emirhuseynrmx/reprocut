@@ -1,13 +1,24 @@
-//! Versioned reduction-evidence contracts.
+﻿//! Versioned reduction-evidence contracts.
 
 use reprocut_report::{
     write_attempts_jsonl, ArtifactManifest, ArtifactMember, AttemptSummary, ChannelAnchor,
-    EvaluationPolicyEvidence, FailureEvidence, FinalObservationEvidence, MaterialMeasurement,
-    MeasurementSet, PreparationEvidence, ReductionEvidence, RetainedEntry, RetainedEntryKind,
-    RetainedManifest, RetentionEvidence, SearchEvidence, ARTIFACT_MANIFEST_SCHEMA_VERSION,
-    EVIDENCE_SCHEMA_VERSION, NORMALIZATION_SCHEMA_VERSION,
+    DriftEvidence, EvaluationPolicyEvidence, FailureEvidence, FinalObservationEvidence,
+    MaterialMeasurement, MeasurementSet, PreparationEvidence, ReductionEvidence, RetainedEntry,
+    RetainedEntryKind, RetainedManifest, RetentionEvidence, SearchEvidence,
+    ARTIFACT_MANIFEST_SCHEMA_VERSION, EVIDENCE_SCHEMA_VERSION, NORMALIZATION_SCHEMA_VERSION,
 };
 use serde_json::json;
+
+fn no_drift() -> DriftEvidence {
+    DriftEvidence {
+        baseline_lines: 4,
+        final_lines: 3,
+        retained_lines: 3,
+        novel_lines: 0,
+        reportable: false,
+        novel_sample: Vec::new(),
+    }
+}
 
 #[test]
 fn one_model_serializes_consistent_measurements_and_attempts() {
@@ -168,6 +179,7 @@ fn fixture() -> ReductionEvidence {
             jobs: 4,
             state: Some("state.sqlite3".to_owned()),
             resumed: false,
+            completion: "converged".to_owned(),
             accepted_file_sizes: vec![18, 9, 5, 3],
             evaluation_policy: EvaluationPolicyEvidence {
                 mode: "strict".to_owned(),
@@ -192,6 +204,7 @@ fn fixture() -> ReductionEvidence {
             failure_patterns: Vec::new(),
             reject_patterns: Vec::new(),
             oracle_spec_sha256: "b".repeat(64),
+            diagnostic_drift: Some(no_drift()),
         },
         kept_files: ["bug.py", "config.ini", "data.txt"]
             .into_iter()

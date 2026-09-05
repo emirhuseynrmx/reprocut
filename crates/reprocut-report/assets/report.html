@@ -14,7 +14,7 @@
 <header class="masthead">
   <a class="wordmark" href="#report-main" aria-label="ReproCut report home"><span aria-hidden="true">R/</span> ReproCut</a>
   <p class="edition">Reduction record <span>R-001</span></p>
-  <p class="status" title="SHA-256 {{FINGERPRINT_SHA256}}"><i aria-hidden="true"></i> Same failure verified</p>
+  <p class="status{{STATUS_MODIFIER}}" title="SHA-256 {{FINGERPRINT_SHA256}}"><i aria-hidden="true"></i> {{STATUS_TEXT}}</p>
 </header>
 
 <main id="report-main">
@@ -30,7 +30,7 @@
       <div class="accent"><dt>Removed</dt><dd>{{REDUCTION_PERCENT}}<small>percent</small></dd></div>
     </dl>
   </section>
-
+{{DRIFT_NOTICE}}
   <section class="cut-table" aria-labelledby="cut-title">
     <div class="section-heading">
       <p>01 / Material reduction</p>

@@ -9,3 +9,12 @@
 *.pyd
 *.so
 __pycache__/
+
+# Internal working documents: implementation plans, specs, and launch drafts.
+# Not published documentation.
+docs/superpowers/
+docs/launch/
+
+# Local build and scratch output.
+.tmp/
+dist/

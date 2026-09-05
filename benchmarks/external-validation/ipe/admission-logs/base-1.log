@@ -1,0 +1,2 @@
+regen --check: 54 committed port(s) match a fresh transform of original/.
+IPE-ORACLE: stale set is [], not the defect under test

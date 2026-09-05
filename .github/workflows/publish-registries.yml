@@ -40,7 +40,7 @@ jobs:
     environment: crates-io
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ inputs.tag }}
       - name: Require the checked-out tag identity
@@ -51,7 +51,7 @@ jobs:
         run: |
           rustup toolchain install 1.85.0 --profile minimal --component rustfmt,clippy
           rustup default 1.85.0
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - name: Re-run publish-critical contracts
@@ -100,7 +100,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ inputs.tag }}
       - name: Require the checked-out tag identity
@@ -108,11 +108,11 @@ jobs:
         run: |
           test "$(git describe --tags --exact-match)" = "${{ inputs.tag }}"
           test "$(git status --porcelain)" = ""
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - name: Build ABI3 wheel
-        uses: PyO3/maturin-action@v1
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1
         with:
           target: ${{ matrix.target }}
           args: --release --locked --out dist
@@ -126,7 +126,7 @@ jobs:
           REPROCUT_REQUIRE_NATIVE=1 python -m pytest python/tests -q
       - name: Enable arm64 containers for the manylinux runtime smoke
         if: matrix.platform == 'manylinux-aarch64'
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
         with:
           platforms: arm64
       - name: Test the arm64 wheel in a clean manylinux container
@@ -141,7 +141,7 @@ jobs:
               REPROCUT_REQUIRE_NATIVE=1 /opt/python/cp312-cp312/bin/python \
                 -m pytest python/tests -q
             '
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: wheel-${{ matrix.platform }}
           path: dist/*.whl
@@ -157,21 +157,21 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ inputs.tag }}
       - name: Require the checked-out tag identity
         run: |
           test "$(git describe --tags --exact-match)" = "${{ inputs.tag }}"
           test "$(git status --porcelain)" = ""
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - name: Install pinned Rust metadata toolchain
         run: |
           rustup toolchain install 1.85.0 --profile minimal
           rustup default 1.85.0
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           pattern: wheel-*
           path: dist
@@ -197,6 +197,6 @@ jobs:
           REPROCUT_REQUIRE_NATIVE=1 \
             /tmp/reprocut-sdist-smoke/bin/python -m pytest python/tests -q
       - name: Publish with short-lived OpenID Connect credentials
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
           packages-dir: dist

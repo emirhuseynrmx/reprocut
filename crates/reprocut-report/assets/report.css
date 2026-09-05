@@ -45,6 +45,13 @@ h1 em { color: var(--cut); font-style: normal; }
 .hero-measure small { margin-left: .45rem; color: var(--steel); font-family: var(--mono); font-size: .62rem; font-weight: 400; text-transform: uppercase; }
 .hero-measure .accent dd { color: var(--cut); }
 
+.status-review i { background: var(--cut); box-shadow: 0 0 0 4px rgba(214, 64, 41, .2); }
+.drift-notice { margin-top: 5.5rem; padding: 2.5rem clamp(1.25rem, 3vw, 2.5rem); border: 2px solid var(--cut); }
+.drift-notice .section-heading p { color: var(--cut); }
+.drift-notice h2 { font-size: clamp(1.7rem, 3vw, 3rem); }
+.drift-notice .lede { margin-top: 1.4rem; }
+.drift-notice .diagnostic-list { margin-top: 1.6rem; }
+
 .cut-table { padding: 5.5rem 0 0; }
 .section-heading { display: grid; grid-template-columns: minmax(180px, .5fr) 1.5fr; align-items: baseline; gap: 2rem; }
 .section-heading h2, .command-rail h2 { margin: 0; font-family: var(--display); font-size: clamp(2rem, 4vw, 4.6rem); line-height: .95; text-transform: uppercase; letter-spacing: -.03em; }

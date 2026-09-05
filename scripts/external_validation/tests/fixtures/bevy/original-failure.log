@@ -1,0 +1,58 @@
+   Compiling bevy_macro_utils v0.20.0-dev (/work/observation-head-1/crates/bevy_macro_utils)
+    Checking bevy_platform v0.20.0-dev (/work/observation-head-1/crates/bevy_platform)
+    Checking bevy_utils v0.20.0-dev (/work/observation-head-1/crates/bevy_utils)
+   Compiling bevy_ecs_macro_logic v0.20.0-dev (/work/observation-head-1/crates/bevy_ecs/macro_logic)
+   Compiling bevy_reflect_derive v0.20.0-dev (/work/observation-head-1/crates/bevy_reflect/derive)
+    Checking bevy_ptr v0.20.0-dev (/work/observation-head-1/crates/bevy_ptr)
+    Checking bevy_tasks v0.20.0-dev (/work/observation-head-1/crates/bevy_tasks)
+   Compiling bevy_ecs_macros v0.20.0-dev (/work/observation-head-1/crates/bevy_ecs/macros)
+    Checking bevy_reflect v0.20.0-dev (/work/observation-head-1/crates/bevy_reflect)
+    Checking bevy_ecs v0.20.0-dev (/work/observation-head-1/crates/bevy_ecs)
+error: unsafe block missing a safety comment
+  --> crates/bevy_ecs/src/world/despawn_all.rs:49:21
+   |
+49 |                     unsafe { ArchetypeRow::new(NonMaxU32::new_unchecked(idx as u32)) };
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: consider adding a safety comment on the preceding line
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#undocumented_unsafe_blocks
+   = note: `-D clippy::undocumented-unsafe-blocks` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::undocumented_unsafe_blocks)]`
+
+error: unsafe block missing a safety comment
+  --> crates/bevy_ecs/src/world/despawn_all.rs:62:17
+   |
+62 |                 unsafe {
+   |                 ^^^^^^^^
+   |
+   = help: consider adding a safety comment on the preceding line
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#undocumented_unsafe_blocks
+
+error: unsafe block missing a safety comment
+  --> crates/bevy_ecs/src/world/despawn_all.rs:85:36
+   |
+85 |                 let moved_entity = unsafe {
+   |                                    ^^^^^^^^
+   |
+   = help: consider adding a safety comment on the preceding line
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#undocumented_unsafe_blocks
+
+error: unsafe block missing a safety comment
+  --> crates/bevy_ecs/src/world/despawn_all.rs:92:21
+   |
+92 |                     unsafe {
+   |                     ^^^^^^^^
+   |
+   = help: consider adding a safety comment on the preceding line
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#undocumented_unsafe_blocks
+
+error: unsafe block missing a safety comment
+   --> crates/bevy_ecs/src/world/despawn_all.rs:107:17
+    |
+107 |                 unsafe {
+    |                 ^^^^^^^^
+    |
+    = help: consider adding a safety comment on the preceding line
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#undocumented_unsafe_blocks
+
+error: could not compile `bevy_ecs` (lib) due to 5 previous errors

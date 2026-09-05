@@ -1,10 +1,22 @@
-//! Paste-ready issue rendering and escaping contracts.
+﻿//! Paste-ready issue rendering and escaping contracts.
 
 use reprocut_report::{
-    render_issue, EvaluationPolicyEvidence, FailureEvidence, FinalObservationEvidence,
-    MaterialMeasurement, MeasurementSet, PreparationEvidence, ReductionEvidence, RetainedEntry,
-    RetainedManifest, RetentionEvidence, SearchEvidence, EVIDENCE_SCHEMA_VERSION,
+    render_issue, DriftEvidence, EvaluationPolicyEvidence, FailureEvidence,
+    FinalObservationEvidence, MaterialMeasurement, MeasurementSet, PreparationEvidence,
+    ReductionEvidence, RetainedEntry, RetainedManifest, RetentionEvidence, SearchEvidence,
+    EVIDENCE_SCHEMA_VERSION,
 };
+
+fn no_drift() -> DriftEvidence {
+    DriftEvidence {
+        baseline_lines: 4,
+        final_lines: 3,
+        retained_lines: 3,
+        novel_lines: 0,
+        reportable: false,
+        novel_sample: Vec::new(),
+    }
+}
 
 #[test]
 fn issue_contains_the_same_fingerprint_command_tree_and_measurements() {
@@ -70,6 +82,7 @@ fn fixture(anchor: &str) -> ReductionEvidence {
             jobs: 4,
             state: Some("state.sqlite3".to_owned()),
             resumed: false,
+            completion: "converged".to_owned(),
             accepted_file_sizes: vec![18, 9, 5, 3],
             evaluation_policy: EvaluationPolicyEvidence {
                 mode: "strict".to_owned(),
@@ -91,6 +104,7 @@ fn fixture(anchor: &str) -> ReductionEvidence {
             failure_patterns: Vec::new(),
             reject_patterns: Vec::new(),
             oracle_spec_sha256: "b".repeat(64),
+            diagnostic_drift: Some(no_drift()),
         },
         kept_files: vec![RetentionEvidence {
             path: "bug.py".to_owned(),

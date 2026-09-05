@@ -1,0 +1,95 @@
+name: External CI validation
+
+# Every case runs the same job. The matrix comes from the validated catalog, so
+# adding an upstream case is a `cases.json` edit and never a workflow edit.
+#
+# Two tiers exist because the budgets differ by an order of magnitude. `fast`
+# cases keep the pull-request signal quick; `full` adds the long ones and runs on
+# a schedule, which also keeps the published evidence continuously replayed
+# rather than frozen at whatever the last manual run produced.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: "Which tier to replay"
+        type: choice
+        options: [fast, full, all]
+        default: all
+  schedule:
+    - cron: "0 3 * * *"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/external-validation.yml"
+      - "scripts/external_validation/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: external-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: Select validation cases
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+      tier: ${{ steps.select.outputs.tier }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Validate trusted runner contracts
+        run: |
+          python -m unittest discover -s scripts/external_validation/tests -v
+          python scripts/external_validation/validate_cases.py
+      - name: Resolve the tier for this event
+        id: select
+        env:
+          # A pull request touching the harness proves the fast cases still run;
+          # the scheduled replay is what keeps the long ones honest.
+          TIER: ${{ github.event_name == 'pull_request' && 'fast' || (github.event.inputs.tier || 'all') }}
+        run: |
+          echo "tier=$TIER" >> "$GITHUB_OUTPUT"
+          matrix="$(python scripts/external_validation/validate_cases.py --matrix "$TIER")"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "$matrix"
+
+  reduce:
+    name: ${{ matrix.case_id }} isolated reduction
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ matrix.job_timeout_minutes }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Free runner disk for large workspaces
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /usr/share/swift
+          sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/microsoft /opt/google/chrome
+          sudo apt-get clean
+          df -h /
+      - name: Validate trusted runner contracts
+        run: |
+          python -m unittest discover -s scripts/external_validation/tests -v
+          python scripts/external_validation/validate_cases.py
+      - name: Run ${{ matrix.case_id }} case
+        run: >-
+          python scripts/external_validation/run_case.py
+          --case ${{ matrix.case_id }}
+          --output external-validation-output/${{ matrix.case_id }}
+      - name: Upload sanitized ${{ matrix.case_id }} evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: external-validation-${{ matrix.case_id }}
+          path: external-validation-output/${{ matrix.case_id }}
+          if-no-files-found: error
+          retention-days: 14

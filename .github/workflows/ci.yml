@@ -21,8 +21,8 @@ jobs:
     name: Format, lint, test, and docs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - name: Install pinned Rust toolchain
@@ -61,7 +61,7 @@ jobs:
     name: Loom interleaving model
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Install pinned Rust toolchain
         run: |
           rustup toolchain install 1.85.0 --profile minimal
@@ -75,7 +75,7 @@ jobs:
     name: Miri undefined-behavior model
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Install nightly Miri
         run: rustup toolchain install nightly --profile minimal --component miri
       - name: Prepare Miri sysroot
@@ -92,7 +92,7 @@ jobs:
     name: AddressSanitizer
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Install nightly toolchain
         run: rustup toolchain install nightly --profile minimal
       - name: Test core, grammars, snapshots, and engine with ASan
@@ -115,8 +115,8 @@ jobs:
     name: Advisories, licenses, and sources
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check
 
@@ -124,9 +124,9 @@ jobs:
     name: Real OCI archive export
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Select an OCI-capable Buildx driver
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
         with:
           driver: docker-container
       - name: Install pinned Rust toolchain
@@ -142,7 +142,7 @@ jobs:
     name: Adversarial failure-oracle contracts
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Install pinned Rust toolchain
         run: |
           rustup toolchain install 1.85.0 --profile minimal
@@ -158,8 +158,8 @@ jobs:
     name: Frozen offline Python candidate isolation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - name: Install pinned Rust toolchain
@@ -177,7 +177,7 @@ jobs:
     name: Immutable snapshot bytes and Unix execute masks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Install pinned Rust toolchain
         run: |
           rustup toolchain install 1.85.0 --profile minimal
@@ -193,8 +193,8 @@ jobs:
       matrix:
         python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ matrix.python }}
       - name: Install pinned Rust toolchain
@@ -220,8 +220,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - name: Install pinned Rust toolchain
@@ -234,13 +234,72 @@ jobs:
         env:
           TEST_PYTHON: python
 
+  action-contract:
+    name: GitHub Action end to end
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal
+          rustup default 1.85.0
+      # The action prefers a binary already on PATH, so it runs the build from
+      # this commit instead of a published release. That is what makes the action
+      # testable before the release it would otherwise download exists.
+      - name: Build and expose the CLI under test
+        run: |
+          cargo build --locked --release -p reprocut
+          echo "$GITHUB_WORKSPACE/target/release" >> "$GITHUB_PATH"
+      - name: Reduce a real failing fixture through the action
+        id: action
+        uses: ./
+        with:
+          root: tests/fixtures/python_failure
+          output: ${{ runner.temp }}/action-result
+          command: python bug.py
+          max-duration-seconds: "120"
+          comment: "false"
+      - name: Assert the action published a verified reduction
+        env:
+          RESULT: ${{ runner.temp }}/action-result
+          REDUCED: ${{ steps.action.outputs.reduced }}
+          RETAINED_FILES: ${{ steps.action.outputs.retained-files }}
+          ORIGINAL_FILES: ${{ steps.action.outputs.original-files }}
+          COMPLETION: ${{ steps.action.outputs.completion }}
+        run: |
+          set -euo pipefail
+          test "$REDUCED" = "true"
+          test "$RETAINED_FILES" -lt "$ORIGINAL_FILES"
+          test -n "$COMPLETION"
+          # The artifact the action hands a reviewer must verify on its own terms.
+          reprocut verify "$RESULT"
+          python - "$RESULT/reduction.json" <<'PY'
+          import json, sys
+          evidence = json.load(open(sys.argv[1], encoding="utf-8"))
+          assert evidence["failure"], "evidence must carry the stabilized failure"
+          observations = evidence["final_observations"]
+          assert observations, "a published artifact must record final verification"
+          assert all(o["verdict"] == "preserved" for o in observations), observations
+          # A drift measurement must reach the artifact, and this fixture reduces
+          # honestly, so it must report nothing. An absent block would mean the
+          # measurement silently stopped running.
+          drift = evidence["failure"].get("diagnostic_drift")
+          assert drift is not None, "every published reduction must measure drift"
+          assert drift["novel_lines"] == 0, drift
+          assert drift["reportable"] is False, drift
+          PY
+
   release-benchmark:
     name: 312-file release benchmark
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - name: Install pinned Rust toolchain
@@ -260,7 +319,7 @@ jobs:
           --runs 5
           --warmup 1
       - name: Upload raw benchmark evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: reprocut-release-benchmark
           path: output/release-benchmark
@@ -271,8 +330,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - name: Install pinned Rust toolchain
@@ -309,7 +368,7 @@ jobs:
           REPROCUT_REQUIRE_NATIVE=1 \
             /tmp/reprocut-sdist-smoke/bin/python -m pytest python/tests -q
       - name: Upload registry-ready packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: reprocut-release-packages
           path: dist
@@ -319,11 +378,11 @@ jobs:
     name: Editor, gallery, and static release audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "24.6.0"
       - name: Validate the protocol-only editor client
