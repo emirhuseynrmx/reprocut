@@ -72,9 +72,11 @@ class BevyOracleTest(unittest.TestCase):
         self.assertIn("no error", verdict)
 
     def test_the_catalog_regex_accepts_only_the_defect(self):
-        pattern = re.compile(bevy_case()["required_regex"][0], re.MULTILINE)
-        accepted = self.verdict(run_against("original-failure.log", 101))
-        rejected = self.verdict(run_against("drifted-reduction.log", 101))
+        # No MULTILINE: the engine matches one combined stream, so an anchored pattern
+        # would pass here and fail there - which is exactly what it did.
+        pattern = re.compile(bevy_case()["required_regex"][0])
+        accepted = run_against("original-failure.log", 101)
+        rejected = run_against("drifted-reduction.log", 101)
         self.assertTrue(pattern.search(accepted), accepted)
         self.assertFalse(pattern.search(rejected), rejected)
 
