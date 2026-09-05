@@ -75,10 +75,18 @@ def run(tool: str, case: Path, include: Path, work: Path) -> dict:
     environment = dict(os.environ, BENCHMARK_COUNTER=str(counter),
                        BENCHMARK_FILE="case.c", BENCHMARK_INCLUDE=str(include),
                        BENCHMARK_POLARITY="failing" if tool == "reprocut" else "interesting")
+    # A tool that runs out of budget has told us something; it has not earned the right to
+    # end the run for the others.
     start = time.monotonic()
+    timed_out = False
     with (home / "tool.log").open("wb") as log:
-        completed = subprocess.run(argv, cwd=home, stdout=log, stderr=subprocess.STDOUT,
-                                   env=environment, timeout=BUDGET + 120, check=False)
+        try:
+            completed = subprocess.run(argv, cwd=home, stdout=log,
+                                       stderr=subprocess.STDOUT, env=environment,
+                                       timeout=BUDGET + 120, check=False)
+            code = completed.returncode
+        except subprocess.TimeoutExpired:
+            timed_out, code = True, None
     elapsed = time.monotonic() - start
 
     reduced = home / "case.c"
@@ -87,11 +95,13 @@ def run(tool: str, case: Path, include: Path, work: Path) -> dict:
         reduced = found[0] if found else None
     if reduced is None or not reduced.exists():
         return {"tool": tool, "available": True, "produced_output": False,
-                "exit_code": completed.returncode, "seconds": round(elapsed, 1),
+                "exit_code": code, "timed_out": timed_out,
+                "seconds": round(elapsed, 1),
                 "oracle_calls": counter.stat().st_size}
 
     record = {"tool": tool, "available": True, "produced_output": True,
-              "exit_code": completed.returncode, "seconds": round(elapsed, 1),
+              "exit_code": code, "timed_out": timed_out,
+              "seconds": round(elapsed, 1),
               "oracle_calls": counter.stat().st_size}
     record.update(measure(reduced))
     if tool == "reprocut":
@@ -102,27 +112,27 @@ def run(tool: str, case: Path, include: Path, work: Path) -> dict:
     return record
 
 
-def main() -> int:
-    work = Path(sys.argv[1]).resolve()
-    case, include = work / "original.c", work / "include"
-    original = measure(case)
+def render(work: Path) -> int:
+    """Prints the table from a finished run, so the summary step never redoes the work."""
+    saved = json.loads((work / "arena.json").read_text())
+    report(saved["original"], saved["results"])
+    return 0
 
-    rows = [run(tool, case, include, work) for tool in
-            ("cvise", "creduce", "shrinkray", "perses", "reprocut")]
-    (work / "arena.json").write_text(
-        json.dumps({"original": original, "results": rows}, indent=2) + "\n")
 
+def report(original: dict, rows: list[dict]) -> None:
     print(f"original{original['bytes']:>12,}{original['lines']:>9,}{original['tokens']:>10,}")
     print(f"{'tool':<11}{'bytes':>9}{'lines':>9}{'tokens':>10}{'oracle':>9}{'seconds':>9}")
     for row in rows:
         if not row.get("available"):
             print(f"{row['tool']:<11}{'not installed':>37}")
         elif not row.get("produced_output"):
-            print(f"{row['tool']:<11}{'no output':>28}{row['oracle_calls']:>9,}"
+            label = "out of budget" if row.get("timed_out") else "no output"
+            print(f"{row['tool']:<11}{label:>28}{row['oracle_calls']:>9,}"
                   f"{row['seconds']:>9.1f}")
         else:
+            mark = " (budget)" if row.get("timed_out") else ""
             print(f"{row['tool']:<11}{row['bytes']:>9,}{row['lines']:>9,}{row['tokens']:>10,}"
-                  f"{row['oracle_calls']:>9,}{row['seconds']:>9.1f}")
+                  f"{row['oracle_calls']:>9,}{row['seconds']:>9.1f}{mark}")
     drift = next((r.get("diagnostic_drift") for r in rows if r["tool"] == "reprocut"), None)
     print()
     print("reprocut drift:", "not measured" if drift is None else
