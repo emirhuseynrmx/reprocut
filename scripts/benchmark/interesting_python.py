@@ -13,7 +13,6 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import Path
 
 PYTHON = sys.executable
 FILE = os.environ.get("BENCHMARK_FILE", "case.py")

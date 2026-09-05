@@ -92,7 +92,8 @@ def main():
     target = work / "original.py"
     target.write_text(SAMPLE_CODE, encoding="utf-8")
     print(
-        f"Prepared Python benchmark case at {target} ({len(SAMPLE_CODE)} bytes, {len(SAMPLE_CODE.splitlines())} lines)"
+        f"Prepared Python benchmark case at {target} "
+        f"({len(SAMPLE_CODE)} bytes, {len(SAMPLE_CODE.splitlines())} lines)"
     )
     return 0
 

@@ -12,6 +12,7 @@ Tools that are unavailable on the host environment are reported cleanly as unava
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -45,12 +46,11 @@ def tool_available(tool: str) -> tuple[bool, str]:
     elif tool == "shrinkray":
         if shutil.which("shrinkray") is None:
             return False, "not installed (pip install shrinkray)"
-        try:
-            import resource
-
+        # shrinkray needs the POSIX-only resource module, so its absence is what makes the
+        # tool unavailable on Windows rather than anything about shrinkray itself.
+        if importlib.util.find_spec("resource") is not None:
             return True, "installed"
-        except ImportError:
-            return False, "unavailable (POSIX only: missing resource module on Windows)"
+        return False, "unavailable (POSIX only: missing resource module on Windows)"
     elif tool == "reprocut":
         if not REPROCUT.exists():
             return False, "binary not built (cargo build --release -p reprocut-cli)"
@@ -248,22 +248,26 @@ def main() -> int:
     print(" PYTHON REDUCTION ARENA: HEAD-TO-HEAD BENCHMARK")
     print("=" * 95)
     print(
-        f"original  bytes: {original['bytes']:>8,} | lines: {original['lines']:>5,} | tokens: {original['tokens']:>6,}"
+        f"original  bytes: {original['bytes']:>8,} | lines: {original['lines']:>5,} | "
+        f"tokens: {original['tokens']:>6,}"
     )
     print("-" * 95)
     print(
-        f"{'Tool':<12}{'Bytes':>9}{'Lines':>8}{'Tokens':>9}{'Oracle':>9}{'Seconds':>10}{'Status / Reason':>35}"
+        f"{'Tool':<12}{'Bytes':>9}{'Lines':>8}{'Tokens':>9}{'Oracle':>9}"
+        f"{'Seconds':>10}{'Status / Reason':>35}"
     )
     print("-" * 95)
 
     for row in rows:
         if not row.get("available"):
             print(
-                f"{row['tool']:<12}{'--':>9}{'--':>8}{'--':>9}{'--':>9}{'--':>10}{row.get('reason', 'unavailable'):>35}"
+                f"{row['tool']:<12}{'--':>9}{'--':>8}{'--':>9}{'--':>9}{'--':>10}"
+                f"{row.get('reason', 'unavailable'):>35}"
             )
         elif not row.get("produced_output"):
             print(
-                f"{row['tool']:<12}{'no output':>26}{row['oracle_calls']:>9,}{row['seconds']:>10.1f}{'Failed to produce output':>35}"
+                f"{row['tool']:<12}{'no output':>26}{row['oracle_calls']:>9,}"
+                f"{row['seconds']:>10.1f}{'Failed to produce output':>35}"
             )
         else:
             bug_stat = (
@@ -277,7 +281,8 @@ def main() -> int:
     print("=" * 95)
     if drift is not None:
         print(
-            f"ReproCut drift report: {drift['novel_lines']} novel lines of {drift['final_lines']} (reportable: {drift['reportable']})"
+            f"ReproCut drift report: {drift['novel_lines']} novel lines "
+            f"of {drift['final_lines']} (reportable: {drift['reportable']})"
         )
     print()
     return 0
