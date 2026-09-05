@@ -1,0 +1,54 @@
+name: Reducer comparison
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  head-to-head:
+    name: cvise vs reprocut on one C file
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Install cvise
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cvise bc
+          cvise --version
+
+      - name: Build reprocut
+        run: cargo build --release --locked -p reprocut --bin reprocut
+
+      - name: Run the comparison
+        run: bash scripts/benchmark/run.sh "${{ runner.temp }}/benchmark"
+
+      - name: Publish the comparison
+        run: |
+          {
+            echo '## Reduction head-to-head'
+            echo
+            echo '```'
+            python3 -c "
+          import json
+          d = json.load(open(r'${{ runner.temp }}/benchmark/comparison.json'))
+          o = d['original']
+          print(f\"original  {o['bytes']:>10,}{o['lines']:>8,}{o['tokens']:>9,}\")
+          print(f\"{'tool':<10}{'bytes':>10}{'lines':>8}{'tokens':>9}{'oracle':>8}{'seconds':>9}\")
+          for r in d['results']:
+              print(f\"{r['tool']:<10}{r['bytes']:>10,}{r['lines']:>8,}{r['tokens']:>9,}{r['oracle_calls']:>8,}{r['seconds']:>9.1f}\")
+          print()
+          print('drift:', d['reprocut_diagnostic_drift'])
+          "
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: reducer-comparison
+          path: ${{ runner.temp }}/benchmark
+          retention-days: 14
