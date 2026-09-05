@@ -35,9 +35,7 @@ def run_against(log: str, exit_code: int) -> str:
         stub.mkdir()
         shutil.copyfile(FIXTURES / log, root / "captured.log")
         (stub / "cargo").write_text(
-            "#!/usr/bin/env bash\n"
-            f"cat {root.as_posix()}/captured.log\n"
-            f"exit {exit_code}\n",
+            f"#!/usr/bin/env bash\ncat {root.as_posix()}/captured.log\nexit {exit_code}\n",
             encoding="utf-8",
         )
         (stub / "cargo").chmod(0o755)

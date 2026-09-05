@@ -47,6 +47,7 @@ def tool_available(tool: str) -> tuple[bool, str]:
             return False, "not installed (pip install shrinkray)"
         try:
             import resource
+
             return True, "installed"
         except ImportError:
             return False, "unavailable (POSIX only: missing resource module on Windows)"
@@ -63,19 +64,59 @@ def command(tool: str, work: Path) -> list[str] | None:
         return None
 
     if tool == "picire":
-        return ["picire", "-i", "case.py", "--test", str(TEST_BAT), "-o", "out", "-j", "1", "--quiet"]
+        return [
+            "picire",
+            "-i",
+            "case.py",
+            "--test",
+            str(TEST_BAT),
+            "-o",
+            "out",
+            "-j",
+            "1",
+            "--quiet",
+        ]
     if tool == "picireny":
-        return ["picireny", "-i", "case.py", "--test", str(TEST_BAT), "-o", "out", "-j", "1", "--quiet"]
+        return [
+            "picireny",
+            "-i",
+            "case.py",
+            "--test",
+            str(TEST_BAT),
+            "-o",
+            "out",
+            "-j",
+            "1",
+            "--quiet",
+        ]
     if tool == "shrinkray":
         return ["shrinkray", "--parallelism", "1", str(TEST_BAT), "case.py"]
     if tool == "reprocut":
         return [
-            str(REPROCUT), "reduce",
-            "--root", "source", "--output", "output", "--jobs", "1",
-            "--ecosystem", "none", "--prepare", "none",
-            "--oracle-stream", "combined", "--oracle-mode", "regex",
-            "--failure-regex", "^BENCHMARK: the injected diagnostic is present$",
-            "--max-duration-secs", str(BUDGET), "--", str(TEST_BAT), "case.py"
+            str(REPROCUT),
+            "reduce",
+            "--root",
+            "source",
+            "--output",
+            "output",
+            "--jobs",
+            "1",
+            "--ecosystem",
+            "none",
+            "--prepare",
+            "none",
+            "--oracle-stream",
+            "combined",
+            "--oracle-mode",
+            "regex",
+            "--failure-regex",
+            "BENCHMARK: the injected diagnostic is present",
+            "--restart",
+            "--max-duration-secs",
+            str(BUDGET),
+            "--",
+            str(TEST_BAT),
+            "case.py",
         ]
     return None
 
@@ -177,9 +218,9 @@ def run(tool: str, case: Path, work: Path) -> dict:
     if tool == "reprocut":
         reduction = home / "output" / "reduction.json"
         if reduction.exists():
-            record["diagnostic_drift"] = json.loads(
-                reduction.read_text(encoding="utf-8")
-            )["failure"].get("diagnostic_drift")
+            record["diagnostic_drift"] = json.loads(reduction.read_text(encoding="utf-8"))[
+                "failure"
+            ].get("diagnostic_drift")
     return record
 
 
@@ -206,24 +247,38 @@ def main() -> int:
     print("=" * 95)
     print(" PYTHON REDUCTION ARENA: HEAD-TO-HEAD BENCHMARK")
     print("=" * 95)
-    print(f"original  bytes: {original['bytes']:>8,} | lines: {original['lines']:>5,} | tokens: {original['tokens']:>6,}")
+    print(
+        f"original  bytes: {original['bytes']:>8,} | lines: {original['lines']:>5,} | tokens: {original['tokens']:>6,}"
+    )
     print("-" * 95)
-    print(f"{'Tool':<12}{'Bytes':>9}{'Lines':>8}{'Tokens':>9}{'Oracle':>9}{'Seconds':>10}{'Status / Reason':>35}")
+    print(
+        f"{'Tool':<12}{'Bytes':>9}{'Lines':>8}{'Tokens':>9}{'Oracle':>9}{'Seconds':>10}{'Status / Reason':>35}"
+    )
     print("-" * 95)
 
     for row in rows:
         if not row.get("available"):
-            print(f"{row['tool']:<12}{'--':>9}{'--':>8}{'--':>9}{'--':>9}{'--':>10}{row.get('reason', 'unavailable'):>35}")
+            print(
+                f"{row['tool']:<12}{'--':>9}{'--':>8}{'--':>9}{'--':>9}{'--':>10}{row.get('reason', 'unavailable'):>35}"
+            )
         elif not row.get("produced_output"):
-            print(f"{row['tool']:<12}{'no output':>26}{row['oracle_calls']:>9,}{row['seconds']:>10.1f}{'Failed to produce output':>35}")
+            print(
+                f"{row['tool']:<12}{'no output':>26}{row['oracle_calls']:>9,}{row['seconds']:>10.1f}{'Failed to produce output':>35}"
+            )
         else:
-            bug_stat = "Bug Kept (0 novel)" if row.get("reproduced_original_bug") else "BUG DRIFTED/LOST"
-            print(f"{row['tool']:<12}{row['bytes']:>9,}{row['lines']:>8,}{row['tokens']:>9,}{row['oracle_calls']:>9,}{row['seconds']:>10.1f}{bug_stat:>35}")
+            bug_stat = (
+                "Bug Kept (0 novel)" if row.get("reproduced_original_bug") else "BUG DRIFTED/LOST"
+            )
+            print(
+                f"{row['tool']:<12}{row['bytes']:>9,}{row['lines']:>8,}{row['tokens']:>9,}{row['oracle_calls']:>9,}{row['seconds']:>10.1f}{bug_stat:>35}"
+            )
 
     drift = next((r.get("diagnostic_drift") for r in rows if r["tool"] == "reprocut"), None)
     print("=" * 95)
     if drift is not None:
-        print(f"ReproCut drift report: {drift['novel_lines']} novel lines of {drift['final_lines']} (reportable: {drift['reportable']})")
+        print(
+            f"ReproCut drift report: {drift['novel_lines']} novel lines of {drift['final_lines']} (reportable: {drift['reportable']})"
+        )
     print()
     return 0
 

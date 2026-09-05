@@ -6,7 +6,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-SAMPLE_CODE = """"""Realistic data processing and invoice calculation module with realistic dead baggage."""
+SAMPLE_CODE = """# Realistic data processing and invoice calculation module with dead baggage.
 from __future__ import annotations
 
 import datetime
@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 
 
 class CustomerProfile:
-    """Customer account representation (dead baggage)."""
+    # Customer account representation (dead baggage).
     def __init__(self, customer_id: str, email: str, tier: str = "standard"):
         self.customer_id = customer_id
         self.email = email
@@ -29,7 +29,7 @@ class CustomerProfile:
 
 
 class DiscountEngine:
-    """Tiered discount computation helper (dead baggage)."""
+    # Tiered discount computation helper (dead baggage).
     def __init__(self, promo_code: Optional[str] = None):
         self.promo_code = promo_code
 
@@ -42,20 +42,20 @@ class DiscountEngine:
 
 
 def format_currency_output(amount: Decimal, symbol: str = "$") -> str:
-    """Format numeric amount as localized currency string (dead baggage)."""
+    # Format numeric amount as localized currency string (dead baggage).
     rounded = round(float(amount), 2)
     return f"{symbol}{rounded:,.2f}"
 
 
 def calculate_applicable_sales_tax(subtotal: Decimal, state: str) -> Decimal:
-    """Multi-branch sales tax lookup (dead baggage)."""
+    # Multi-branch sales tax lookup (dead baggage).
     rates = {"CA": Decimal("0.0825"), "NY": Decimal("0.0800"), "TX": Decimal("0.0625")}
     rate = rates.get(state, Decimal("0.0500"))
     return subtotal * rate
 
 
 def process_order_batch(records: List[Dict[str, Any]]) -> List[str]:
-    """Batch pipeline processor (dead baggage)."""
+    # Batch pipeline processor (dead baggage).
     summaries = []
     for record in records:
         customer = CustomerProfile(record["user"], record.get("email", "unknown"))
@@ -64,11 +64,8 @@ def process_order_batch(records: List[Dict[str, Any]]) -> List[str]:
 
 
 def compute_final_invoice(order_data: Dict[str, Any]) -> Decimal:
-    """Compute total invoice amount.
-
-    INJECTED DEFECT: shipping_fee is provided as an unparsed str rather than Decimal,
-    triggering a deterministic TypeError in Python runtime.
-    """
+    # INJECTED DEFECT: shipping_fee is provided as an unparsed str rather than Decimal,
+    # triggering a deterministic TypeError in Python runtime.
     base_subtotal = Decimal(str(order_data["subtotal"]))
     shipping_charge = order_data["shipping_fee"]  # String!
     # Injected failure site:
@@ -94,7 +91,9 @@ def main():
     work.mkdir(parents=True, exist_ok=True)
     target = work / "original.py"
     target.write_text(SAMPLE_CODE, encoding="utf-8")
-    print(f"Prepared Python benchmark case at {target} ({len(SAMPLE_CODE)} bytes, {len(SAMPLE_CODE.splitlines())} lines)")
+    print(
+        f"Prepared Python benchmark case at {target} ({len(SAMPLE_CODE)} bytes, {len(SAMPLE_CODE.splitlines())} lines)"
+    )
     return 0
 
 

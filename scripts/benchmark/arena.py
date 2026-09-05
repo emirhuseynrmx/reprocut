@@ -38,22 +38,52 @@ def command(tool: str, work: Path) -> list[str] | None:
     if tool == "perses":
         if not PERSES.exists():
             return None
-        return ["java", "-jar", str(PERSES), "--test-script", str(TEST),
-                "--input-file", "case.c", "--output-dir", "."]
+        return [
+            "java",
+            "-jar",
+            str(PERSES),
+            "--test-script",
+            str(TEST),
+            "--input-file",
+            "case.c",
+            "--output-dir",
+            ".",
+        ]
     if tool == "reprocut":
-        return [str(ROOT / "target" / "release" / "reprocut"), "reduce",
-                "--root", "source", "--output", "output", "--jobs", "1",
-                "--ecosystem", "none", "--prepare", "none",
-                "--oracle-stream", "combined", "--oracle-mode", "regex",
-                "--failure-regex", "BENCHMARK: the injected diagnostic is present",
-                "--max-duration-secs", str(BUDGET), "--", str(TEST)]
+        return [
+            str(ROOT / "target" / "release" / "reprocut"),
+            "reduce",
+            "--root",
+            "source",
+            "--output",
+            "output",
+            "--jobs",
+            "1",
+            "--ecosystem",
+            "none",
+            "--prepare",
+            "none",
+            "--oracle-stream",
+            "combined",
+            "--oracle-mode",
+            "regex",
+            "--failure-regex",
+            "BENCHMARK: the injected diagnostic is present",
+            "--max-duration-secs",
+            str(BUDGET),
+            "--",
+            str(TEST),
+        ]
     return None
 
 
 def measure(path: Path) -> dict:
     text = path.read_text(errors="replace")
-    return {"bytes": path.stat().st_size, "lines": len(text.splitlines()),
-            "tokens": len(TOKEN.findall(text))}
+    return {
+        "bytes": path.stat().st_size,
+        "lines": len(text.splitlines()),
+        "tokens": len(TOKEN.findall(text)),
+    }
 
 
 def run(tool: str, case: Path, include: Path, work: Path) -> dict:
@@ -72,18 +102,28 @@ def run(tool: str, case: Path, include: Path, work: Path) -> dict:
 
     counter = home / "counter"
     counter.write_bytes(b"")
-    environment = dict(os.environ, BENCHMARK_COUNTER=str(counter),
-                       BENCHMARK_FILE="case.c", BENCHMARK_INCLUDE=str(include),
-                       BENCHMARK_POLARITY="failing" if tool == "reprocut" else "interesting")
+    environment = dict(
+        os.environ,
+        BENCHMARK_COUNTER=str(counter),
+        BENCHMARK_FILE="case.c",
+        BENCHMARK_INCLUDE=str(include),
+        BENCHMARK_POLARITY="failing" if tool == "reprocut" else "interesting",
+    )
     # A tool that runs out of budget has told us something; it has not earned the right to
     # end the run for the others.
     start = time.monotonic()
     timed_out = False
     with (home / "tool.log").open("wb") as log:
         try:
-            completed = subprocess.run(argv, cwd=home, stdout=log,
-                                       stderr=subprocess.STDOUT, env=environment,
-                                       timeout=BUDGET + 120, check=False)
+            completed = subprocess.run(
+                argv,
+                cwd=home,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                env=environment,
+                timeout=BUDGET + 120,
+                check=False,
+            )
             code = completed.returncode
         except subprocess.TimeoutExpired:
             timed_out, code = True, None
@@ -97,21 +137,32 @@ def run(tool: str, case: Path, include: Path, work: Path) -> dict:
         found = sorted((home / "output").rglob("case.c")) if (home / "output").exists() else []
         reduced = found[0] if found else None
     if reduced is None or not reduced.exists():
-        return {"tool": tool, "available": True, "produced_output": False,
-                "exit_code": code, "timed_out": timed_out,
-                "seconds": round(elapsed, 1),
-                "oracle_calls": counter.stat().st_size}
+        return {
+            "tool": tool,
+            "available": True,
+            "produced_output": False,
+            "exit_code": code,
+            "timed_out": timed_out,
+            "seconds": round(elapsed, 1),
+            "oracle_calls": counter.stat().st_size,
+        }
 
-    record = {"tool": tool, "available": True, "produced_output": True,
-              "exit_code": code, "timed_out": timed_out,
-              "seconds": round(elapsed, 1),
-              "oracle_calls": counter.stat().st_size}
+    record = {
+        "tool": tool,
+        "available": True,
+        "produced_output": True,
+        "exit_code": code,
+        "timed_out": timed_out,
+        "seconds": round(elapsed, 1),
+        "oracle_calls": counter.stat().st_size,
+    }
     record.update(measure(reduced))
     if tool == "reprocut":
         reduction = home / "output" / "reduction.json"
         if reduction.exists():
-            record["diagnostic_drift"] = json.loads(
-                reduction.read_text())["failure"].get("diagnostic_drift")
+            record["diagnostic_drift"] = json.loads(reduction.read_text())["failure"].get(
+                "diagnostic_drift"
+            )
     return record
 
 
@@ -130,17 +181,22 @@ def report(original: dict, rows: list[dict]) -> None:
             print(f"{row['tool']:<11}{'not installed':>37}")
         elif not row.get("produced_output"):
             label = "out of budget" if row.get("timed_out") else "no output"
-            print(f"{row['tool']:<11}{label:>28}{row['oracle_calls']:>9,}"
-                  f"{row['seconds']:>9.1f}")
+            print(f"{row['tool']:<11}{label:>28}{row['oracle_calls']:>9,}{row['seconds']:>9.1f}")
         else:
             mark = " (budget)" if row.get("timed_out") else ""
-            print(f"{row['tool']:<11}{row['bytes']:>9,}{row['lines']:>9,}{row['tokens']:>10,}"
-                  f"{row['oracle_calls']:>9,}{row['seconds']:>9.1f}{mark}")
+            print(
+                f"{row['tool']:<11}{row['bytes']:>9,}{row['lines']:>9,}{row['tokens']:>10,}"
+                f"{row['oracle_calls']:>9,}{row['seconds']:>9.1f}{mark}"
+            )
     drift = next((r.get("diagnostic_drift") for r in rows if r["tool"] == "reprocut"), None)
     print()
-    print("reprocut drift:", "not measured" if drift is None else
-          f"{drift['novel_lines']} novel of {drift['final_lines']} "
-          f"(reportable: {drift['reportable']})")
+    print(
+        "reprocut drift:",
+        "not measured"
+        if drift is None
+        else f"{drift['novel_lines']} novel of {drift['final_lines']} "
+        f"(reportable: {drift['reportable']})",
+    )
 
 
 def main() -> int:
@@ -149,10 +205,13 @@ def main() -> int:
     work = Path(sys.argv[1]).resolve()
     case, include = work / "original.c", work / "include"
     original = measure(case)
-    rows = [run(tool, case, include, work) for tool in
-            ("cvise", "creduce", "shrinkray", "perses", "reprocut")]
+    rows = [
+        run(tool, case, include, work)
+        for tool in ("cvise", "creduce", "shrinkray", "perses", "reprocut")
+    ]
     (work / "arena.json").write_text(
-        json.dumps({"original": original, "results": rows}, indent=2) + chr(10))
+        json.dumps({"original": original, "results": rows}, indent=2) + chr(10)
+    )
     report(original, rows)
     return 0
 
