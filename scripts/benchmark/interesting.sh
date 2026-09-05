@@ -8,7 +8,7 @@ set -uo pipefail
 file="${BENCHMARK_FILE:-case.c}"
 printf 'x' >>"${BENCHMARK_COUNTER:?BENCHMARK_COUNTER is required}"
 
-output="$(gcc -fsyntax-only -Werror=int-conversion "$file" 2>&1)"
+output="$(gcc -fsyntax-only -Werror=int-conversion -I"${BENCHMARK_INCLUDE:-.}" "$file" 2>&1)"
 if printf '%s\n' "$output" | grep -q "makes pointer from integer without a cast"; then
   echo "BENCHMARK: the injected diagnostic is present"
   exit 0

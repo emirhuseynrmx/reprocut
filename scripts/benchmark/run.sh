@@ -14,9 +14,16 @@ BUDGET_SECONDS=${BENCHMARK_BUDGET_SECONDS:-900}
 mkdir -p "$WORK"
 cd "$WORK"
 
+# The header is fixed context, not part of the reduction: both tools are asked to reduce
+# exactly one file, so neither gets a file tree to collapse.
+mkdir -p include
+curl -fsSL --retry 5 \
+  "https://raw.githubusercontent.com/lvandeve/lodepng/${LODEPNG_SHA}/lodepng.h" \
+  -o include/lodepng.h
 curl -fsSL --retry 5 \
   "https://raw.githubusercontent.com/lvandeve/lodepng/${LODEPNG_SHA}/lodepng.cpp" \
   -o original.c
+export BENCHMARK_INCLUDE="$PWD/include"
 cp original.c clean.c
 cat >>original.c <<'C'
 
@@ -29,7 +36,7 @@ C
 
 # A benchmark on a file that already fails for other reasons measures nothing, so prove
 # the base compiles clean before the injection is what makes it fail.
-if ! gcc -fsyntax-only -Werror=int-conversion clean.c 2>clean-errors.log; then
+if ! gcc -fsyntax-only -Werror=int-conversion -I include clean.c 2>clean-errors.log; then
   echo "base file does not compile cleanly; the benchmark would be meaningless" >&2
   head -20 clean-errors.log >&2
   exit 2
@@ -70,6 +77,7 @@ cp ../original.c case.c
 : >counter
 start=$(date +%s.%N)
 BENCHMARK_COUNTER="$PWD/counter" BENCHMARK_FILE=case.c \
+  BENCHMARK_INCLUDE="$BENCHMARK_INCLUDE" \
   timeout "${BUDGET_SECONDS}s" cvise --n 1 "$ROOT/scripts/benchmark/interesting.sh" case.c \
   >cvise.log 2>&1 || echo "cvise exited $?" >>cvise.log
 elapsed=$(echo "$(date +%s.%N) - $start" | bc)
@@ -81,6 +89,7 @@ rm -rf reprocut-src reprocut-out && mkdir reprocut-src && cp original.c reprocut
 : >reprocut-counter
 start=$(date +%s.%N)
 BENCHMARK_COUNTER="$PWD/reprocut-counter" BENCHMARK_FILE=case.c \
+  BENCHMARK_INCLUDE="$BENCHMARK_INCLUDE" \
   timeout "$((BUDGET_SECONDS + 60))s" "$ROOT/target/release/reprocut" reduce \
   --root reprocut-src \
   --output reprocut-out \
