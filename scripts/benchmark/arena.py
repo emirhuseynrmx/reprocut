@@ -39,13 +39,13 @@ def command(tool: str, work: Path) -> list[str] | None:
         if not PERSES.exists():
             return None
         return ["java", "-jar", str(PERSES), "--test-script", str(TEST),
-                "--input-file", "case.c", "--in-place", "true"]
+                "--input-file", "case.c", "--output-dir", "."]
     if tool == "reprocut":
         return [str(ROOT / "target" / "release" / "reprocut"), "reduce",
                 "--root", "source", "--output", "output", "--jobs", "1",
                 "--ecosystem", "none", "--prepare", "none",
                 "--oracle-stream", "combined", "--oracle-mode", "regex",
-                "--failure-regex", "^BENCHMARK: the injected diagnostic is present$",
+                "--failure-regex", "BENCHMARK: the injected diagnostic is present",
                 "--max-duration-secs", str(BUDGET), "--", str(TEST)]
     return None
 
@@ -90,6 +90,9 @@ def run(tool: str, case: Path, include: Path, work: Path) -> dict:
     elapsed = time.monotonic() - start
 
     reduced = home / "case.c"
+    if tool == "perses":
+        produced = sorted(home.rglob("case.c"))
+        reduced = produced[-1] if produced else None
     if tool == "reprocut":
         found = sorted((home / "output").rglob("case.c")) if (home / "output").exists() else []
         reduced = found[0] if found else None
