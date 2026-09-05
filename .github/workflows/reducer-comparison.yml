@@ -2,6 +2,10 @@ name: Reducer comparison
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - scripts/benchmark/**
+      - .github/workflows/reducer-comparison.yml
 
 permissions:
   contents: read
