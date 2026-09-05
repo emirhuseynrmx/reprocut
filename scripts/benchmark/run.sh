@@ -103,7 +103,15 @@ BENCHMARK_COUNTER="$PWD/reprocut-counter" BENCHMARK_FILE=case.c \
   -- "$ROOT/scripts/benchmark/interesting.sh" \
   >reprocut.log 2>&1 || echo "reprocut exited $?" >>reprocut.log
 elapsed=$(echo "$(date +%s.%N) - $start" | bc)
-measure reprocut reprocut-out/project/case.c reprocut-counter "$elapsed"
+# The engine chooses where under the output directory the reduced tree lands, so find the
+# file rather than assume the layout.
+reduced="$(find reprocut-out -name case.c -type f | head -1)"
+if [ -z "$reduced" ]; then
+  echo "reprocut produced no reduced file; see reprocut.log" >&2
+  tail -20 reprocut.log >&2
+  exit 3
+fi
+measure reprocut "$reduced" reprocut-counter "$elapsed"
 
 python3 - <<'PY'
 import json
