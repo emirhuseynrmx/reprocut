@@ -10,10 +10,14 @@
 *.so
 __pycache__/
 
-# Internal working documents: implementation plans, specs, and launch drafts.
-# Not published documentation.
+# Internal working documents: implementation plans, specs, design notes,
+# dated verification logs, and launch drafts. Not published documentation.
 docs/superpowers/
 docs/launch/
+docs/adr/
+docs/design/
+docs/verification/
+docs/REPROCUT_TECHNICAL_SPECIFICATION.md
 
 # Local build and scratch output.
 .tmp/
