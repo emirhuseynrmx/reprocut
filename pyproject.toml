@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "reprocut"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 description = "Shrink failing projects without changing the failure"
 readme = "README.md"
 requires-python = ">=3.9"

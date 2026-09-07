@@ -3,14 +3,14 @@ name: Release candidate
 on:
   workflow_dispatch:
   push:
-    tags: ["v0.1.0"]
+    tags: ["v0.1.0-alpha.1"]
 
 permissions:
   contents: read
 
 env:
   CARGO_TERM_COLOR: always
-  REPROCUT_VERSION: "0.1.0"
+  REPROCUT_VERSION: "0.1.0-alpha.1"
 
 jobs:
   lockfile:
@@ -185,7 +185,7 @@ jobs:
 
   publish-github-release:
     name: Publish manually approved GitHub Release
-    if: github.ref_type == 'tag' && github.ref_name == 'v0.1.0'
+    if: github.ref_type == 'tag' && github.ref_name == 'v0.1.0-alpha.1'
     needs: aggregate
     runs-on: ubuntu-latest
     environment: release

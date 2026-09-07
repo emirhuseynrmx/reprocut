@@ -15,7 +15,7 @@ from toml_compat import load_toml_module
 
 tomllib = load_toml_module()
 
-VERSION = "0.1.0"
+VERSION = "0.1.0-alpha.1"
 REQUIRED_TARGETS = {
     "x86_64-unknown-linux-gnu",
     "x86_64-unknown-linux-musl",
@@ -66,7 +66,9 @@ class Check:
 
 def static_checks(root: Path) -> list[Check]:
     checks: list[Check] = []
-    checks.append(check("version", versions_are_consistent(root), "all package surfaces are 0.1.0"))
+    checks.append(
+        check("version", versions_are_consistent(root), f"all package surfaces are {VERSION}")
+    )
 
     evidence = json.loads((root / "demo/result/reduction.json").read_text(encoding="utf-8"))
     demo_ok = (

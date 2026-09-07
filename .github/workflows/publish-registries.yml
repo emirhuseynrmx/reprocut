@@ -6,21 +6,21 @@ on:
       tag:
         description: "Existing immutable release tag"
         required: true
-        default: "v0.1.0"
+        default: "v0.1.0-alpha.1"
       registry:
         description: "Registry handoff to execute"
         type: choice
         options: [crates-io, pypi]
         required: true
       confirmation:
-        description: "Type PUBLISH_REPROCUT_0_1_0"
+        description: "Type PUBLISH_REPROCUT_0_1_0_ALPHA_1"
         required: true
 
 permissions:
   contents: read
 
 env:
-  REPROCUT_VERSION: "0.1.0"
+  REPROCUT_VERSION: "0.1.0-alpha.1"
 
 jobs:
   guard:
@@ -30,7 +30,7 @@ jobs:
       - name: Require exact version, tag, and confirmation
         run: |
           test "${{ inputs.tag }}" = "v${REPROCUT_VERSION}"
-          test "${{ inputs.confirmation }}" = "PUBLISH_REPROCUT_0_1_0"
+          test "${{ inputs.confirmation }}" = "PUBLISH_REPROCUT_0_1_0_ALPHA_1"
 
   publish-crates:
     name: Publish crates.io dependency chain

@@ -1,6 +1,6 @@
 [package]
 name = "reprocut-report"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 description = "Machine-readable evidence and self-contained reports for ReproCut"
 edition.workspace = true
 rust-version.workspace = true
@@ -12,7 +12,7 @@ repository.workspace = true
 path = "src/lib.rs"
 
 [dependencies]
-reprocut-core = { version = "0.1.0", path = "../reprocut-core" }
+reprocut-core = { version = "0.1.0-alpha.1", path = "../reprocut-core" }
 serde.workspace = true
 serde_json.workspace = true
 

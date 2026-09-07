@@ -9,7 +9,7 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-reprocut-workspace = { path = "../reprocut-workspace", version = "0.1.0" }
+reprocut-workspace = { path = "../reprocut-workspace", version = "0.1.0-alpha.1" }
 serde_json.workspace = true
 thiserror.workspace = true
 toml_edit.workspace = true

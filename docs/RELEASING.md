@@ -30,8 +30,8 @@ The binary workflow is tag-driven, so the signed tag is created only after the
 audited commit is final and before either registry is published:
 
 ```console
-git tag -s v0.1.0 -m "ReproCut 0.1.0"
-git push origin v0.1.0
+git tag -s v0.1.0-alpha.1 -m "ReproCut 0.1.0"
+git push origin v0.1.0-alpha.1
 ```
 
 The tag triggers six native archives, real-failure smoke tests, deterministic
@@ -49,15 +49,15 @@ execute masks. A missing gate is not waivable release evidence.
 
 Run **Publish registries (manual)** with:
 
-- tag: `v0.1.0`
+- tag: `v0.1.0-alpha.1`
 - registry: `crates-io`
-- confirmation: `PUBLISH_REPROCUT_0_1_0`
+- confirmation: `PUBLISH_REPROCUT_0_1_0_ALPHA_1`
 
 The protected `crates-io` environment holds the least-scope
 `CARGO_REGISTRY_TOKEN`. Before the first upload, the workflow reruns format,
 Clippy, and tests and performs a verified `cargo package` for every publishable
 crate. It then publishes in dependency order and performs a clean
-`cargo install reprocut --version 0.1.0 --locked`:
+`cargo install reprocut --version 0.1.0-alpha.1 --locked`:
 
 ```text
 reprocut-core → reprocut-report → reprocut-oci
@@ -105,7 +105,7 @@ credential. No long-lived PyPI token is stored.
 After publication, validate a clean supported environment:
 
 ```console
-python -m pip install reprocut==0.1.0
+python -m pip install reprocut==0.1.0-alpha.1
 python -c "import reprocut; print(reprocut.BACKEND)"
 reprocut-py --help
 ```
