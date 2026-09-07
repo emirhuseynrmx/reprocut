@@ -382,8 +382,6 @@ node --test editors/vscode/test/*.test.js
 node --test gallery/test/*.test.js
 ```
 
-See [RELEASING.md](docs/RELEASING.md) for release gates and publication order.
-
 ## Prior art
 
 Test-case reduction is a well-established field, and ReproCut is not an attempt

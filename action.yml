@@ -239,7 +239,7 @@ runs:
               ["", "> The wall-time budget elapsed with candidates unexplored. Every retained file passed final verification, but a longer budget may reduce further."]
              else [] end)
           + (if $uploaded == "true" then
-              ["", "Download the verified artifact from this run: **\($artifact_name)**.", ""]
+              ["", "Download the verified artifact from this run: **\($artifact_name)**. Extract the tar inside it, then `reprocut verify` the directory.", ""]
              else
               ["", "The verified artifact was left on the runner; uploading is disabled for this run.", ""]
              end)
@@ -249,12 +249,32 @@ runs:
 
     # Uploading is what makes the result outlive the runner, so it happens
     # before the comment, which is the step most likely to be refused.
-    - name: Upload the verified artifact
+    #
+    # The upload carries a tar archive rather than the directory. `reproduce.sh`
+    # is written executable and the manifest records that, but the artifact
+    # service does not preserve the bit: uploading the directory produces a
+    # download that `reprocut verify` rejects, which defeats the point of
+    # sending it to anyone. A tar keeps the mode, so what arrives is what was
+    # verified.
+    - name: Archive the verified artifact
+      id: archive
       if: steps.reduce.outputs.artifact != '' && inputs.upload == 'true'
+      shell: bash
+      env:
+        REPROCUT_ARTIFACT: ${{ steps.reduce.outputs.artifact }}
+        ARCHIVE_PATH: ${{ runner.temp }}/${{ inputs.artifact-name }}.tar.gz
+      run: |
+        set -euo pipefail
+        parent="$(cd "$(dirname "$REPROCUT_ARTIFACT")" && pwd)"
+        tar -czf "$ARCHIVE_PATH" -C "$parent" "$(basename "$REPROCUT_ARTIFACT")"
+        echo "path=$ARCHIVE_PATH" >> "$GITHUB_OUTPUT"
+
+    - name: Upload the verified artifact
+      if: steps.archive.outputs.path != ''
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: ${{ inputs.artifact-name }}
-        path: ${{ steps.reduce.outputs.artifact }}
+        path: ${{ steps.archive.outputs.path }}
         if-no-files-found: error
 
     # A pull request from a fork gets a read-only token, so commenting fails

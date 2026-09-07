@@ -17,6 +17,7 @@ docs/launch/
 docs/adr/
 docs/design/
 docs/verification/
+docs/RELEASING.md
 docs/REPROCUT_TECHNICAL_SPECIFICATION.md
 
 # Local build and scratch output.

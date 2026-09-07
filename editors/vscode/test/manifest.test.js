@@ -17,7 +17,13 @@ test("extension is a protocol-only VS Code and Cursor surface", () => {
     "reprocut.openIssue",
     "reprocut.openReducedProject",
   ]);
-  assert.equal(manifest.version, "0.1.0");
+  // The extension ships with the release, so it carries the release's version.
+  // Reading it from the workspace manifest keeps the two from drifting apart,
+  // which a literal here did not.
+  const workspace = fs.readFileSync(path.join(root, "..", "..", "Cargo.toml"), "utf8");
+  const version = workspace.match(/^version = "(.+)"$/m);
+  assert.ok(version, "workspace manifest declares a version");
+  assert.equal(manifest.version, version[1]);
   assert.equal(manifest.private, true);
 
   const sources = fs

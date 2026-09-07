@@ -310,7 +310,11 @@ jobs:
           name: reprocut-action-result
           path: ${{ runner.temp }}/action-download
       - name: Verify the downloaded artifact on its own
-        run: reprocut verify "${{ runner.temp }}/action-download"
+        run: |
+          set -euo pipefail
+          cd "${{ runner.temp }}/action-download"
+          tar -xzf reprocut-action-result.tar.gz
+          reprocut verify action-result
 
   # Every other check verifies an artifact on the machine that produced it, which
   # cannot see a difference that only appears between platforms. This one takes
@@ -340,7 +344,11 @@ jobs:
           path: ${{ runner.temp }}/linux-artifact
       - name: Verify it
         shell: bash
-        run: ./target/release/reprocut verify "${RUNNER_TEMP}/linux-artifact"
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}/linux-artifact"
+          tar -xzf reprocut-action-result.tar.gz
+          "${GITHUB_WORKSPACE}/target/release/reprocut" verify action-result
 
   release-benchmark:
     name: 312-file release benchmark
