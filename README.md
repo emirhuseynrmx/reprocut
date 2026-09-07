@@ -130,7 +130,7 @@ The Python package provides native failure-oracle bindings, evaluation policy,
 the typed client, and the `reprocut-py` console script:
 
 ```console
-python -m pip install reprocut==0.1.0-alpha.1
+python -m pip install reprocut==0.1.0a1
 ```
 
 The Python package does not bundle the Rust reducer CLI. Full project reduction

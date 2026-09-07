@@ -482,6 +482,7 @@ fn verify_completed_artifact(arguments: &VerifyArgs) -> Result<(), CliError> {
                 "artifact_id": verified.artifact_id(),
                 "artifact_manifest_schema": reprocut_report::ARTIFACT_MANIFEST_SCHEMA_VERSION,
                 "verified": true,
+                "checked_executable_masks": verified.checked_executable_masks(),
             })
         );
     } else {

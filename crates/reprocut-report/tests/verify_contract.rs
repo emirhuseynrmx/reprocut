@@ -34,6 +34,23 @@ fn complete_artifact_is_structurally_verified() {
 }
 
 #[test]
+fn verification_declares_whether_it_could_read_execute_bits() {
+    // An artifact produced on Linux records execute bits that Windows cannot
+    // observe. Reporting it as changed there would be wrong, and quietly
+    // passing would claim more than was checked, so the result carries which
+    // one happened.
+    let fixture = artifact_fixture();
+
+    let verified = verify_artifact(fixture.path()).expect("valid artifact");
+
+    assert_eq!(
+        verified.checked_executable_masks(),
+        reprocut_report::OBSERVES_EXECUTABLE_MASK
+    );
+    assert_eq!(cfg!(unix), reprocut_report::OBSERVES_EXECUTABLE_MASK);
+}
+
+#[test]
 fn verifier_rejects_byte_member_set_ledger_and_derived_output_tampering() {
     let fixture = artifact_fixture();
     fs::write(

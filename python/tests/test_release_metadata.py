@@ -174,7 +174,9 @@ def test_registry_readme_links_and_install_contract_are_release_stable() -> None
     assert "/raw/v0.1.0-alpha.1/" not in readme
     assert "packages have not been published" not in readme
     assert "cargo install reprocut --version 0.1.0-alpha.1 --locked" in readme
-    assert "python -m pip install reprocut==0.1.0-alpha.1" in readme
+    # Python packaging normalizes the SemVer prerelease to PEP 440, so the
+    # wheel and the sdist are named 0.1.0a1 and the install command must match.
+    assert "python -m pip install reprocut==0.1.0a1" in readme
     assert "The Python package does not bundle the Rust reducer CLI." in readme
 
 

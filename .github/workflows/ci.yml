@@ -415,7 +415,7 @@ jobs:
           python -m pip wheel \
             --no-deps \
             --no-cache-dir \
-            "dist/sdist/reprocut-0.1.0-alpha.1.tar.gz" \
+            "dist/sdist/reprocut-0.1.0a1.tar.gz" \
             --wheel-dir /tmp/reprocut-sdist-wheel
           python -m venv /tmp/reprocut-sdist-smoke
           /tmp/reprocut-sdist-smoke/bin/python -m pip install \

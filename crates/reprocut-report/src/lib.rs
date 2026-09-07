@@ -20,7 +20,10 @@ pub use manifest::{
     ArtifactManifest, ArtifactMember, ManifestError, RetainedEntry, RetainedEntryKind,
     RetainedManifest, ARTIFACT_MANIFEST_SCHEMA_VERSION,
 };
-pub use verify::{build_artifact_manifest, verify_artifact, VerificationError, VerifiedArtifact};
+pub use verify::{
+    build_artifact_manifest, verify_artifact, VerificationError, VerifiedArtifact,
+    OBSERVES_EXECUTABLE_MASK,
+};
 
 /// Exact platform launchers deterministically derived from one argv vector.
 #[derive(Clone, Debug, Eq, PartialEq)]
