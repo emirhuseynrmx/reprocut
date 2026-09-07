@@ -2,8 +2,8 @@
 
 # ReproCut
 
-Turn a failing repository into the smallest project that still fails the same
-way — with evidence that it is the same failure.
+Turn a failing repository into a much smaller project that still fails the same
+way — with evidence that the failure was preserved.
 
 ReproCut removes parts of a failing project while checking that the original
 failure still occurs. It works on a copy, not your checkout. It establishes a
@@ -21,10 +21,10 @@ them.
 The GIF is a tiny onboarding fixture: **18 files to 3**, from **55 lines** and
 **1,669 bytes**, in **24 candidate evaluations**, followed by **3/3 final
 verification runs**. Its
-[evidence](https://github.com/emirhuseynrmx/reprocut/blob/v0.1.0/demo/result/reduction.json),
-[attempt log](https://github.com/emirhuseynrmx/reprocut/blob/v0.1.0/demo/result/attempts.jsonl),
+[evidence](https://github.com/emirhuseynrmx/reprocut/blob/v0.1.0-alpha.1/demo/result/reduction.json),
+[attempt log](https://github.com/emirhuseynrmx/reprocut/blob/v0.1.0-alpha.1/demo/result/attempts.jsonl),
 and
-[HTML report](https://github.com/emirhuseynrmx/reprocut/blob/v0.1.0/demo/result/report.html)
+[HTML report](https://github.com/emirhuseynrmx/reprocut/blob/v0.1.0-alpha.1/demo/result/report.html)
 are checked in. It demonstrates the user flow; it is not a large-project
 benchmark.
 
@@ -81,19 +81,31 @@ Add the action after the step that failed:
   id: tests
   run: cargo test
 
-- uses: emirhuseynrmx/reprocut@v0.1.0
+- uses: emirhuseynrmx/reprocut@v0.1.0-alpha.1
   if: failure() && steps.tests.outcome == 'failure'
   with:
     command: cargo test
     max-duration-seconds: 600
 ```
 
-It downloads the checksummed release binary for the runner, reduces the project
-inside the budget, writes the before/after mass into the job summary, and
-comments on the pull request:
+It downloads the checksummed release binary for the runner, stops starting new
+candidates once the budget elapses, uploads the verified artifact, writes the
+before/after mass into the job summary, and comments on the pull request:
 
 > **1,284 files · 37.4 MB** → **3 files · 11.8 KB**  (99.9% smaller)
 > The minimized project fails the same way.
+
+The artifact is uploaded under `reprocut-result`, so it outlives the runner and
+a reviewer can download it and re-run it. Name it yourself with `artifact-name`
+when one workflow calls the action more than once, or set `upload: false` to
+keep it on the runner. On a pull request from a fork the comment cannot be
+posted; the upload and the job summary are unaffected.
+
+`command` is read as one command line and split on quoting rules, never by the
+runner's shell. Quotes group an argument and are removed, and nothing else is
+touched: `pytest -k "foo or bar" tests/*.py` runs `pytest` with the three
+arguments `-k`, `foo or bar`, and `tests/*.py`, the last still a literal glob
+for the program itself to interpret.
 
 The budget matters in CI. Reduction converges asymptotically, so an unbounded run
 is eventually killed by the job timeout and yields nothing. On a 703-file project
@@ -101,19 +113,24 @@ a two-minute budget reached 93.7% of the original mass removed; an unbounded run
 reached 96.3% after 64 minutes. The budgeted result is fully verified, and its
 evidence records that the budget, not the search, ended it.
 
+The budget bounds the search, not the whole run. Proving the baseline and
+verifying the final snapshot happen either side of it, so a short budget
+finishes later than its own number: a one-second budget took 2.3 seconds end to
+end, a three-second budget 4.0. Set the job timeout with that margin in mind.
+
 ## Quick start
 
 Install the Rust CLI with Cargo 1.85 or newer:
 
 ```console
-cargo install reprocut --version 0.1.0 --locked
+cargo install reprocut --version 0.1.0-alpha.1 --locked
 ```
 
 The Python package provides native failure-oracle bindings, evaluation policy,
 the typed client, and the `reprocut-py` console script:
 
 ```console
-python -m pip install reprocut==0.1.0
+python -m pip install reprocut==0.1.0-alpha.1
 ```
 
 The Python package does not bundle the Rust reducer CLI. Full project reduction
@@ -377,7 +394,7 @@ to beat the tools that defined it.
 | Input | One file | One file | One file | **A whole project** |
 | Languages | C/C++ (deep) | Grammar-driven | Tree-sitter grammars | 8 languages |
 | Build manifests | — | — | — | **Cargo, pyproject, package.json** |
-| Verifiable evidence | — | — | — | **Signed bundle plus `verify`** |
+| Verifiable evidence | — | — | — | **Hash-manifested bundle plus `verify`** |
 | Resumable search | — | — | — | **Crash-safe journal** |
 
 On a single C or C++ translation unit, C-Reduce is the better tool and will

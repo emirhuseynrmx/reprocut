@@ -25,15 +25,28 @@ pub struct DiagnosticDrift {
 impl DiagnosticDrift {
     /// Measures drift between the original failure and the verified minimized failure.
     ///
-    /// Both sides are unions across their repeated observations: a line counts as seen if any
-    /// run printed it, so a flaky line is never mistaken for drift.
+    /// The two sides use opposite operators, and both choices point the same way: toward
+    /// reporting drift only when the evidence for it is unanimous.
+    ///
+    /// The original is the union of its runs. A line the original printed even once is
+    /// something the original can print, so it cannot be novel.
+    ///
+    /// The minimized failure is the intersection of its runs. A line only counts as part of
+    /// what the minimized project prints if every verification run printed it. This is what
+    /// separates drift from noise without a list of patterns to maintain: an elapsed time, a
+    /// progress bar, an object address, a temporary path the normalizer has never heard of —
+    /// all of them differ between runs of the same snapshot, so none of them survives the
+    /// intersection. A genuinely different failure prints its message every time, and does.
+    ///
+    /// The engine already runs both sides repeatedly to prove the failure is stable. This
+    /// reads the noise floor out of those runs rather than assuming what it looks like.
     pub fn measure(
         channel: DiagnosticChannel,
         baselines: &[ExecutionObservation],
         finals: &[&ExecutionObservation],
     ) -> Self {
         let baseline = line_union(channel, baselines.iter());
-        let observed = line_union(channel, finals.iter().copied());
+        let observed = line_intersection(channel, finals.iter().copied());
         let novel = observed.difference(&baseline).cloned().collect::<Vec<_>>();
         Self {
             baseline_lines: baseline.len(),
@@ -49,7 +62,7 @@ impl DiagnosticDrift {
         self.baseline_lines
     }
 
-    /// Returns distinct normalized lines the minimized failure prints.
+    /// Returns distinct normalized lines the minimized failure prints on every run.
     pub const fn final_lines(&self) -> usize {
         self.final_lines
     }
@@ -83,14 +96,42 @@ fn line_union<'a>(
 ) -> BTreeSet<String> {
     let mut lines = BTreeSet::new();
     for observation in observations {
-        for stream in streams(channel) {
-            let bytes = match stream {
-                DiagnosticChannel::Stdout => observation.stdout(),
-                DiagnosticChannel::Stderr => observation.stderr(),
-                DiagnosticChannel::Auto | DiagnosticChannel::Combined => continue,
-            };
-            lines.extend(normalize_bytes(bytes).lines().map(str::to_owned));
-        }
+        lines.extend(observation_lines(channel, observation));
+    }
+    lines
+}
+
+/// Lines every observation printed.
+///
+/// An empty iterator yields an empty set, which reports no drift. That is the right answer
+/// for the only way it can happen: no final observation to compare against.
+fn line_intersection<'a>(
+    channel: DiagnosticChannel,
+    observations: impl Iterator<Item = &'a ExecutionObservation>,
+) -> BTreeSet<String> {
+    let mut shared: Option<BTreeSet<String>> = None;
+    for observation in observations {
+        let lines = observation_lines(channel, observation);
+        shared = Some(match shared {
+            None => lines,
+            Some(previous) => previous.intersection(&lines).cloned().collect(),
+        });
+    }
+    shared.unwrap_or_default()
+}
+
+fn observation_lines(
+    channel: DiagnosticChannel,
+    observation: &ExecutionObservation,
+) -> BTreeSet<String> {
+    let mut lines = BTreeSet::new();
+    for stream in streams(channel) {
+        let bytes = match stream {
+            DiagnosticChannel::Stdout => observation.stdout(),
+            DiagnosticChannel::Stderr => observation.stderr(),
+            DiagnosticChannel::Auto | DiagnosticChannel::Combined => continue,
+        };
+        lines.extend(normalize_bytes(bytes).lines().map(str::to_owned));
     }
     lines
 }

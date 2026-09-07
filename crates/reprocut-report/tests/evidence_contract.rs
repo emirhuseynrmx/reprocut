@@ -180,6 +180,7 @@ fn fixture() -> ReductionEvidence {
             state: Some("state.sqlite3".to_owned()),
             resumed: false,
             completion: "converged".to_owned(),
+            file_selection: "converged".to_owned(),
             accepted_file_sizes: vec![18, 9, 5, 3],
             evaluation_policy: EvaluationPolicyEvidence {
                 mode: "strict".to_owned(),

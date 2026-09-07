@@ -228,7 +228,7 @@ fn schema_five_preserves_semantic_values() {
 }
 
 #[test]
-fn schema_five_normalizes_only_recognized_telemetry_context() {
+fn normalization_covers_only_recognized_telemetry_context() {
     for (baseline_a, baseline_b, candidate, expected_anchor) in [
         (
             "ValueError: request_id=123e4567-e89b-12d3-a456-426614174000",
@@ -257,7 +257,10 @@ fn schema_five_normalizes_only_recognized_telemetry_context() {
             oracle.classify(&failed(candidate)),
             CandidateVerdict::Preserved
         );
-        assert_eq!(oracle.fingerprint().normalization_schema(), 5);
+        assert_eq!(
+            oracle.fingerprint().normalization_schema(),
+            reprocut_core::NORMALIZATION_SCHEMA
+        );
     }
 }
 

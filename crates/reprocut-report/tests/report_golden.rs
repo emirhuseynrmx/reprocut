@@ -107,6 +107,20 @@ fn renders_the_reviewed_report_byte_for_byte() {
 }
 
 #[test]
+fn renders_one_byte_sequence_whatever_line_endings_the_checkout_holds() {
+    // Verification re-renders the report and compares bytes, so a CRLF checkout
+    // would produce a binary whose reports no other platform can verify. The
+    // golden test above normalizes both sides and cannot see that; this one
+    // asserts the rendering itself carries the canonical ending.
+    let report = render_report(&fixture_model());
+
+    assert!(
+        !report.contains('\r'),
+        "the rendered report must not carry a carriage return"
+    );
+}
+
+#[test]
 fn escapes_every_user_controlled_field() {
     let report = render_report(&ReportModel {
         command: "<script>alert('x')</script>".to_owned(),

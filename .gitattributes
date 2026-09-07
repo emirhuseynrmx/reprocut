@@ -2,8 +2,11 @@
 .gitattributes text eol=lf
 LICENSE-* text eol=lf
 *.cjs text eol=lf
+Cargo.lock text eol=lf
+*.css text eol=lf
 *.gif binary
 *.html text eol=lf
+*.js text eol=lf
 *.jsonl text eol=lf
 *.json text eol=lf
 *.md text eol=lf

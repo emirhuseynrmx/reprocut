@@ -260,9 +260,13 @@ jobs:
         with:
           root: tests/fixtures/python_failure
           output: ${{ runner.temp }}/action-result
-          command: python bug.py
+          # Quotes, an embedded space, a glob and a variable. A shell would turn
+          # this into six arguments with the quotes still attached and the last
+          # two resolved against the runner; the action must produce four.
+          command: python bug.py -k "foo or bar" *.py $HOME
           max-duration-seconds: "120"
           comment: "false"
+          artifact-name: reprocut-action-result
       - name: Assert the action published a verified reduction
         env:
           RESULT: ${{ runner.temp }}/action-result
@@ -291,7 +295,52 @@ jobs:
           assert drift is not None, "every published reduction must measure drift"
           assert drift["novel_lines"] == 0, drift
           assert drift["reportable"] is False, drift
+          # The command the workflow wrote must reach the child as argv, not as
+          # whatever a shell would have made of it.
+          assert evidence["command"] == [
+              "python", "bug.py", "-k", "foo or bar", "*.py", "$HOME"
+          ], evidence["command"]
           PY
+
+      # The summary tells the reader to download the artifact, so the run must
+      # actually hold one. Fetching it back is the only check that says so.
+      - name: Download the artifact the action promised
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: reprocut-action-result
+          path: ${{ runner.temp }}/action-download
+      - name: Verify the downloaded artifact on its own
+        run: reprocut verify "${{ runner.temp }}/action-download"
+
+  # Every other check verifies an artifact on the machine that produced it, which
+  # cannot see a difference that only appears between platforms. This one takes
+  # the artifact the Linux job published and verifies it somewhere else.
+  cross-platform-artifact:
+    name: Verify a Linux artifact on ${{ matrix.os }}
+    needs: action-contract
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal
+          rustup default 1.85.0
+      - name: Build the verifier
+        shell: bash
+        run: cargo build --locked --release -p reprocut
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: reprocut-action-result
+          path: ${{ runner.temp }}/linux-artifact
+      - name: Verify it
+        shell: bash
+        run: ./target/release/reprocut verify "${RUNNER_TEMP}/linux-artifact"
 
   release-benchmark:
     name: 312-file release benchmark
@@ -358,7 +407,7 @@ jobs:
           python -m pip wheel \
             --no-deps \
             --no-cache-dir \
-            "dist/sdist/reprocut-0.1.0.tar.gz" \
+            "dist/sdist/reprocut-0.1.0-alpha.1.tar.gz" \
             --wheel-dir /tmp/reprocut-sdist-wheel
           python -m venv /tmp/reprocut-sdist-smoke
           /tmp/reprocut-sdist-smoke/bin/python -m pip install \

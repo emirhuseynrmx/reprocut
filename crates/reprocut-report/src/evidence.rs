@@ -103,6 +103,15 @@ pub struct SearchEvidence {
     /// verifies. Only a budgeted result has something extra to declare.
     #[serde(default = "default_completion", skip_serializing_if = "is_converged")]
     pub completion: String,
+    /// Why the file search stopped, using the same two values as `completion`.
+    ///
+    /// Deciding which files the failure needs and trimming inside them are separate
+    /// searches with very different shapes: the first converges quickly, the second
+    /// rarely does. A budgeted run that already converged here has a final file set,
+    /// which is usually the answer the reader came for. Omitted when converged, so a
+    /// converged artifact stays byte-identical to one written before this existed.
+    #[serde(default = "default_completion", skip_serializing_if = "is_converged")]
+    pub file_selection: String,
     /// Original and successively accepted file counts.
     pub accepted_file_sizes: Vec<usize>,
     /// Repeated-execution classification policy.

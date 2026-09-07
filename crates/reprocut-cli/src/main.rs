@@ -11,6 +11,8 @@ use std::{
     time::Duration,
 };
 
+mod command_line;
+
 use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{generate, Shell};
 use reprocut_adapters::{Adapter, AdapterError, Ecosystem, EcosystemSelection};
@@ -290,6 +292,11 @@ struct ReduceArgs {
     /// Start a new session without deleting prior journal history.
     #[arg(long)]
     restart: bool,
+
+    /// Failing command as one string, split on quoting rules rather than by a
+    /// shell. For callers that hold the command as text, such as a CI action.
+    #[arg(long, value_name = "STRING", conflicts_with = "command")]
+    command_line: Option<String>,
 
     /// Optional failing command after `--`; otherwise the adapter supplies one.
     #[arg(last = true, num_args = 0.., value_name = "COMMAND")]
@@ -597,6 +604,8 @@ fn protocol_reduce_args(request: ReductionRequestV1) -> Result<ReduceArgs, CliEr
         jobs: request.jobs,
         state: request.state,
         restart: request.restart,
+        // The protocol carries argv already, so there is nothing to split.
+        command_line: None,
         command: request.command,
     })
 }
@@ -900,6 +909,10 @@ fn execute_reduction(
     ensure_output_absent(&arguments.output)?;
     let adapter = Adapter::detect(&arguments.root, arguments.ecosystem.selection())?;
     arguments.ecosystem = adapter.ecosystem().into();
+    if let Some(line) = arguments.command_line.take() {
+        arguments.command = command_line::split(&line)
+            .map_err(|error| CliError::InvalidArguments(error.message()))?;
+    }
     if arguments.command.is_empty() {
         let command = adapter.command().ok_or(CliError::InvalidArguments(
             "the selected ecosystem has no default command; pass one after --",
@@ -1114,6 +1127,7 @@ fn build_evidence(
             state: outcome.state_path().map(|path| path.display().to_string()),
             resumed: outcome.resumed(),
             completion: outcome.completion().as_str().to_owned(),
+            file_selection: outcome.file_selection().as_str().to_owned(),
             accepted_file_sizes,
             evaluation_policy: policy_evidence(arguments),
         },
@@ -1154,23 +1168,30 @@ fn build_evidence(
         final_observations,
         accepted_structured_edits: outcome.accepted_structured_edits().to_vec(),
         attempts,
-        limitations: {
-            let mut limitations = vec![
-                "Elapsed time is one wall-clock observation, not a benchmark.".to_owned(),
-                "Retained paths are observations from the verified final snapshot, not claims of semantic necessity."
-                    .to_owned(),
-                "Syntax-node counts are omitted until a grammar-valid cross-language counter is available."
-                    .to_owned(),
-            ];
-            if outcome.completion() == Completion::BudgetExhausted {
-                limitations.push(
-                    "The wall-time budget elapsed with candidates unexplored. Every retained file passed final verification, but a longer run may reduce further."
-                        .to_owned(),
-                );
-            }
-            limitations
-        },
+        limitations: limitations(outcome),
     })
+}
+
+/// What the numbers above do not say, in the reader's own terms.
+fn limitations(outcome: &ReductionOutcome) -> Vec<String> {
+    let mut limitations = vec![
+        "Elapsed time is one wall-clock observation, not a benchmark.".to_owned(),
+        "Retained paths are observations from the verified final snapshot, not claims of semantic necessity."
+            .to_owned(),
+        "Syntax-node counts are omitted until a grammar-valid cross-language counter is available."
+            .to_owned(),
+    ];
+    if outcome.completion() == Completion::BudgetExhausted {
+        limitations.push(
+            if outcome.file_selection() == Completion::Converged {
+                "The wall-time budget elapsed while trimming inside the retained files. The file set is final: every file the search could remove was removed. A longer run may shrink the files that remain."
+            } else {
+                "The wall-time budget elapsed while the search was still deciding which files the failure needs. Every retained file passed final verification, but a longer run may remove more of them."
+            }
+            .to_owned(),
+        );
+    }
+    limitations
 }
 
 fn material_measurement(snapshot: &reprocut_workspace::ProjectSnapshot) -> MaterialMeasurement {

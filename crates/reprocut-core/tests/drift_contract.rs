@@ -90,3 +90,55 @@ fn a_line_seen_in_only_one_baseline_run_is_not_novel() {
 
     assert_eq!(drift.novel_lines(), 0);
 }
+
+// The regression this exists for: pytest ends with `153 failed, 136 passed in 2.73s`, and the
+// duration differs on every run. Counting the union of the final runs made all three spellings
+// novel at once, so a correct reduction of a Python project reported drift against itself.
+#[test]
+fn a_line_that_only_one_final_run_printed_is_not_drift() {
+    let baselines = [
+        failing(
+            "ValueError: sentinel
+153 failed in 2.71s",
+        ),
+        failing(
+            "ValueError: sentinel
+153 failed in 2.69s",
+        ),
+    ];
+    let first = failing(
+        "ValueError: sentinel
+153 failed in 2.73s",
+    );
+    let second = failing(
+        "ValueError: sentinel
+153 failed in 2.83s",
+    );
+
+    let drift = DiagnosticDrift::measure(DiagnosticChannel::Stderr, &baselines, &[&first, &second]);
+
+    assert_eq!(drift.novel_lines(), 0);
+    assert!(!drift.is_reportable());
+}
+
+#[test]
+fn a_new_message_every_final_run_prints_is_still_drift() {
+    let baselines = [
+        failing("ValueError: sentinel"),
+        failing("ValueError: sentinel"),
+    ];
+    let first = failing(
+        "KeyError: replaced
+153 failed in 2.73s",
+    );
+    let second = failing(
+        "KeyError: replaced
+153 failed in 2.83s",
+    );
+
+    let drift = DiagnosticDrift::measure(DiagnosticChannel::Stderr, &baselines, &[&first, &second]);
+
+    assert_eq!(drift.novel_lines(), 1);
+    assert_eq!(drift.novel_sample(), ["KeyError: replaced"]);
+    assert!(drift.is_reportable());
+}

@@ -285,6 +285,7 @@ pub struct ReductionOutcome {
     elapsed: Duration,
     attempt_events: Vec<AttemptEventRecord>,
     completion: Completion,
+    file_selection: Completion,
     diagnostic_drift: DiagnosticDrift,
 }
 
@@ -411,6 +412,15 @@ impl ReductionOutcome {
     /// Returns whether the search converged or ran out of its wall-time budget.
     pub const fn completion(&self) -> Completion {
         self.completion
+    }
+
+    /// Returns whether the search finished deciding which files the failure needs.
+    ///
+    /// `Converged` here with a budgeted `completion` is the common outcome, and the
+    /// useful one: the retained file set is final, and only the trimming inside those
+    /// files stopped early.
+    pub const fn file_selection(&self) -> Completion {
+        self.file_selection
     }
 
     /// Returns durable append-only attempt evidence, including resumed history.
@@ -705,6 +715,15 @@ impl ReductionEngine {
 
         let snapshot = source_snapshot.subset(reduction.kept())?;
         from_digest = snapshot.digest();
+        // Which files are needed and how small each one gets are two searches, and only
+        // the first one converges quickly. Recording the budget here separates "we never
+        // finished deciding which files matter" from "we know which files matter and ran
+        // out of time trimming inside them", which are different answers to the reader.
+        let file_selection = if budget_exhausted.load(Ordering::Relaxed) {
+            Completion::BudgetExhausted
+        } else {
+            Completion::Converged
+        };
         let structured = StructuredReductionContext {
             request,
             python_preparation: python_preparation.as_ref(),
@@ -797,6 +816,7 @@ impl ReductionEngine {
             } else {
                 Completion::Converged
             },
+            file_selection,
             diagnostic_drift,
         })
     }

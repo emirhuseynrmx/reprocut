@@ -7,7 +7,7 @@ mod issue;
 mod manifest;
 mod verify;
 
-use std::fmt::Write as _;
+use std::{fmt::Write as _, sync::OnceLock};
 
 pub use evidence::{
     display_command, write_attempts_jsonl, AttemptSummary, ChannelAnchor, DriftEvidence,
@@ -56,6 +56,32 @@ pub fn render_reproduction_scripts(command: &[String]) -> ReproductionScripts {
 const REPORT_SHELL: &str = include_str!("../assets/report.html");
 const REPORT_CSS: &str = include_str!("../assets/report.css");
 const REPORT_JS: &str = include_str!("../assets/report.js");
+
+/// Return an embedded template with CRLF collapsed to LF.
+///
+/// `include_str!` captures whatever the builder's working tree held, so a
+/// checkout that materialized CRLF would bake it into the binary. Verification
+/// re-renders the report and compares bytes, so a report written on one
+/// platform would then fail against a binary built on another. Normalizing here
+/// makes the rendering a property of the source, not of the checkout.
+fn canonical_template(source: &'static str, cache: &'static OnceLock<String>) -> &'static str {
+    cache.get_or_init(|| source.replace("\r\n", "\n"))
+}
+
+fn report_shell() -> &'static str {
+    static CANONICAL: OnceLock<String> = OnceLock::new();
+    canonical_template(REPORT_SHELL, &CANONICAL)
+}
+
+fn report_css() -> &'static str {
+    static CANONICAL: OnceLock<String> = OnceLock::new();
+    canonical_template(REPORT_CSS, &CANONICAL)
+}
+
+fn report_js() -> &'static str {
+    static CANONICAL: OnceLock<String> = OnceLock::new();
+    canonical_template(REPORT_JS, &CANONICAL)
+}
 
 /// Serializable data boundary for a finished reduction report.
 ///
@@ -178,9 +204,9 @@ pub fn render_report(model: &ReportModel) -> String {
     );
     let retained_tenths = percentage_tenths(model.retained_files, model.original_files);
 
-    REPORT_SHELL
-        .replace("{{CSS}}", REPORT_CSS)
-        .replace("{{JS}}", REPORT_JS)
+    report_shell()
+        .replace("{{CSS}}", report_css())
+        .replace("{{JS}}", report_js())
         .replace("{{COMMAND}}", &escape_html(&model.command))
         .replace("{{ORIGINAL_FILES}}", &model.original_files.to_string())
         .replace("{{RETAINED_FILES}}", &model.retained_files.to_string())

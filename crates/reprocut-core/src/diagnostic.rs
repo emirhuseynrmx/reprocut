@@ -634,4 +634,11 @@ mod tests {
         assert_eq!(ranked[0].channel, DiagnosticChannel::Stdout);
         assert_eq!(ranked[1].channel, DiagnosticChannel::Stderr);
     }
+
+    #[test]
+    fn a_hexadecimal_value_that_is_not_an_address_survives() {
+        let text = super::normalize_diagnostic("assert checksum == 0xDEADBEEF12");
+
+        assert!(text.contains("0xDEADBEEF12"), "{text}");
+    }
 }
