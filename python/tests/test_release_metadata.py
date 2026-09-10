@@ -185,6 +185,14 @@ def test_registry_readme_links_and_install_contract_are_release_stable() -> None
     assert "--version 0.1.0-alpha.1" in release_readme
 
 
+def test_demo_regeneration_uploads_every_launch_asset() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "regenerate-demo.yml").read_text(encoding="utf-8")
+
+    assert "assets/reprocut-demo.gif" in workflow
+    assert "assets/reprocut-banner.svg" in workflow
+    assert "assets/reprocut-launch.png" in workflow
+
+
 def test_every_publishable_path_dependency_has_the_release_version() -> None:
     publishable_names = set()
     for manifest_path in CRATES.glob("*/Cargo.toml"):
