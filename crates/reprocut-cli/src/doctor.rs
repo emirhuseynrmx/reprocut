@@ -1,6 +1,6 @@
 //! Reports the engine's own preflight without reducing anything.
 //!
-//! Every judgement here comes from [`ReductionEngine::preflight`], which is the code path
+//! Every judgement here comes from [`reprocut_engine::ReductionEngine::preflight`], which is the code path
 //! a reduction runs before its first cut. This module decides how to print that, and
 //! nothing else. It does not re-derive whether a failure is stable, and it does not guess
 //! what a diagnostic means.
