@@ -87,10 +87,28 @@ def test_demo_gif_contract() -> None:
 
     with Image.open(gif_path) as animation:
         assert animation.format == "GIF"
-        assert animation.size == (1200, 675)
+        assert animation.size == (800, 450)
         assert animation.n_frames == 24
         assert animation.info.get("loop") == 0
         assert evidence["failure"]["fingerprint_sha256"].encode() in animation.info["comment"]
+
+
+def test_launch_image_is_english_and_evidence_bound() -> None:
+    Image = pytest.importorskip("PIL.Image")
+    launch_path = ROOT / "assets" / "reprocut-launch.png"
+    evidence = json.loads((ROOT / "demo" / "result" / "reduction.json").read_text())
+
+    with Image.open(launch_path) as launch:
+        assert launch.format == "PNG"
+        assert launch.size == (1920, 1080)
+        assert launch.info["reprocut_failure_sha256"] == evidence["failure"]["fingerprint_sha256"]
+
+    source = (ROOT / "assets" / "reprocut-banner.svg").read_text(encoding="utf-8")
+    assert "Same failure. Less project." in source
+    assert "Diagnose" in source
+    assert "Reduce" in source
+    assert "Verify" in source
+    assert "0.1.0-alpha.1" in source
 
 
 def test_banner_is_static_accessible_and_evidence_bound() -> None:
@@ -113,6 +131,8 @@ def test_banner_is_static_accessible_and_evidence_bound() -> None:
     assert len([node for node in root.iter() if node.attrib.get("data-role") == "cut-trace"]) == 1
     assert str(evidence["search"]["attempts"]) in text
     assert "STRICT 3 / 3" in text
+    assert "Same failure. Less project." in text
+    assert "Diagnose" in text and "Reduce" in text and "Verify" in text
     assert evidence["failure"]["fingerprint_sha256"][:16] in text
     assert all(path in text for path in ("bug.py", "checkout.py", "fixtures/order.json"))
     assert "<script" not in source.lower()
