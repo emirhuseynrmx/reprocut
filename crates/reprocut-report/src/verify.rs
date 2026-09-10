@@ -39,6 +39,14 @@ impl VerifiedArtifact {
     pub fn artifact_id(&self) -> &str {
         &self.artifact_id
     }
+
+    /// Returns whether the recorded execute bits were among the things compared.
+    ///
+    /// False on a platform without them, where the artifact is otherwise verified
+    /// byte for byte. A reader deciding how much this run proves needs to see it.
+    pub const fn checked_executable_masks(&self) -> bool {
+        OBSERVES_EXECUTABLE_MASK
+    }
 }
 
 /// Artifact construction or verification failure.
@@ -197,7 +205,7 @@ pub fn verify_artifact(root: &Path) -> Result<VerifiedArtifact, VerificationErro
         return Err(VerificationError::MemberSetMismatch);
     }
     for (actual, declared) in actual_members.iter().zip(manifest.members()) {
-        if actual != declared {
+        if !members_agree(actual, declared) {
             return Err(VerificationError::MemberMismatch(declared.path.clone()));
         }
     }
@@ -346,6 +354,16 @@ fn stream_member(
     .map_err(Into::into)
 }
 
+/// Compares two members over everything this platform can observe.
+fn members_agree(actual: &ArtifactMember, declared: &ArtifactMember) -> bool {
+    if OBSERVES_EXECUTABLE_MASK {
+        return actual == declared;
+    }
+    actual.path == declared.path
+        && actual.sha256 == declared.sha256
+        && actual.size_bytes == declared.size_bytes
+}
+
 fn verify_expected_member_set(
     evidence: &ReductionEvidence,
     members: &[ArtifactMember],
@@ -392,7 +410,8 @@ fn verify_retained_project(
             .ok_or_else(|| VerificationError::RetainedProjectMismatch(retained.path.clone()))?;
         if retained.sha256.as_deref() != Some(member.sha256.as_str())
             || retained.size_bytes != member.size_bytes
-            || retained.executable_mask != Some(member.executable_mask)
+            || (OBSERVES_EXECUTABLE_MASK
+                && retained.executable_mask != Some(member.executable_mask))
         {
             return Err(VerificationError::RetainedProjectMismatch(
                 retained.path.clone(),
@@ -484,6 +503,15 @@ fn io_error(operation: &'static str, path: &Path, source: io::Error) -> Verifica
         source,
     }
 }
+
+/// Whether this platform can observe a file's execute bits at all.
+///
+/// Windows has no such bit, so a verifier there cannot confirm or deny the mask an
+/// artifact recorded on Unix. Comparing it anyway would report a Linux artifact as
+/// changed the moment someone checked it on Windows, which is the opposite of what
+/// verification is for: the mask is unobserved, not different. It is left out of the
+/// comparison and the result says so.
+pub const OBSERVES_EXECUTABLE_MASK: bool = cfg!(unix);
 
 #[cfg(unix)]
 fn executable_mask(metadata: &fs::Metadata) -> u8 {

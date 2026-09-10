@@ -1,148 +1,101 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="600" viewBox="0 0 1600 600" role="img" aria-labelledby="title desc">
-  <title id="title">ReproCut — same failure, less project</title>
-  <desc id="desc">A verified failure reduction record showing eighteen project files reduced to three retained files while preserving the same stabilized failure.</desc>
+  <title id="title">ReproCut — Same failure. Less project.</title>
+  <desc id="desc">An evidence-bound ReproCut alpha banner showing a stable failure diagnosed, an eighteen-file project reduced to three files, and a strict three-of-three verification.</desc>
   <defs>
-    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
-      <path d="M32 0H0V32" fill="none" stroke="#D3D8DC" stroke-width="1"/>
+    <linearGradient id="backdrop" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#050814"/>
+      <stop offset="0.52" stop-color="#0b1024"/>
+      <stop offset="1" stop-color="#160d2f"/>
+    </linearGradient>
+    <linearGradient id="violet" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6ea8ff"/>
+      <stop offset="0.52" stop-color="#7955ff"/>
+      <stop offset="1" stop-color="#ff8b6b"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#151b37" stop-opacity="0.94"/>
+      <stop offset="1" stop-color="#090d1d" stop-opacity="0.94"/>
+    </linearGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" fill="none" stroke="#7890d8" stroke-opacity="0.09"/>
     </pattern>
     <style>
-      .display { font-family: "Arial Narrow", "Segoe UI", Arial, sans-serif; }
-      .mono { font-family: Consolas, "Courier New", monospace; }
-      .micro { font-size: 15px; font-weight: 700; letter-spacing: 1.8px; }
-      .card-line { fill: none; stroke-linecap: round; stroke-width: 2; }
+      .sans { font-family: Inter, "Segoe UI", Arial, sans-serif; }
+      .mono { font-family: "Cascadia Mono", Consolas, monospace; }
+      .micro { font-size: 15px; font-weight: 700; letter-spacing: 2px; }
+      .card { fill: #121831; stroke: #5665a5; stroke-width: 1.5; }
+      .cut { fill: #0b1022; stroke: #342e59; stroke-width: 1.5; opacity: .55; }
     </style>
   </defs>
-
-  <rect width="1600" height="600" fill="#FBF9F3"/>
+  <rect width="1600" height="600" fill="url(#backdrop)"/>
   <rect width="1600" height="600" fill="url(#grid)"/>
-  <rect x="38" y="28" width="1524" height="544" rx="25" fill="#FBF9F3" stroke="#171A1D" stroke-width="3"/>
-
-  <g data-layer="identity">
-    <text x="78" y="126" class="display" font-size="82" font-weight="850" letter-spacing="-5" fill="#171A1D">REPRO</text>
-    <text x="368" y="126" class="display" font-size="82" font-weight="850" letter-spacing="-5" fill="#3157D5">/CUT</text>
-    <text x="1162" y="83" class="mono micro" fill="#66717D">FAILURE REDUCTION RECORD</text>
-    <text x="1452" y="116" class="mono" font-size="15" font-weight="700" fill="#3157D5">RC / 0.1</text>
-    <path d="M78 154H1522" fill="none" stroke="#171A1D" stroke-width="2"/>
-
-    <rect x="78" y="180" width="510" height="46" rx="7" fill="none" stroke="#D3D8DC" stroke-width="2"/>
-    <rect x="78" y="180" width="46" height="46" rx="7" fill="#3157D5"/>
-    <text x="95" y="210" class="mono" font-size="18" font-weight="700" fill="#FBF9F3">$</text>
-    <text x="140" y="210" class="mono" font-size="17" fill="#171A1D">reprocut minimize --root ./checkout</text>
-
-    <text x="80" y="273" class="display" font-size="27" font-weight="600" fill="#66717D">same failure, less project</text>
-    <text x="78" y="382" class="mono" font-size="108" font-weight="700" letter-spacing="-6" fill="#171A1D">18</text>
-    <path d="M234 342H306M286 323L306 342L286 361" fill="none" stroke="#BF4E3A" stroke-width="5" stroke-linecap="square" stroke-linejoin="miter"/>
-    <text x="342" y="382" class="mono" font-size="108" font-weight="700" letter-spacing="-6" fill="#3157D5">03</text>
-    <text x="84" y="418" class="mono micro" fill="#66717D">FILES</text>
-    <text x="349" y="418" class="mono micro" fill="#66717D">RETAINED</text>
-    <path d="M78 448H588" fill="none" stroke="#D3D8DC" stroke-width="2"/>
-    <text x="80" y="474" class="mono" font-size="14" font-weight="700" letter-spacing="1.2" fill="#BF4E3A">MINIMAL MATERIAL</text>
-    <text x="247" y="474" class="mono" font-size="14" fill="#66717D">verified, never inferred</text>
+  <circle cx="1260" cy="178" r="260" fill="#6847ff" opacity="0.08"/>
+  <circle cx="1050" cy="520" r="260" fill="#ff754f" opacity="0.05"/>
+  <rect x="24" y="24" width="1552" height="552" rx="28" fill="none" stroke="#35406b" stroke-width="2"/>
+  <g class="sans">
+    <text x="82" y="88" class="mono micro" fill="#9aa7d2">OPEN SOURCE FAILURE REDUCTION</text>
+    <text x="82" y="184" font-size="92" font-weight="800" letter-spacing="-5" fill="#f8f9ff">repro</text>
+    <text x="318" y="184" font-size="92" font-weight="800" letter-spacing="-5" fill="url(#violet)">cut</text>
+    <rect x="82" y="208" width="176" height="36" rx="18" fill="#11172f" stroke="#6d63d9"/>
+    <text x="102" y="232" class="mono" font-size="15" font-weight="700" fill="#c8c7ff">0.1.0-alpha.1</text>
+    <text x="82" y="319" font-size="53" font-weight="750" letter-spacing="-1.8" fill="#f8f9ff">Same failure.</text>
+    <text x="82" y="378" font-size="53" font-weight="750" letter-spacing="-1.8" fill="#b39cff">Less project.</text>
+    <text x="84" y="426" font-size="22" fill="#a7b0ce">Turn a failing repository into the smallest useful reproduction</text>
+    <text x="84" y="458" font-size="22" fill="#a7b0ce">you can hand to another engineer — with evidence.</text>
+    <text x="84" y="520" class="mono micro" fill="#d8d9ec">Diagnose</text>
+    <text x="223" y="520" class="mono" font-size="20" fill="#7e88ad">→</text>
+    <text x="264" y="520" class="mono micro" fill="#d8d9ec">Reduce</text>
+    <text x="382" y="520" class="mono" font-size="20" fill="#7e88ad">→</text>
+    <text x="423" y="520" class="mono micro" fill="#d8d9ec">Verify</text>
   </g>
-
-  <g data-layer="file-matrix">
-    <text x="680" y="190" class="mono micro" fill="#66717D">PROJECT MATERIAL / 18 UNITS</text>
-    <text x="1372" y="190" class="mono" font-size="14" font-weight="700" letter-spacing="1.2" fill="#BF4E3A">15 CUT</text>
-
-    <g data-file-state="retained" transform="translate(680 205)">
-      <rect width="104" height="64" rx="8" fill="#3157D5" fill-opacity="0.08" stroke="#3157D5" stroke-width="3"/>
-      <text x="12" y="20" class="mono" font-size="12" font-weight="700" fill="#3157D5">01</text>
-      <path d="M12 32H84M12 43H65" class="card-line" stroke="#3157D5"/>
-      <text x="12" y="58" class="mono" font-size="10" font-weight="700" fill="#3157D5">bug.py</text>
+  <g transform="translate(680 68)">
+    <rect width="816" height="464" rx="24" fill="url(#panel)" stroke="#394471" stroke-width="2"/>
+    <text x="34" y="42" class="mono micro" fill="#9aa7d2">LIVE REDUCTION RECORD</text>
+    <text x="637" y="42" class="mono" font-size="14" font-weight="700" fill="#a993ff">RC / 0.1</text>
+    <path d="M34 62H782" stroke="#333b61"/>
+    <g transform="translate(34 88)">
+      <rect width="214" height="52" rx="10" fill="#131a35" stroke="#5866a0"/>
+      <circle cx="25" cy="26" r="7" fill="#84f1c6"/>
+      <text x="44" y="23" class="mono" font-size="12" fill="#8f9abf">DOCTOR</text>
+      <text x="44" y="39" class="mono" font-size="14" font-weight="700" fill="#eef1ff">stable failure found</text>
     </g>
-    <g data-file-state="retained" transform="translate(808 205)">
-      <rect width="104" height="64" rx="8" fill="#3157D5" fill-opacity="0.08" stroke="#3157D5" stroke-width="3"/>
-      <text x="12" y="20" class="mono" font-size="12" font-weight="700" fill="#3157D5">02</text>
-      <path d="M12 32H84M12 43H65" class="card-line" stroke="#3157D5"/>
-      <text x="12" y="58" class="mono" font-size="10" font-weight="700" fill="#3157D5">checkout.py</text>
+    <g transform="translate(266 88)">
+      <rect width="214" height="52" rx="10" fill="#131a35" stroke="#745dd6"/>
+      <text x="20" y="23" class="mono" font-size="12" fill="#8f9abf">PROJECT</text>
+      <text x="20" y="40" class="mono" font-size="16" font-weight="700" fill="#eef1ff">18 → 03 files</text>
     </g>
-    <g data-file-state="retained" transform="translate(936 205)">
-      <rect width="104" height="64" rx="8" fill="#3157D5" fill-opacity="0.08" stroke="#3157D5" stroke-width="3"/>
-      <text x="12" y="20" class="mono" font-size="12" font-weight="700" fill="#3157D5">03</text>
-      <path d="M12 32H84M12 43H65" class="card-line" stroke="#3157D5"/>
-      <text x="12" y="58" class="mono" font-size="10" font-weight="700" fill="#3157D5">order.json</text>
+    <g transform="translate(498 88)">
+      <rect width="284" height="52" rx="10" fill="#151932" stroke="#ff866c"/>
+      <text x="20" y="23" class="mono" font-size="12" fill="#8f9abf">FINAL VERIFICATION</text>
+      <text x="20" y="40" class="mono" font-size="16" font-weight="700" fill="#ffb29f">STRICT 3 / 3</text>
     </g>
-
-    <g data-file-state="rejected" transform="translate(1064 205)">
-      <rect width="104" height="64" rx="8" fill="#FBF9F3" stroke="#66717D" stroke-width="2"/>
-      <text x="12" y="20" class="mono" font-size="12" font-weight="700" fill="#66717D">04</text><path d="M12 32H84M12 43H65" class="card-line" stroke="#66717D"/>
+    <text x="36" y="184" class="mono" font-size="13" fill="#7884aa">PROJECT MATERIAL / 18 FILES</text>
+    <text x="646" y="184" class="mono" font-size="13" font-weight="700" fill="#ff967d">15 CUT</text>
+    <g transform="translate(36 202)">
+      <g data-file-state="retained" transform="translate(0 0)"><rect width="106" height="48" rx="8" class="card"/><path d="M14 16H89M14 28H70" stroke="#8a7cff" stroke-width="2"/><circle cx="91" cy="34" r="4" fill="#84f1c6"/></g>
+      <g data-file-state="retained" transform="translate(126 0)"><rect width="106" height="48" rx="8" class="card"/><path d="M14 16H89M14 28H70" stroke="#8a7cff" stroke-width="2"/><circle cx="91" cy="34" r="4" fill="#84f1c6"/></g>
+      <g data-file-state="retained" transform="translate(252 0)"><rect width="106" height="48" rx="8" class="card"/><path d="M14 16H89M14 28H70" stroke="#8a7cff" stroke-width="2"/><circle cx="91" cy="34" r="4" fill="#84f1c6"/></g>
+      <g data-file-state="rejected" transform="translate(378 0)"><rect width="106" height="48" rx="8" class="cut"/><path d="M14 16H89M14 28H70" stroke="#465071"/><path d="M16 10L90 38" stroke="#ff8067"/></g>
+      <g data-file-state="rejected" transform="translate(504 0)"><rect width="106" height="48" rx="8" class="cut"/><path d="M14 16H89M14 28H70" stroke="#465071"/><path d="M16 10L90 38" stroke="#ff8067"/></g>
+      <g data-file-state="rejected" transform="translate(630 0)"><rect width="106" height="48" rx="8" class="cut"/><path d="M14 16H89M14 28H70" stroke="#465071"/><path d="M16 10L90 38" stroke="#ff8067"/></g>
+      <g data-file-state="rejected" transform="translate(0 66)"><rect width="106" height="48" rx="8" class="cut"/><path d="M14 16H89M14 28H70" stroke="#465071"/><path d="M16 10L90 38" stroke="#ff8067"/></g>
+      <g data-file-state="rejected" transform="translate(126 66)"><rect width="106" height="48" rx="8" class="cut"/><path d="M14 16H89M14 28H70" stroke="#465071"/><path d="M16 10L90 38" stroke="#ff8067"/></g>
+      <g data-file-state="rejected" transform="translate(252 66)"><rect width="106" height="48" rx="8" class="cut"/><path d="M14 16H89M14 28H70" stroke="#465071"/><path d="M16 10L90 38" stroke="#ff8067"/></g>
+      <g data-file-state="rejected" transform="translate(378 66)"><rect width="106" height="48" rx="8" class="cut"/><path d="M14 16H89M14 28H70" stroke="#465071"/><path d="M16 10L90 38" stroke="#ff8067"/></g>
+      <g data-file-state="rejected" transform="translate(504 66)"><rect width="106" height="48" rx="8" class="cut"/><path d="M14 16H89M14 28H70" stroke="#465071"/><path d="M16 10L90 38" stroke="#ff8067"/></g>
+      <g data-file-state="rejected" transform="translate(630 66)"><rect width="106" height="48" rx="8" class="cut"/><path d="M14 16H89M14 28H70" stroke="#465071"/><path d="M16 10L90 38" stroke="#ff8067"/></g>
+      <g data-file-state="rejected" transform="translate(0 132)"><rect width="106" height="48" rx="8" class="cut"/><path d="M14 16H89M14 28H70" stroke="#465071"/><path d="M16 10L90 38" stroke="#ff8067"/></g>
+      <g data-file-state="rejected" transform="translate(126 132)"><rect width="106" height="48" rx="8" class="cut"/><path d="M14 16H89M14 28H70" stroke="#465071"/><path d="M16 10L90 38" stroke="#ff8067"/></g>
+      <g data-file-state="rejected" transform="translate(252 132)"><rect width="106" height="48" rx="8" class="cut"/><path d="M14 16H89M14 28H70" stroke="#465071"/><path d="M16 10L90 38" stroke="#ff8067"/></g>
+      <g data-file-state="rejected" transform="translate(378 132)"><rect width="106" height="48" rx="8" class="cut"/><path d="M14 16H89M14 28H70" stroke="#465071"/><path d="M16 10L90 38" stroke="#ff8067"/></g>
+      <g data-file-state="rejected" transform="translate(504 132)"><rect width="106" height="48" rx="8" class="cut"/><path d="M14 16H89M14 28H70" stroke="#465071"/><path d="M16 10L90 38" stroke="#ff8067"/></g>
+      <g data-file-state="rejected" transform="translate(630 132)"><rect width="106" height="48" rx="8" class="cut"/><path d="M14 16H89M14 28H70" stroke="#465071"/><path d="M16 10L90 38" stroke="#ff8067"/></g>
     </g>
-    <g data-file-state="rejected" transform="translate(1192 205)">
-      <rect width="104" height="64" rx="8" fill="#FBF9F3" stroke="#66717D" stroke-width="2"/>
-      <text x="12" y="20" class="mono" font-size="12" font-weight="700" fill="#66717D">05</text><path d="M12 32H84M12 43H65" class="card-line" stroke="#66717D"/>
-    </g>
-    <g data-file-state="rejected" transform="translate(1320 205)">
-      <rect width="104" height="64" rx="8" fill="#FBF9F3" stroke="#66717D" stroke-width="2"/>
-      <text x="12" y="20" class="mono" font-size="12" font-weight="700" fill="#66717D">06</text><path d="M12 32H84M12 43H65" class="card-line" stroke="#66717D"/>
-    </g>
-
-    <g data-file-state="rejected" transform="translate(680 289)">
-      <rect width="104" height="64" rx="8" fill="#FBF9F3" stroke="#66717D" stroke-width="2"/>
-      <text x="12" y="20" class="mono" font-size="12" font-weight="700" fill="#66717D">07</text><path d="M12 32H84M12 43H65" class="card-line" stroke="#66717D"/>
-    </g>
-    <g data-file-state="rejected" transform="translate(808 289)">
-      <rect width="104" height="64" rx="8" fill="#FBF9F3" stroke="#66717D" stroke-width="2"/>
-      <text x="12" y="20" class="mono" font-size="12" font-weight="700" fill="#66717D">08</text><path d="M12 32H84M12 43H65" class="card-line" stroke="#66717D"/>
-    </g>
-    <g data-file-state="rejected" transform="translate(936 289)">
-      <rect width="104" height="64" rx="8" fill="#FBF9F3" stroke="#66717D" stroke-width="2"/>
-      <text x="12" y="20" class="mono" font-size="12" font-weight="700" fill="#66717D">09</text><path d="M12 32H84M12 43H65" class="card-line" stroke="#66717D"/>
-    </g>
-    <g data-file-state="rejected" transform="translate(1064 289)">
-      <rect width="104" height="64" rx="8" fill="#FBF9F3" stroke="#66717D" stroke-width="2"/>
-      <text x="12" y="20" class="mono" font-size="12" font-weight="700" fill="#66717D">10</text><path d="M12 32H84M12 43H65" class="card-line" stroke="#66717D"/>
-    </g>
-    <g data-file-state="rejected" transform="translate(1192 289)">
-      <rect width="104" height="64" rx="8" fill="#FBF9F3" stroke="#66717D" stroke-width="2"/>
-      <text x="12" y="20" class="mono" font-size="12" font-weight="700" fill="#66717D">11</text><path d="M12 32H84M12 43H65" class="card-line" stroke="#66717D"/>
-    </g>
-    <g data-file-state="rejected" transform="translate(1320 289)">
-      <rect width="104" height="64" rx="8" fill="#FBF9F3" stroke="#66717D" stroke-width="2"/>
-      <text x="12" y="20" class="mono" font-size="12" font-weight="700" fill="#66717D">12</text><path d="M12 32H84M12 43H65" class="card-line" stroke="#66717D"/>
-    </g>
-
-    <g data-file-state="rejected" transform="translate(680 373)">
-      <rect width="104" height="64" rx="8" fill="#FBF9F3" stroke="#66717D" stroke-width="2"/>
-      <text x="12" y="20" class="mono" font-size="12" font-weight="700" fill="#66717D">13</text><path d="M12 32H84M12 43H65" class="card-line" stroke="#66717D"/>
-    </g>
-    <g data-file-state="rejected" transform="translate(808 373)">
-      <rect width="104" height="64" rx="8" fill="#FBF9F3" stroke="#66717D" stroke-width="2"/>
-      <text x="12" y="20" class="mono" font-size="12" font-weight="700" fill="#66717D">14</text><path d="M12 32H84M12 43H65" class="card-line" stroke="#66717D"/>
-    </g>
-    <g data-file-state="rejected" transform="translate(936 373)">
-      <rect width="104" height="64" rx="8" fill="#FBF9F3" stroke="#66717D" stroke-width="2"/>
-      <text x="12" y="20" class="mono" font-size="12" font-weight="700" fill="#66717D">15</text><path d="M12 32H84M12 43H65" class="card-line" stroke="#66717D"/>
-    </g>
-    <g data-file-state="rejected" transform="translate(1064 373)">
-      <rect width="104" height="64" rx="8" fill="#FBF9F3" stroke="#66717D" stroke-width="2"/>
-      <text x="12" y="20" class="mono" font-size="12" font-weight="700" fill="#66717D">16</text><path d="M12 32H84M12 43H65" class="card-line" stroke="#66717D"/>
-    </g>
-    <g data-file-state="rejected" transform="translate(1192 373)">
-      <rect width="104" height="64" rx="8" fill="#FBF9F3" stroke="#66717D" stroke-width="2"/>
-      <text x="12" y="20" class="mono" font-size="12" font-weight="700" fill="#66717D">17</text><path d="M12 32H84M12 43H65" class="card-line" stroke="#66717D"/>
-    </g>
-    <g data-file-state="rejected" transform="translate(1320 373)">
-      <rect width="104" height="64" rx="8" fill="#FBF9F3" stroke="#66717D" stroke-width="2"/>
-      <text x="12" y="20" class="mono" font-size="12" font-weight="700" fill="#66717D">18</text><path d="M12 32H84M12 43H65" class="card-line" stroke="#66717D"/>
-    </g>
-  </g>
-
-  <path data-role="cut-trace" d="M1064 237H1444Q1474 237 1474 267V291Q1474 321 1444 321H660Q630 321 630 351V375Q630 405 660 405H1424" fill="none" stroke="#BF4E3A" stroke-width="4" stroke-linecap="square" stroke-linejoin="miter"/>
-  <path d="M1410 393L1424 405L1410 417" fill="none" stroke="#BF4E3A" stroke-width="4" stroke-linecap="square"/>
-
-  <g data-layer="evidence">
-    <path d="M632 466H1522" fill="none" stroke="#171A1D" stroke-width="2"/>
-    <rect x="632" y="490" width="22" height="22" rx="3" fill="#3157D5"/>
-    <path d="M638 501L643 506L649 496" fill="none" stroke="#FBF9F3" stroke-width="2.5" stroke-linecap="square"/>
-    <text x="668" y="507" class="mono" font-size="16" font-weight="700" letter-spacing="0.8" fill="#171A1D">SAME FAILURE</text>
-    <text x="846" y="507" class="mono" font-size="15" font-weight="700" fill="#66717D">STRICT 3 / 3</text>
-    <text x="1003" y="507" class="mono" font-size="15" font-weight="700" fill="#66717D">24 CANDIDATES</text>
-    <text x="1222" y="507" class="mono" font-size="14" fill="#66717D">sha256:ede93e201979aa28…</text>
-    <text x="632" y="542" class="mono" font-size="15" fill="#171A1D">bug.py</text>
-    <text x="697" y="542" class="mono" font-size="15" fill="#BF4E3A">·</text>
-    <text x="719" y="542" class="mono" font-size="15" fill="#171A1D">checkout.py</text>
-    <text x="826" y="542" class="mono" font-size="15" fill="#BF4E3A">·</text>
-    <text x="848" y="542" class="mono" font-size="15" fill="#171A1D">fixtures/order.json</text>
-    <text x="1336" y="542" class="mono" font-size="14" font-weight="700" letter-spacing="1" fill="#3157D5">SOURCE UNTOUCHED</text>
+    <path data-role="cut-trace" d="M414 192C414 176 442 176 442 192V385C442 407 476 407 476 385" fill="none" stroke="url(#violet)" stroke-width="3"/>
+    <path d="M34 406H782" stroke="#333b61"/>
+    <text x="36" y="437" class="mono" font-size="13" fill="#909bbb">24 CANDIDATES</text>
+    <text x="190" y="437" class="mono" font-size="13" fill="#909bbb">bug.py · checkout.py · fixtures/order.json</text>
+    <text x="575" y="437" class="mono" font-size="13" font-weight="700" fill="#84f1c6">SAME FAILURE</text>
+    <text x="36" y="456" class="mono" font-size="12" fill="#6e789b">sha256:ede93e201979aa28…</text>
   </g>
 </svg>

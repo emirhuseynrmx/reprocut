@@ -1,6 +1,8 @@
 //! Byte-stable report golden contracts.
 
-use reprocut_report::{render_report, ChannelAnchor, ReportModel, RetentionEvidence};
+use reprocut_report::{
+    render_report, ChannelAnchor, DriftEvidence, ReportModel, RetentionEvidence,
+};
 
 fn fixture_model() -> ReportModel {
     ReportModel {
@@ -48,8 +50,51 @@ fn fixture_model() -> ReportModel {
         ],
         structured_edits: vec!["syntax:delete:bug.py:0..24".to_owned()],
         limitations: vec!["Timing is wall-clock, not a benchmark.".to_owned()],
+        diagnostic_drift: Some(DriftEvidence {
+            baseline_lines: 6,
+            final_lines: 4,
+            retained_lines: 4,
+            novel_lines: 0,
+            reportable: false,
+            novel_sample: Vec::new(),
+        }),
         issue_markdown: "# Minimal reproduction\n".to_owned(),
     }
+}
+
+fn drifted_model() -> ReportModel {
+    ReportModel {
+        diagnostic_drift: Some(DriftEvidence {
+            baseline_lines: 2,
+            final_lines: 4,
+            retained_lines: 1,
+            novel_lines: 3,
+            reportable: true,
+            novel_sample: vec!["examples/sky/original/00-standard-libs missing".to_owned()],
+        }),
+        ..fixture_model()
+    }
+}
+
+#[test]
+fn a_clean_reduction_reports_the_failure_as_verified() {
+    let report = render_report(&fixture_model());
+
+    assert!(report.contains("Same failure verified"));
+    assert!(!report.contains("id=\"drift-title\""));
+}
+
+// A reader who only sees the masthead must not be told the bug was preserved when the
+// minimized project's diagnostic no longer resembles the original's.
+#[test]
+fn a_drifted_reduction_says_so_in_the_masthead_and_the_body() {
+    let report = render_report(&drifted_model());
+
+    assert!(report.contains("Same oracle — review the drift"));
+    assert!(!report.contains("Same failure verified"));
+    assert!(report.contains("id=\"drift-title\""));
+    assert!(report.contains("3 of the 4 diagnostic line(s)"));
+    assert!(report.contains("examples/sky/original/00-standard-libs missing"));
 }
 
 #[test]
@@ -59,6 +104,20 @@ fn renders_the_reviewed_report_byte_for_byte() {
         include_str!("../../../tests/golden/reduction-report.html").replace("\r\n", "\n");
 
     assert_eq!(actual, expected);
+}
+
+#[test]
+fn renders_one_byte_sequence_whatever_line_endings_the_checkout_holds() {
+    // Verification re-renders the report and compares bytes, so a CRLF checkout
+    // would produce a binary whose reports no other platform can verify. The
+    // golden test above normalizes both sides and cannot see that; this one
+    // asserts the rendering itself carries the canonical ending.
+    let report = render_report(&fixture_model());
+
+    assert!(
+        !report.contains('\r'),
+        "the rendered report must not carry a carriage return"
+    );
 }
 
 #[test]

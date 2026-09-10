@@ -1,9 +1,11 @@
 //! End-to-end reduction orchestration for `ReproCut`.
 
 mod pipeline;
+mod preflight;
 mod python_isolation;
 mod scheduler;
 
+pub use preflight::{Preflight, PreflightVerdict};
 pub use python_isolation::{PythonIsolationRequest, PythonPreparationError};
 pub use scheduler::{CandidatePlan, FrontierOutcome, FrontierScheduler, SchedulerError};
 
@@ -17,7 +19,7 @@ use std::{
     ffi::OsString,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Mutex,
     },
     time::{Duration, Instant},
@@ -26,9 +28,9 @@ use std::{
 use reprocut_adapters::{Ecosystem, NpmManifest, PreparationPlan};
 use reprocut_core::{
     reduce_hierarchical_frontiers, AggregateDecision, AggregateEvidence, CandidateRank,
-    CandidateVerdict, ContentDigest, DiagnosticChannel, EvaluationPolicy, ExecutionObservation,
-    FailureFingerprint, FailureOracle, FrontierClass, OracleError, OracleMode, OracleSpec,
-    ReductionResult, ReductionUnit,
+    CandidateVerdict, ContentDigest, DiagnosticChannel, DiagnosticDrift, EvaluationPolicy,
+    ExecutionObservation, FailureFingerprint, FailureOracle, FrontierClass, OracleError,
+    OracleMode, OracleSpec, ReductionResult, ReductionUnit,
 };
 use reprocut_runner::{CommandSpec, ProcessRunner, RunnerError};
 use reprocut_state::{
@@ -84,6 +86,7 @@ pub struct ReductionRequest {
     ecosystem: Ecosystem,
     preparation_mode: PreparationMode,
     python_isolation: Option<PythonIsolationRequest>,
+    max_duration: Option<Duration>,
 }
 
 impl ReductionRequest {
@@ -110,7 +113,27 @@ impl ReductionRequest {
             ecosystem: Ecosystem::None,
             preparation_mode: PreparationMode::None,
             python_isolation: None,
+            max_duration: None,
         }
+    }
+
+    /// Stops exploring new candidates once `budget` of wall time has elapsed.
+    ///
+    /// Reduction converges asymptotically: most of the size falls away early, and
+    /// the remainder can take orders of magnitude longer for a few percent. A run
+    /// without a bound is unusable inside a time-boxed CI job, where being killed
+    /// yields nothing at all. With a budget the run publishes the best snapshot it
+    /// has already verified and records that the budget, not the search, ended it.
+    #[must_use]
+    pub const fn with_max_duration(mut self, budget: Duration) -> Self {
+        self.max_duration = Some(budget);
+        self
+    }
+
+    /// Returns the wall-time budget for candidate exploration, if one was set.
+    #[must_use]
+    pub const fn max_duration(&self) -> Option<Duration> {
+        self.max_duration
     }
 
     /// Returns a request using an explicit failure channel and aggregate policy.
@@ -263,6 +286,33 @@ pub struct ReductionOutcome {
     accepted_structured_edits: Vec<String>,
     elapsed: Duration,
     attempt_events: Vec<AttemptEventRecord>,
+    completion: Completion,
+    file_selection: Completion,
+    diagnostic_drift: DiagnosticDrift,
+}
+
+/// Why candidate exploration stopped.
+///
+/// A budgeted result is still fully verified: every retained file survived the same
+/// final verification. It is not, however, the smallest result the search would have
+/// reached, and a report that cannot say so is misleading.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum Completion {
+    /// The search explored every transformation it had and none made the result smaller.
+    Converged,
+    /// The wall-time budget elapsed while candidates remained unexplored.
+    BudgetExhausted,
+}
+
+impl Completion {
+    /// Returns the stable identifier written into reduction evidence.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Converged => "converged",
+            Self::BudgetExhausted => "budget_exhausted",
+        }
+    }
 }
 
 impl ReductionOutcome {
@@ -351,9 +401,28 @@ impl ReductionOutcome {
         &self.accepted_structured_edits
     }
 
+    /// Returns how far the minimized failure's diagnostic moved from the original's.
+    pub const fn diagnostic_drift(&self) -> &DiagnosticDrift {
+        &self.diagnostic_drift
+    }
+
     /// Returns end-to-end wall time including baseline and final verification.
     pub const fn elapsed(&self) -> Duration {
         self.elapsed
+    }
+
+    /// Returns whether the search converged or ran out of its wall-time budget.
+    pub const fn completion(&self) -> Completion {
+        self.completion
+    }
+
+    /// Returns whether the search finished deciding which files the failure needs.
+    ///
+    /// `Converged` here with a budgeted `completion` is the common outcome, and the
+    /// useful one: the retained file set is final, and only the trimming inside those
+    /// files stopped early.
+    pub const fn file_selection(&self) -> Completion {
+        self.file_selection
     }
 
     /// Returns durable append-only attempt evidence, including resumed history.
@@ -432,32 +501,13 @@ impl ReductionEngine {
     #[allow(clippy::too_many_lines)]
     pub fn run(request: &ReductionRequest) -> Result<ReductionOutcome, EngineError> {
         let started = Instant::now();
-        let inventory =
-            ProjectInventory::scan_with_policy(request.source_root(), request.inventory_policy())?;
-        if inventory.units().is_empty() {
-            return Err(EngineError::EmptyProject);
-        }
-        let source_snapshot = ProjectSnapshot::capture(&inventory, request.inventory_policy())?;
+        let Setup {
+            inventory,
+            source_snapshot,
+            python_preparation,
+        } = Setup::capture(request)?;
         let source_digest = source_snapshot.digest();
         let original_measurements = source_snapshot.measurements();
-        let python_preparation = request
-            .python_isolation()
-            .map(|isolation| {
-                FrozenPythonPreparation::capture(
-                    isolation,
-                    request.timeout(),
-                    request.max_output_bytes(),
-                )
-            })
-            .transpose()?;
-        if python_preparation.is_some() {
-            FrozenPythonPreparation::validate_original_program(request.program())?;
-        }
-        if request.preparation_mode() == PreparationMode::IsolatedPython
-            && python_preparation.is_none()
-        {
-            return Err(EngineError::MissingPythonIsolation);
-        }
         let preparation_digest = python_preparation.as_ref().map_or_else(
             || builtin_preparation_digest(request),
             FrozenPythonPreparation::digest,
@@ -468,35 +518,28 @@ impl ReductionEngine {
         let writer = state.as_ref().map(StateStore::writer);
         let all_units = inventory.units().iter().collect::<Vec<_>>();
         let policy = request.evaluation_policy();
-        let mut baselines = Vec::with_capacity(usize::from(policy.runs()));
-
-        for _ in 0..policy.runs() {
-            let observation = match run_candidate(
-                request,
-                &source_snapshot,
-                &all_units,
-                python_preparation.as_ref(),
-            )? {
-                CandidateExecution::Observed(observation) => observation,
-                CandidateExecution::PreparationRejected => {
-                    return Err(EngineError::BaselinePreparationFailed);
-                }
-            };
-            if request.oracle_spec().mode() != OracleMode::ExitZero
-                && policy == EvaluationPolicy::strict()
-                && observation.exit_code() == Some(0)
-                && observation.signal().is_none()
-            {
-                return Err(EngineError::BaselineSucceeded);
+        let (baselines, verdict) = observe_baselines(
+            request,
+            &source_snapshot,
+            &all_units,
+            python_preparation.as_ref(),
+        )?
+        .into_parts();
+        let oracle = match verdict {
+            PreflightVerdict::Ready(oracle) => *oracle,
+            PreflightVerdict::PreparationRejected => {
+                return Err(EngineError::BaselinePreparationFailed)
             }
-            baselines.push(observation);
-        }
-        let oracle = stabilize_oracle(request.oracle_spec(), policy, &baselines)?;
+            PreflightVerdict::CommandSucceeded => return Err(EngineError::BaselineSucceeded),
+            PreflightVerdict::NoStableOracle(error) => return Err(EngineError::Oracle(error)),
+        };
         let first_error = Mutex::new(None::<EngineError>);
         let attempts_by_digest = Mutex::new(HashMap::<ContentDigest, AttemptRecord>::new());
         let memory_cache = Mutex::new(HashMap::<ContentDigest, AttemptRecord>::new());
         let inconclusive_attempts = AtomicU64::new(0);
         let cache_hits = AtomicU64::new(0);
+        let deadline = request.max_duration().map(|budget| started + budget);
+        let budget_exhausted = AtomicBool::new(false);
         let mut from_digest = source_digest;
         let mut accepted_material_digests = HashSet::from([source_digest]);
         let mut transition_ordinal = 0_u64;
@@ -507,6 +550,14 @@ impl ReductionEngine {
         let reduction =
             reduce_hierarchical_frontiers(inventory.units(), &directory_groups, |frontier| {
                 if has_error(&first_error) {
+                    return vec![None; frontier.len()];
+                }
+                // An inconclusive verdict can never authorize a cut, so refusing the
+                // whole frontier unwinds the search while leaving every already
+                // verified acceptance in place. The budget stops exploration; it
+                // never weakens what a published result means.
+                if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                    budget_exhausted.store(true, Ordering::Relaxed);
                     return vec![None; frontier.len()];
                 }
                 let phase = frontier_phase;
@@ -638,6 +689,15 @@ impl ReductionEngine {
 
         let snapshot = source_snapshot.subset(reduction.kept())?;
         from_digest = snapshot.digest();
+        // Which files are needed and how small each one gets are two searches, and only
+        // the first one converges quickly. Recording the budget here separates "we never
+        // finished deciding which files matter" from "we know which files matter and ran
+        // out of time trimming inside them", which are different answers to the reader.
+        let file_selection = if budget_exhausted.load(Ordering::Relaxed) {
+            Completion::BudgetExhausted
+        } else {
+            Completion::Converged
+        };
         let structured = StructuredReductionContext {
             request,
             python_preparation: python_preparation.as_ref(),
@@ -650,6 +710,8 @@ impl ReductionEngine {
             first_error: &first_error,
             inconclusive_attempts: &inconclusive_attempts,
             cache_hits: &cache_hits,
+            deadline,
+            budget_exhausted: &budget_exhausted,
         };
         let structured_outcome = structured.reduce(
             snapshot,
@@ -694,6 +756,14 @@ impl ReductionEngine {
             .map(WriterHandle::attempt_events)
             .transpose()?
             .unwrap_or_default();
+        let diagnostic_drift = DiagnosticDrift::measure(
+            oracle.spec().channel(),
+            &baselines,
+            &final_observations
+                .iter()
+                .map(FinalVerificationObservation::observation)
+                .collect::<Vec<_>>(),
+        );
 
         Ok(ReductionOutcome {
             source_snapshot_digest: source_digest,
@@ -715,8 +785,146 @@ impl ReductionEngine {
             accepted_structured_edits: structured_outcome.accepted,
             elapsed: started.elapsed(),
             attempt_events,
+            completion: if budget_exhausted.load(Ordering::Relaxed) {
+                Completion::BudgetExhausted
+            } else {
+                Completion::Converged
+            },
+            file_selection,
+            diagnostic_drift,
         })
     }
+
+    /// Runs every check [`ReductionEngine::run`] runs before its first cut, and stops there.
+    ///
+    /// This is the same code path, not a second opinion about it. Whatever it reports about
+    /// a request is what `run` would decide about that request, which is the only property
+    /// that makes a preflight worth reading.
+    ///
+    /// It executes the caller's command as many times as the evaluation policy asks for.
+    /// It writes no output directory and opens no session state.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError`] when the project cannot be inventoried, isolated preparation
+    /// cannot be captured, or a command cannot be executed at all. A command that runs and
+    /// disagrees with the request is a verdict, not an error.
+    pub fn preflight(request: &ReductionRequest) -> Result<Preflight, EngineError> {
+        let Setup {
+            inventory,
+            source_snapshot,
+            python_preparation,
+        } = Setup::capture(request)?;
+        let all_units = inventory.units().iter().collect::<Vec<_>>();
+        observe_baselines(
+            request,
+            &source_snapshot,
+            &all_units,
+            python_preparation.as_ref(),
+        )
+    }
+}
+
+/// The project state a reduction reads once, before it runs anything.
+struct Setup {
+    inventory: ProjectInventory,
+    source_snapshot: ProjectSnapshot,
+    python_preparation: Option<FrozenPythonPreparation>,
+}
+
+impl Setup {
+    fn capture(request: &ReductionRequest) -> Result<Self, EngineError> {
+        let inventory =
+            ProjectInventory::scan_with_policy(request.source_root(), request.inventory_policy())?;
+        if inventory.units().is_empty() {
+            return Err(EngineError::EmptyProject);
+        }
+        let source_snapshot = ProjectSnapshot::capture(&inventory, request.inventory_policy())?;
+        let python_preparation = request
+            .python_isolation()
+            .map(|isolation| {
+                FrozenPythonPreparation::capture(
+                    isolation,
+                    request.timeout(),
+                    request.max_output_bytes(),
+                )
+            })
+            .transpose()?;
+        if python_preparation.is_some() {
+            FrozenPythonPreparation::validate_original_program(request.program())?;
+        }
+        if request.preparation_mode() == PreparationMode::IsolatedPython
+            && python_preparation.is_none()
+        {
+            return Err(EngineError::MissingPythonIsolation);
+        }
+        Ok(Self {
+            inventory,
+            source_snapshot,
+            python_preparation,
+        })
+    }
+}
+
+/// Observes the unreduced project until the failure is proven or refused.
+///
+/// The loop returns at the first observation that settles the question, so the reported
+/// run count is what happened rather than what was planned.
+fn observe_baselines(
+    request: &ReductionRequest,
+    source_snapshot: &ProjectSnapshot,
+    all_units: &[&ReductionUnit],
+    python_preparation: Option<&FrozenPythonPreparation>,
+) -> Result<Preflight, EngineError> {
+    let policy = request.evaluation_policy();
+    let spec = request.oracle_spec();
+    let mut baselines = Vec::with_capacity(usize::from(policy.runs()));
+    let mut executed_program = None;
+    let report = |executed, baselines, verdict| {
+        Preflight::new(
+            request.program().to_path_buf(),
+            executed,
+            spec.mode(),
+            spec.channel(),
+            policy.runs(),
+            baselines,
+            verdict,
+        )
+    };
+
+    for _ in 0..policy.runs() {
+        let (program, execution) =
+            run_reported_candidate(request, source_snapshot, all_units, python_preparation)?;
+        executed_program = program.or(executed_program);
+        let observation = match execution {
+            CandidateExecution::Observed(observation) => observation,
+            CandidateExecution::PreparationRejected => {
+                return Ok(report(
+                    executed_program,
+                    baselines,
+                    PreflightVerdict::PreparationRejected,
+                ));
+            }
+        };
+        if spec.mode() != OracleMode::ExitZero
+            && policy == EvaluationPolicy::strict()
+            && observation.exit_code() == Some(0)
+            && observation.signal().is_none()
+        {
+            baselines.push(observation);
+            return Ok(report(
+                executed_program,
+                baselines,
+                PreflightVerdict::CommandSucceeded,
+            ));
+        }
+        baselines.push(observation);
+    }
+    let verdict = match stabilize_oracle(spec, policy, &baselines) {
+        Ok(oracle) => PreflightVerdict::Ready(Box::new(oracle)),
+        Err(error) => PreflightVerdict::NoStableOracle(error),
+    };
+    Ok(report(executed_program, baselines, verdict))
 }
 
 /// One individual command execution used by final same-failure verification.
@@ -813,17 +1021,53 @@ fn run_snapshot_candidate(
     python_preparation: Option<&FrozenPythonPreparation>,
 ) -> Result<CandidateExecution, EngineError> {
     let candidate = CandidateWorkspace::materialize_snapshot(snapshot)?;
-    if !prepare_candidate(request, candidate.root())? {
+    let Some(command) = candidate_command(request, candidate.root(), python_preparation)? else {
         return Ok(CandidateExecution::PreparationRejected);
+    };
+    Ok(CandidateExecution::Observed(ProcessRunner::run(&command)?))
+}
+
+/// Runs one candidate and reports the program the runner was given.
+///
+/// The reduction loop has no use for that path, so only the preflight pays for carrying it.
+fn run_reported_candidate(
+    request: &ReductionRequest,
+    source_snapshot: &ProjectSnapshot,
+    kept: &[&ReductionUnit],
+    python_preparation: Option<&FrozenPythonPreparation>,
+) -> Result<(Option<PathBuf>, CandidateExecution), EngineError> {
+    let snapshot = source_snapshot.subset(kept.iter().copied())?;
+    let candidate = CandidateWorkspace::materialize_snapshot(&snapshot)?;
+    let Some(command) = candidate_command(request, candidate.root(), python_preparation)? else {
+        return Ok((None, CandidateExecution::PreparationRejected));
+    };
+    let program = command.program().to_path_buf();
+    Ok((
+        Some(program),
+        CandidateExecution::Observed(ProcessRunner::run(&command)?),
+    ))
+}
+
+/// Prepares one materialized candidate and builds the command that exercises it.
+///
+/// Returns `None` when preparation refused the candidate, which is not an error: the
+/// caller decides what an unpreparable candidate means.
+fn candidate_command(
+    request: &ReductionRequest,
+    candidate_root: &Path,
+    python_preparation: Option<&FrozenPythonPreparation>,
+) -> Result<Option<CommandSpec>, EngineError> {
+    if !prepare_candidate(request, candidate_root)? {
+        return Ok(None);
     }
     let command = if let Some(preparation) = python_preparation {
         let Some(prepared) = preparation.prepare(
-            candidate.root(),
+            candidate_root,
             request.timeout(),
             request.max_output_bytes(),
         )?
         else {
-            return Ok(CandidateExecution::PreparationRejected);
+            return Ok(None);
         };
         prepared.command_for(
             request.program(),
@@ -835,12 +1079,12 @@ fn run_snapshot_candidate(
         CommandSpec::new(
             request.program.clone(),
             request.arguments.clone(),
-            candidate.root().to_path_buf(),
+            candidate_root.to_path_buf(),
             request.timeout,
             request.max_output_bytes,
         )
     };
-    Ok(CandidateExecution::Observed(ProcessRunner::run(&command)?))
+    Ok(Some(command))
 }
 
 enum CandidateExecution {
@@ -909,9 +1153,23 @@ struct StructuredReductionContext<'a> {
     first_error: &'a Mutex<Option<EngineError>>,
     inconclusive_attempts: &'a AtomicU64,
     cache_hits: &'a AtomicU64,
+    deadline: Option<Instant>,
+    budget_exhausted: &'a AtomicBool,
 }
 
 impl StructuredReductionContext<'_> {
+    /// Reports whether the wall-time budget has elapsed, recording it the first time.
+    fn budget_expired(&self) -> bool {
+        if self
+            .deadline
+            .is_some_and(|deadline| Instant::now() >= deadline)
+        {
+            self.budget_exhausted.store(true, Ordering::Relaxed);
+            return true;
+        }
+        false
+    }
+
     fn reduce(
         &self,
         mut snapshot: ProjectSnapshot,
@@ -923,6 +1181,12 @@ impl StructuredReductionContext<'_> {
         let mut attempts = 0_u64;
         let mut accepted = Vec::new();
         'fixpoint: loop {
+            // The structured fixpoint is a second search after the file frontiers,
+            // and it can run far longer than they did. A budget that bounded only
+            // the first phase would not bound the run.
+            if self.budget_expired() {
+                break;
+            }
             let manifests = manifest_candidates(
                 &snapshot,
                 self.request.ecosystem(),
@@ -943,6 +1207,9 @@ impl StructuredReductionContext<'_> {
             }
 
             for syntax_phase in [SyntaxPhase::Delete, SyntaxPhase::Hoist] {
+                if self.budget_expired() {
+                    break 'fixpoint;
+                }
                 let syntax = syntax_candidates(&snapshot, syntax_phase)?;
                 let syntax_outcome = self.evaluate_frontier(
                     syntax,

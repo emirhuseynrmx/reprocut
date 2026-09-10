@@ -43,7 +43,7 @@ class FakeRegistry:
         self.lookups: list[str] = []
 
     def version(self, package: str, version: str):
-        assert version == "0.1.0"
+        assert version == load_publish_crates().VERSION
         self.lookups.append(package)
         return self.versions.get(package)
 
@@ -65,14 +65,17 @@ def write_archives(root: Path, module) -> dict[str, str]:
 
 
 def write_crate_archive(archive: Path, package: str, license_contents: bytes | None) -> None:
+    # A real .crate names its root directory after the published version, so the
+    # fixture reads the version from the publisher instead of repeating it.
+    version = load_publish_crates().VERSION
     archive.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive, "w:gz") as package_archive:
-        manifest = b'[package]\nname = "fixture"\nversion = "0.1.0"\n'
-        manifest_info = tarfile.TarInfo(f"{package}-0.1.0/Cargo.toml")
+        manifest = f'[package]\nname = "fixture"\nversion = "{version}"\n'.encode()
+        manifest_info = tarfile.TarInfo(f"{package}-{version}/Cargo.toml")
         manifest_info.size = len(manifest)
         package_archive.addfile(manifest_info, io.BytesIO(manifest))
         if license_contents is not None:
-            license_info = tarfile.TarInfo(f"{package}-0.1.0/LICENSE")
+            license_info = tarfile.TarInfo(f"{package}-{version}/LICENSE")
             license_info.size = len(license_contents)
             package_archive.addfile(license_info, io.BytesIO(license_contents))
 

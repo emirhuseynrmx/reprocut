@@ -1,15 +1,26 @@
-//! Real-filesystem structural verification and tamper contracts.
+﻿//! Real-filesystem structural verification and tamper contracts.
 
 use std::{fs, path::Path};
 
 use reprocut_report::{
     build_artifact_manifest, render_issue, render_report, render_reproduction_scripts,
-    verify_artifact, write_attempts_jsonl, AttemptSummary, ChannelAnchor, EvaluationPolicyEvidence,
-    FailureEvidence, FinalObservationEvidence, MaterialMeasurement, MeasurementSet,
-    PreparationEvidence, ReductionEvidence, ReportModel, RetainedEntry, RetainedManifest,
-    RetentionEvidence, SearchEvidence, VerificationError, EVIDENCE_SCHEMA_VERSION,
-    NORMALIZATION_SCHEMA_VERSION,
+    verify_artifact, write_attempts_jsonl, AttemptSummary, ChannelAnchor, DriftEvidence,
+    EvaluationPolicyEvidence, FailureEvidence, FinalObservationEvidence, MaterialMeasurement,
+    MeasurementSet, PreparationEvidence, ReductionEvidence, ReportModel, RetainedEntry,
+    RetainedManifest, RetentionEvidence, SearchEvidence, VerificationError,
+    EVIDENCE_SCHEMA_VERSION, NORMALIZATION_SCHEMA_VERSION,
 };
+
+fn no_drift() -> DriftEvidence {
+    DriftEvidence {
+        baseline_lines: 4,
+        final_lines: 3,
+        retained_lines: 3,
+        novel_lines: 0,
+        reportable: false,
+        novel_sample: Vec::new(),
+    }
+}
 use serde_json::json;
 
 #[test]
@@ -20,6 +31,23 @@ fn complete_artifact_is_structurally_verified() {
 
     assert_eq!(verified.root(), fixture.path());
     assert_eq!(verified.artifact_id().len(), 64);
+}
+
+#[test]
+fn verification_declares_whether_it_could_read_execute_bits() {
+    // An artifact produced on Linux records execute bits that Windows cannot
+    // observe. Reporting it as changed there would be wrong, and quietly
+    // passing would claim more than was checked, so the result carries which
+    // one happened.
+    let fixture = artifact_fixture();
+
+    let verified = verify_artifact(fixture.path()).expect("valid artifact");
+
+    assert_eq!(
+        verified.checked_executable_masks(),
+        reprocut_report::OBSERVES_EXECUTABLE_MASK
+    );
+    assert_eq!(cfg!(unix), reprocut_report::OBSERVES_EXECUTABLE_MASK);
 }
 
 #[test]
@@ -218,6 +246,8 @@ fn evidence(project_bytes: &[u8]) -> ReductionEvidence {
             jobs: 1,
             state: None,
             resumed: false,
+            completion: "converged".to_owned(),
+            file_selection: "converged".to_owned(),
             accepted_file_sizes: vec![2, 1],
             evaluation_policy: EvaluationPolicyEvidence {
                 mode: "strict".to_owned(),
@@ -242,6 +272,7 @@ fn evidence(project_bytes: &[u8]) -> ReductionEvidence {
             failure_patterns: Vec::new(),
             reject_patterns: Vec::new(),
             oracle_spec_sha256: "b".repeat(64),
+            diagnostic_drift: Some(no_drift()),
         },
         kept_files: vec![RetentionEvidence {
             path: "bug.py".to_owned(),

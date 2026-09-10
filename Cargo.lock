@@ -997,7 +997,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "reprocut"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -1018,7 +1018,7 @@ dependencies = [
 
 [[package]]
 name = "reprocut-adapters"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "reprocut-workspace",
  "serde_json",
@@ -1029,7 +1029,7 @@ dependencies = [
 
 [[package]]
 name = "reprocut-core"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "criterion",
  "loom",
@@ -1043,7 +1043,7 @@ dependencies = [
 
 [[package]]
 name = "reprocut-engine"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "reprocut-adapters",
  "reprocut-core",
@@ -1059,7 +1059,7 @@ dependencies = [
 
 [[package]]
 name = "reprocut-oci"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -1069,7 +1069,7 @@ dependencies = [
 
 [[package]]
 name = "reprocut-python"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "pyo3",
  "reprocut-core",
@@ -1077,7 +1077,7 @@ dependencies = [
 
 [[package]]
 name = "reprocut-report"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "reprocut-core",
  "serde",
@@ -1087,7 +1087,7 @@ dependencies = [
 
 [[package]]
 name = "reprocut-runner"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "command-group",
  "reprocut-core",
@@ -1097,7 +1097,7 @@ dependencies = [
 
 [[package]]
 name = "reprocut-state"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "reprocut-core",
  "rusqlite",
@@ -1107,7 +1107,7 @@ dependencies = [
 
 [[package]]
 name = "reprocut-syntax"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "reprocut-core",
  "thiserror",
@@ -1124,7 +1124,7 @@ dependencies = [
 
 [[package]]
 name = "reprocut-workspace"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "memchr",
  "reprocut-core",

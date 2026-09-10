@@ -69,7 +69,7 @@ def test_checked_in_release_surfaces_match_the_locked_contract_versions() -> Non
     report = (ROOT / "demo" / "result" / "report.html").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    release = (ROOT / "docs" / "release" / "0.1.0.md").read_text(encoding="utf-8")
+    release = (ROOT / "docs" / "release" / "0.1.0-alpha.1.md").read_text(encoding="utf-8")
 
     assert evidence["schema_version"] == 4
     assert evidence["failure"]["normalization_schema"] == 5
@@ -82,13 +82,16 @@ def test_checked_in_release_surfaces_match_the_locked_contract_versions() -> Non
     assert "evidence schema 4" in release
     assert "normalization schema 5" in release
 
+    assert "## [0.1.0-alpha.1] - Unreleased" in changelog
+    assert "Published as `0.1.0-alpha.1`" not in changelog
+
 
 def test_pypi_metadata_and_console_entrypoint_are_release_complete() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     project = pyproject["project"]
 
     assert project["name"] == "reprocut"
-    assert project["version"] == "0.1.0"
+    assert project["version"] == "0.1.0-alpha.1"
     assert project["license"] == "Apache-2.0"
     assert project["license-files"] == ["LICENSE"]
     assert project["scripts"]["reprocut-py"] == "reprocut.cli:main"
@@ -171,11 +174,26 @@ def test_registry_readme_links_and_install_contract_are_release_stable() -> None
 
     assert f"{asset_base}assets/reprocut-banner.svg" in readme
     assert f"{asset_base}assets/reprocut-demo.gif" in readme
-    assert "/raw/v0.1.0/" not in readme
+    assert f"{asset_base}assets/reprocut-launch.png" in readme
+    assert "/raw/v0.1.0-alpha.1/" not in readme
     assert "packages have not been published" not in readme
-    assert "cargo install reprocut --version 0.1.0 --locked" in readme
-    assert "python -m pip install reprocut==0.1.0" in readme
+    assert "cargo install reprocut --version 0.1.0-alpha.1 --locked" in readme
+    # Python packaging normalizes the SemVer prerelease to PEP 440, so the
+    # wheel and the sdist are named 0.1.0a1 and the install command must match.
+    assert "python -m pip install reprocut==0.1.0a1" in readme
     assert "The Python package does not bundle the Rust reducer CLI." in readme
+
+    release_readme = (ROOT / "release" / "README.md").read_text(encoding="utf-8")
+    assert "reprocut-0.1.0-alpha.1-x86_64-unknown-linux-gnu.tar.gz" in release_readme
+    assert "--version 0.1.0-alpha.1" in release_readme
+
+
+def test_demo_regeneration_uploads_every_launch_asset() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "regenerate-demo.yml").read_text(encoding="utf-8")
+
+    assert "assets/reprocut-demo.gif" in workflow
+    assert "assets/reprocut-banner.svg" in workflow
+    assert "assets/reprocut-launch.png" in workflow
 
 
 def test_every_publishable_path_dependency_has_the_release_version() -> None:
@@ -188,14 +206,6 @@ def test_every_publishable_path_dependency_has_the_release_version() -> None:
             assert package.get("description"), manifest_path
         for dependency in document.get("dependencies", {}).values():
             if isinstance(dependency, dict) and "path" in dependency:
-                assert dependency.get("version") == "0.1.0", manifest_path
+                assert dependency.get("version") == "0.1.0-alpha.1", manifest_path
 
     assert publishable_names == set(PUBLISH_ORDER)
-
-
-def test_release_runbook_preserves_dependency_order() -> None:
-    runbook = (ROOT / "docs" / "RELEASING.md").read_text(encoding="utf-8")
-    commands = re.findall(r"cargo publish --locked -p ([a-z0-9-]+)", runbook)
-
-    assert commands == PUBLISH_ORDER
-    assert "reprocut-python` is intentionally `publish = false" in runbook

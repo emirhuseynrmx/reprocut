@@ -519,3 +519,96 @@ fn refuses_to_overwrite_an_existing_output_directory() {
         "owned by user"
     );
 }
+
+#[test]
+fn doctor_help_states_that_it_runs_the_command_and_writes_nothing() {
+    Command::cargo_bin("reprocut")
+        .expect("binary is built")
+        .args(["doctor", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Executes your command"))
+        .stdout(predicate::str::contains("Writes no output"))
+        .stdout(predicate::str::contains("does not guarantee"));
+}
+
+#[test]
+fn doctor_passes_a_stable_failure_and_names_what_will_be_preserved() {
+    let source = tempdir().expect("source tempdir");
+    fs::write(source.path().join("bug.py"), b"raise ValueError('boom')\n").expect("fixture");
+
+    let output = Command::cargo_bin("reprocut")
+        .expect("binary is built")
+        .args(["doctor", "--root"])
+        .arg(source.path())
+        .args(["--json", "--", &python(), "bug.py"])
+        .output()
+        .expect("doctor runs");
+
+    assert_eq!(output.status.code(), Some(0));
+    let report: Value = serde_json::from_slice(&output.stdout).expect("stdout carries only JSON");
+    assert_eq!(report["schema_version"], 1);
+    assert_eq!(report["status"], "ready");
+    assert_eq!(report["reason_code"], "stable_failure");
+    assert_eq!(report["runs"]["completed"], 3);
+    let anchors = report["recognized"]["anchors"]
+        .as_array()
+        .expect("a ready report names the anchors it will preserve");
+    assert!(anchors.iter().any(|anchor| anchor["text"]
+        .as_str()
+        .is_some_and(|text| text.contains("ValueError: boom"))));
+    // Nothing was published, journaled, or left behind in the project.
+    assert!(!source.path().join(".reprocut").exists());
+    assert_eq!(
+        fs::read_dir(source.path())
+            .expect("project readable")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn doctor_rejects_a_passing_command_with_the_gate_exit_code() {
+    let source = tempdir().expect("source tempdir");
+    fs::write(source.path().join("ok.py"), b"print('ok')\n").expect("fixture");
+
+    let output = Command::cargo_bin("reprocut")
+        .expect("binary is built")
+        .args(["doctor", "--root"])
+        .arg(source.path())
+        .args(["--json", "--", &python(), "ok.py"])
+        .output()
+        .expect("doctor runs");
+
+    assert_eq!(output.status.code(), Some(1));
+    let report: Value = serde_json::from_slice(&output.stdout).expect("stdout carries only JSON");
+    assert_eq!(report["status"], "not_ready");
+    assert_eq!(report["reason_code"], "command_succeeded");
+    // Only the run that settled the question was taken.
+    assert_eq!(report["runs"]["planned"], 3);
+    assert_eq!(report["runs"]["completed"], 1);
+    assert_eq!(report["observations"][0]["exit_code"], 0);
+}
+
+#[test]
+fn doctor_separates_an_unusable_request_from_an_unready_project() {
+    let source = tempdir().expect("source tempdir");
+    fs::write(source.path().join("bug.py"), b"raise ValueError('boom')\n").expect("fixture");
+
+    // An expression the oracle cannot compile is not a statement about the project.
+    Command::cargo_bin("reprocut")
+        .expect("binary is built")
+        .args(["doctor", "--root"])
+        .arg(source.path())
+        .args([
+            "--oracle-mode",
+            "regex",
+            "--failure-regex",
+            "[",
+            "--",
+            &python(),
+            "bug.py",
+        ])
+        .assert()
+        .code(2);
+}

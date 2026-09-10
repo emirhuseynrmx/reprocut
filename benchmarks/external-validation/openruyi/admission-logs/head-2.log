@@ -1,0 +1,5 @@
+Fixing docs/check-spec-bcond.md
+Fixing openruyi-scan-results/check-spec-bcond-results.md
+Fixing openruyi_precommit_hooks/check_spec_bcond.py
+Fixing tests/check_spec_bcond_test.py
+files were modified by this hook

@@ -270,6 +270,11 @@ impl FailureOracle {
         &self.fingerprint
     }
 
+    /// Returns the validated contract this oracle recognizes.
+    pub const fn spec(&self) -> &OracleSpec {
+        &self.spec
+    }
+
     /// Classifies a candidate without accepting incomplete evidence.
     pub fn classify(&self, observation: &ExecutionObservation) -> CandidateVerdict {
         if matches!(

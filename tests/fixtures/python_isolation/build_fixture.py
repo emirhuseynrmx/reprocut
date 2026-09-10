@@ -9,7 +9,6 @@ import io
 import zipfile
 from pathlib import Path
 
-
 WHEELHOUSE = Path(__file__).resolve().parent / "wheels"
 STAMP = (1980, 1, 1, 0, 0, 0)
 
@@ -25,7 +24,12 @@ def wheel(name: str) -> None:
     files = {
         f"{distribution}/__init__.py": f"VALUE = {name!r}\n".encode(),
         f"{info}/METADATA": (f"Metadata-Version: 2.1\nName: {name}\nVersion: 1.0.0\n\n").encode(),
-        f"{info}/WHEEL": b"Wheel-Version: 1.0\nGenerator: reprocut-fixture\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+        f"{info}/WHEEL": (
+            b"Wheel-Version: 1.0\n"
+            b"Generator: reprocut-fixture\n"
+            b"Root-Is-Purelib: true\n"
+            b"Tag: py3-none-any\n"
+        ),
         f"{info}/top_level.txt": f"{distribution}\n".encode(),
     }
     rows = [[path, digest(data), str(len(data))] for path, data in sorted(files.items())]

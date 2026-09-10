@@ -11,25 +11,29 @@ use std::{
     time::Duration,
 };
 
+mod command_line;
+mod doctor;
+
 use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{generate, Shell};
 use reprocut_adapters::{Adapter, AdapterError, Ecosystem, EcosystemSelection};
 use reprocut_core::{
-    CandidateVerdict, ContainmentMechanism, ContentDigest, DiagnosticChannel, EvaluationPolicy,
-    OracleError, OracleMode, OracleSpec, PolicyError, ProgressEventV1, ProtocolAction,
-    ProtocolError, ReductionRequestV1, TerminationReason, PROTOCOL_VERSION,
+    CandidateVerdict, ContainmentMechanism, ContentDigest, DiagnosticChannel, DiagnosticDrift,
+    EvaluationPolicy, OracleError, OracleMode, OracleSpec, PolicyError, ProgressEventV1,
+    ProtocolAction, ProtocolError, ReductionRequestV1, TerminationReason, PROTOCOL_VERSION,
 };
 use reprocut_engine::{
-    EngineError, PreparationMode, PythonIsolationRequest, PythonPreparationError, ReductionEngine,
-    ReductionOutcome, ReductionRequest, SessionMode,
+    Completion, EngineError, PreparationMode, PythonIsolationRequest, PythonPreparationError,
+    ReductionEngine, ReductionOutcome, ReductionRequest, SessionMode,
 };
 use reprocut_oci::{export_archive, Builder, OciError, OciRequest, RuntimeFamily};
 use reprocut_report::{
     build_artifact_manifest, render_issue, render_report, render_reproduction_scripts,
-    verify_artifact, write_attempts_jsonl, AttemptSummary, ChannelAnchor, EvaluationPolicyEvidence,
-    FailureEvidence, FinalObservationEvidence, ManifestError, MaterialMeasurement, MeasurementSet,
-    PreparationEvidence, ReductionEvidence, ReportModel, RetainedEntry, RetainedManifest,
-    RetentionEvidence, SearchEvidence, VerificationError, EVIDENCE_SCHEMA_VERSION,
+    verify_artifact, write_attempts_jsonl, AttemptSummary, ChannelAnchor, DriftEvidence,
+    EvaluationPolicyEvidence, FailureEvidence, FinalObservationEvidence, ManifestError,
+    MaterialMeasurement, MeasurementSet, PreparationEvidence, ReductionEvidence, ReportModel,
+    RetainedEntry, RetainedManifest, RetentionEvidence, SearchEvidence, VerificationError,
+    EVIDENCE_SCHEMA_VERSION,
 };
 use reprocut_workspace::{ProjectInventory, ProjectSnapshot, WorkspaceError};
 use serde::Serialize;
@@ -61,6 +65,15 @@ enum Action {
     Reduce(ReduceArgs),
     /// Continue an exactly compatible interrupted reduction.
     Resume(ReduceArgs),
+    /// Run the checks a reduction runs first, then stop without reducing.
+    ///
+    /// Accepts the same arguments as `reduce`, so a preflight answers for the exact
+    /// request you were about to run. Executes your command in a copy of the project as
+    /// many times as the evaluation policy asks for. Writes no output and cuts nothing.
+    ///
+    /// Exits 0 when reduction can start, 1 when it cannot, and 2 when the request itself
+    /// is invalid. A passing preflight does not guarantee that reduction will succeed.
+    Doctor(ReduceArgs),
     /// Independently verify one completed artifact's complete byte identity.
     Verify(VerifyArgs),
     /// Export a completed artifact into a distribution format.
@@ -222,6 +235,10 @@ struct ReduceArgs {
     #[arg(long, default_value_t = DEFAULT_TIMEOUT_MS)]
     timeout_ms: u64,
 
+    /// Wall-time budget for the search; publishes the best verified result when it elapses.
+    #[arg(long)]
+    max_duration_secs: Option<u64>,
+
     /// Maximum captured bytes for each child output stream.
     #[arg(long, default_value_t = DEFAULT_CAPTURE_BYTES)]
     max_output_bytes: usize,
@@ -285,6 +302,11 @@ struct ReduceArgs {
     /// Start a new session without deleting prior journal history.
     #[arg(long)]
     restart: bool,
+
+    /// Failing command as one string, split on quoting rules rather than by a
+    /// shell. For callers that hold the command as text, such as a CI action.
+    #[arg(long, value_name = "STRING", conflicts_with = "command")]
+    command_line: Option<String>,
 
     /// Optional failing command after `--`; otherwise the adapter supplies one.
     #[arg(last = true, num_args = 0.., value_name = "COMMAND")]
@@ -432,22 +454,49 @@ enum CliError {
     InvalidArguments(&'static str),
 }
 
+impl CliError {
+    /// Whether the request was rejected before anything about the project was observed.
+    const fn is_invalid_request(&self) -> bool {
+        matches!(
+            self,
+            Self::InvalidArguments(_)
+                | Self::Oracle(_)
+                | Self::Policy(_)
+                | Self::OutputExists(_)
+                | Self::InvalidOutput(_)
+        )
+    }
+}
+
+/// Exit code for a request the command could not act on at all.
+///
+/// Only `doctor` distinguishes this from a failed run, because only `doctor` is meant to
+/// be read as a gate: a caller has to tell "your project is not ready" apart from "I never
+/// understood what you asked". Clap already exits with 2 for arguments it rejects itself.
+const INVALID_REQUEST: u8 = 2;
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let machine_protocol = matches!(&cli.action, Action::Protocol(_));
+    let gated = matches!(&cli.action, Action::Doctor(_));
     match execute(cli) {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => code,
         Err(error) => {
             if !machine_protocol {
                 eprintln!("error: {error}");
             }
-            ExitCode::FAILURE
+            if gated && error.is_invalid_request() {
+                ExitCode::from(INVALID_REQUEST)
+            } else {
+                ExitCode::FAILURE
+            }
         }
     }
 }
 
-fn execute(cli: Cli) -> Result<(), CliError> {
+fn execute(cli: Cli) -> Result<ExitCode, CliError> {
     match cli.action {
+        Action::Doctor(arguments) => return doctor::run(arguments),
         Action::Minimize(arguments) | Action::Reduce(arguments) => reduce_project(arguments, false),
         Action::Resume(arguments) => reduce_project(arguments, true),
         Action::Verify(arguments) => verify_completed_artifact(&arguments),
@@ -459,6 +508,7 @@ fn execute(cli: Cli) -> Result<(), CliError> {
             Ok(())
         }
     }
+    .map(|()| ExitCode::SUCCESS)
 }
 
 fn verify_completed_artifact(arguments: &VerifyArgs) -> Result<(), CliError> {
@@ -470,6 +520,7 @@ fn verify_completed_artifact(arguments: &VerifyArgs) -> Result<(), CliError> {
                 "artifact_id": verified.artifact_id(),
                 "artifact_manifest_schema": reprocut_report::ARTIFACT_MANIFEST_SCHEMA_VERSION,
                 "verified": true,
+                "checked_executable_masks": verified.checked_executable_masks(),
             })
         );
     } else {
@@ -573,6 +624,9 @@ fn protocol_reduce_args(request: ReductionRequestV1) -> Result<ReduceArgs, CliEr
         ecosystem,
         prepare,
         timeout_ms: request.timeout_ms,
+        // The protocol has no budget field yet; a client that wants one sets it
+        // through its own job timeout until the request schema carries it.
+        max_duration_secs: None,
         max_output_bytes: request.max_output_bytes,
         oracle_stream,
         oracle_mode,
@@ -589,6 +643,8 @@ fn protocol_reduce_args(request: ReductionRequestV1) -> Result<ReduceArgs, CliEr
         jobs: request.jobs,
         state: request.state,
         restart: request.restart,
+        // The protocol carries argv already, so there is nothing to split.
+        command_line: None,
         command: request.command,
     })
 }
@@ -876,22 +932,73 @@ fn execute_reduction(
     resume: bool,
     human_progress: bool,
 ) -> Result<CompletedReduction, CliError> {
+    let request = build_request(&mut arguments, resume, RequestPurpose::Reduce)?;
+
+    if human_progress {
+        eprintln!("reprocut: proving a stable baseline and searching safe cuts...");
+    }
+    let outcome = ReductionEngine::run(&request)?;
+    if human_progress {
+        eprintln!(
+            "reprocut: stable baseline preserved; {} → {} files",
+            outcome.original_files(),
+            outcome.snapshot().files().len()
+        );
+    }
+
+    let evidence = build_evidence(&arguments, &outcome)?;
+    evidence.validate().map_err(CliError::InvalidArguments)?;
+    let json = serde_json::to_vec_pretty(&evidence)?;
+    publish_artifact(&arguments, &outcome, &evidence, &json)?;
+
+    Ok(CompletedReduction {
+        arguments,
+        outcome,
+        evidence,
+        json,
+    })
+}
+
+/// What the caller intends to do with the request, which decides what it must reserve.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RequestPurpose {
+    /// Publish an artifact, so the output path must be free and a session is journaled.
+    Reduce,
+    /// Observe only, so nothing is reserved and nothing is written.
+    Inspect,
+}
+
+/// Turns command-line arguments into the request the engine runs.
+///
+/// `doctor` and `reduce` share this so that a preflight answers for the same request the
+/// reduction would build, down to the adapter-supplied command and the oracle contract.
+fn build_request(
+    arguments: &mut ReduceArgs,
+    resume: bool,
+    purpose: RequestPurpose,
+) -> Result<ReductionRequest, CliError> {
     if resume && arguments.restart {
         return Err(CliError::InvalidArguments(
             "resume and --restart are mutually exclusive",
         ));
     }
-    let evaluation_policy = evaluation_policy(&arguments)?;
+    let evaluation_policy = evaluation_policy(arguments)?;
     let oracle_spec = OracleSpec::new(
         arguments.oracle_mode.into(),
         arguments.oracle_stream.into(),
         arguments.failure_patterns.clone(),
         arguments.reject_patterns.clone(),
     )?;
-    let python_isolation = python_isolation_request(&arguments)?;
-    ensure_output_absent(&arguments.output)?;
+    let python_isolation = python_isolation_request(arguments)?;
+    if purpose == RequestPurpose::Reduce {
+        ensure_output_absent(&arguments.output)?;
+    }
     let adapter = Adapter::detect(&arguments.root, arguments.ecosystem.selection())?;
     arguments.ecosystem = adapter.ecosystem().into();
+    if let Some(line) = arguments.command_line.take() {
+        arguments.command = command_line::split(&line)
+            .map_err(|error| CliError::InvalidArguments(error.message()))?;
+    }
     if arguments.command.is_empty() {
         let command = adapter.command().ok_or(CliError::InvalidArguments(
             "the selected ecosystem has no default command; pass one after --",
@@ -916,37 +1023,16 @@ fn execute_reduction(
     )
     .with_evaluation(arguments.oracle_stream.into(), evaluation_policy)
     .with_oracle(oracle_spec)
-    .with_runtime(arguments.jobs, session_mode(&arguments, resume))
+    .with_runtime(arguments.jobs, session_mode(arguments, resume, purpose))
     .with_inventory_policy(adapter.inventory_policy().clone())
     .with_ecosystem(adapter.ecosystem(), arguments.prepare.into());
-    let request = if let Some(isolation) = python_isolation {
-        request.with_python_isolation(isolation)
-    } else {
-        request
+    let request = match arguments.max_duration_secs {
+        Some(budget) => request.with_max_duration(Duration::from_secs(budget)),
+        None => request,
     };
-
-    if human_progress {
-        eprintln!("reprocut: proving a stable baseline and searching safe cuts...");
-    }
-    let outcome = ReductionEngine::run(&request)?;
-    if human_progress {
-        eprintln!(
-            "reprocut: stable baseline preserved; {} → {} files",
-            outcome.original_files(),
-            outcome.snapshot().files().len()
-        );
-    }
-
-    let evidence = build_evidence(&arguments, &outcome)?;
-    evidence.validate().map_err(CliError::InvalidArguments)?;
-    let json = serde_json::to_vec_pretty(&evidence)?;
-    publish_artifact(&arguments, &outcome, &evidence, &json)?;
-
-    Ok(CompletedReduction {
-        arguments,
-        outcome,
-        evidence,
-        json,
+    Ok(match python_isolation {
+        Some(isolation) => request.with_python_isolation(isolation),
+        None => request,
     })
 }
 
@@ -1101,6 +1187,8 @@ fn build_evidence(
             jobs: arguments.jobs,
             state: outcome.state_path().map(|path| path.display().to_string()),
             resumed: outcome.resumed(),
+            completion: outcome.completion().as_str().to_owned(),
+            file_selection: outcome.file_selection().as_str().to_owned(),
             accepted_file_sizes,
             evaluation_policy: policy_evidence(arguments),
         },
@@ -1125,6 +1213,7 @@ fn build_evidence(
             failure_patterns: fingerprint.failure_patterns().to_vec(),
             reject_patterns: fingerprint.reject_patterns().to_vec(),
             oracle_spec_sha256: fingerprint.oracle_spec_digest().to_hex(),
+            diagnostic_drift: Some(drift_evidence(outcome.diagnostic_drift())),
         },
         kept_files: outcome
             .snapshot()
@@ -1140,14 +1229,30 @@ fn build_evidence(
         final_observations,
         accepted_structured_edits: outcome.accepted_structured_edits().to_vec(),
         attempts,
-        limitations: vec![
-            "Elapsed time is one wall-clock observation, not a benchmark.".to_owned(),
-            "Retained paths are observations from the verified final snapshot, not claims of semantic necessity."
-                .to_owned(),
-            "Syntax-node counts are omitted until a grammar-valid cross-language counter is available."
-                .to_owned(),
-        ],
+        limitations: limitations(outcome),
     })
+}
+
+/// What the numbers above do not say, in the reader's own terms.
+fn limitations(outcome: &ReductionOutcome) -> Vec<String> {
+    let mut limitations = vec![
+        "Elapsed time is one wall-clock observation, not a benchmark.".to_owned(),
+        "Retained paths are observations from the verified final snapshot, not claims of semantic necessity."
+            .to_owned(),
+        "Syntax-node counts are omitted until a grammar-valid cross-language counter is available."
+            .to_owned(),
+    ];
+    if outcome.completion() == Completion::BudgetExhausted {
+        limitations.push(
+            if outcome.file_selection() == Completion::Converged {
+                "The wall-time budget elapsed while trimming inside the retained files. The file set is final: every file the search could remove was removed. A longer run may shrink the files that remain."
+            } else {
+                "The wall-time budget elapsed while the search was still deciding which files the failure needs. Every retained file passed final verification, but a longer run may remove more of them."
+            }
+            .to_owned(),
+        );
+    }
+    limitations
 }
 
 fn material_measurement(snapshot: &reprocut_workspace::ProjectSnapshot) -> MaterialMeasurement {
@@ -1167,7 +1272,10 @@ fn material_measurement(snapshot: &reprocut_workspace::ProjectSnapshot) -> Mater
     }
 }
 
-fn session_mode(arguments: &ReduceArgs, resume: bool) -> SessionMode {
+fn session_mode(arguments: &ReduceArgs, resume: bool, purpose: RequestPurpose) -> SessionMode {
+    if purpose == RequestPurpose::Inspect {
+        return SessionMode::Ephemeral;
+    }
     let path = arguments
         .state
         .clone()
@@ -1222,6 +1330,17 @@ const fn verdict_name(verdict: CandidateVerdict) -> &'static str {
         CandidateVerdict::Preserved => "preserved",
         CandidateVerdict::Rejected => "rejected",
         CandidateVerdict::Inconclusive => "inconclusive",
+    }
+}
+
+fn drift_evidence(drift: &DiagnosticDrift) -> DriftEvidence {
+    DriftEvidence {
+        baseline_lines: drift.baseline_lines(),
+        final_lines: drift.final_lines(),
+        retained_lines: drift.retained_lines(),
+        novel_lines: drift.novel_lines(),
+        reportable: drift.is_reportable(),
+        novel_sample: drift.novel_sample().to_vec(),
     }
 }
 

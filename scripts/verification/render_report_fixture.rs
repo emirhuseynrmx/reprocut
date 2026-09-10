@@ -1,4 +1,6 @@
-use reprocut_report::{render_report, ChannelAnchor, ReportModel, RetentionEvidence};
+use reprocut_report::{
+    render_report, ChannelAnchor, DriftEvidence, ReportModel, RetentionEvidence,
+};
 
 fn main() {
     let report = render_report(&ReportModel {
@@ -46,6 +48,14 @@ fn main() {
         ],
         structured_edits: vec!["syntax:delete:bug.py:0..24".to_owned()],
         limitations: vec!["Timing is wall-clock, not a benchmark.".to_owned()],
+        diagnostic_drift: Some(DriftEvidence {
+            baseline_lines: 6,
+            final_lines: 4,
+            retained_lines: 4,
+            novel_lines: 0,
+            reportable: false,
+            novel_sample: Vec::new(),
+        }),
         issue_markdown: "# Minimal reproduction\n".to_owned(),
     });
     print!("{report}");

@@ -7,7 +7,6 @@ import zipfile
 from ast import literal_eval
 from pathlib import Path
 
-
 NAME = "reprocut_isolation_fixture"
 VERSION = "1.0.0"
 

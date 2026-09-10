@@ -173,7 +173,6 @@ impl FrozenPythonPreparation {
     ) -> Result<Self, PythonPreparationError> { Err(PythonPreparationError) }
     pub(crate) fn digest(&self) -> ContentDigest { ContentDigest::of(b"unavailable") }
     pub(crate) fn validate_original_program(
-        &self,
         _: &Path,
     ) -> Result<(), PythonPreparationError> { Err(PythonPreparationError) }
     pub(crate) fn prepare(

@@ -38,6 +38,7 @@ fn render_heading_and_reduction(issue: &mut String, evidence: &ReductionEvidence
         evidence.failure.fingerprint_sha256, evidence.search.final_verifications,
     )
     .expect("writing to String cannot fail");
+    render_drift_warning(issue, evidence);
     issue.push_str("## Reduction\n\n");
     issue.push_str("| Measure | Before | After | Removed |\n");
     issue.push_str("|---|---:|---:|---:|\n");
@@ -65,6 +66,43 @@ fn render_heading_and_reduction(issue: &mut String, evidence: &ReductionEvidence
             .saturating_sub(evidence.measurements.retained.lines),
     )
     .expect("writing to String cannot fail");
+}
+
+// The oracle decides what "the same failure" means. When it is looser than its author
+// intended, the minimized project can satisfy it for a reason the original never had, and
+// every other number in this report stays true while the reproduction stops being the bug.
+// The reader is the only one who can settle that, so put it above the numbers.
+fn render_drift_warning(issue: &mut String, evidence: &ReductionEvidence) {
+    let Some(drift) = evidence
+        .failure
+        .diagnostic_drift
+        .as_ref()
+        .filter(|drift| drift.reportable)
+    else {
+        return;
+    };
+    writeln!(
+        issue,
+        "> [!WARNING]\n\
+         > **Check this reproduction before trusting it.** {} of the {} diagnostic line(s) the\n\
+         > minimized project prints never appeared when the original failed. The oracle still\n\
+         > matches, but it may be matching something else. Consider tightening it.\n",
+        drift.novel_lines, drift.final_lines,
+    )
+    .expect("writing to String cannot fail");
+    if drift.novel_sample.is_empty() {
+        return;
+    }
+    issue.push_str("<details><summary>Lines the original failure never printed</summary>\n\n");
+    for line in &drift.novel_sample {
+        writeln!(
+            issue,
+            "- `{}`",
+            escape_markdown_text(&truncate_chars(line, 160))
+        )
+        .expect("writing to String cannot fail");
+    }
+    issue.push_str("\n</details>\n\n");
 }
 
 fn render_failure_identity(issue: &mut String, evidence: &ReductionEvidence) {

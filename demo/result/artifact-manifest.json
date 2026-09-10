@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "artifact_id": "73050c78427bf26ff1f996cb4ddac5ea528fd5d7d540b869d20512f7b539ff3a",
+  "artifact_id": "4283f3fdbf8452eabad7de386833ab33dbb139ecce712fd58ea9d77f9c638f09",
   "members": [
     {
       "path": "attempts.jsonl",
@@ -40,8 +40,8 @@
     },
     {
       "path": "report.html",
-      "sha256": "4ab03448d5b64e935f94a99e1ed8e376edff4108092b8e3e0afd551f7150a9d6",
-      "size_bytes": 26164,
+      "sha256": "81fb891b1748b2a8c2f7d4e862ae2df3f50cd27d4996c83eb8f65e9119bbbbc6",
+      "size_bytes": 26581,
       "executable_mask": 0
     },
     {

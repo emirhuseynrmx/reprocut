@@ -7,12 +7,12 @@ mod issue;
 mod manifest;
 mod verify;
 
-use std::fmt::Write as _;
+use std::{fmt::Write as _, sync::OnceLock};
 
 pub use evidence::{
-    display_command, write_attempts_jsonl, AttemptSummary, ChannelAnchor, EvaluationPolicyEvidence,
-    FailureEvidence, FinalObservationEvidence, MaterialMeasurement, MeasurementSet,
-    PreparationEvidence, ReductionEvidence, RetentionEvidence, SearchEvidence,
+    display_command, write_attempts_jsonl, AttemptSummary, ChannelAnchor, DriftEvidence,
+    EvaluationPolicyEvidence, FailureEvidence, FinalObservationEvidence, MaterialMeasurement,
+    MeasurementSet, PreparationEvidence, ReductionEvidence, RetentionEvidence, SearchEvidence,
     EVIDENCE_SCHEMA_VERSION, NORMALIZATION_SCHEMA_VERSION,
 };
 pub use issue::render_issue;
@@ -20,7 +20,10 @@ pub use manifest::{
     ArtifactManifest, ArtifactMember, ManifestError, RetainedEntry, RetainedEntryKind,
     RetainedManifest, ARTIFACT_MANIFEST_SCHEMA_VERSION,
 };
-pub use verify::{build_artifact_manifest, verify_artifact, VerificationError, VerifiedArtifact};
+pub use verify::{
+    build_artifact_manifest, verify_artifact, VerificationError, VerifiedArtifact,
+    OBSERVES_EXECUTABLE_MASK,
+};
 
 /// Exact platform launchers deterministically derived from one argv vector.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -56,6 +59,32 @@ pub fn render_reproduction_scripts(command: &[String]) -> ReproductionScripts {
 const REPORT_SHELL: &str = include_str!("../assets/report.html");
 const REPORT_CSS: &str = include_str!("../assets/report.css");
 const REPORT_JS: &str = include_str!("../assets/report.js");
+
+/// Return an embedded template with CRLF collapsed to LF.
+///
+/// `include_str!` captures whatever the builder's working tree held, so a
+/// checkout that materialized CRLF would bake it into the binary. Verification
+/// re-renders the report and compares bytes, so a report written on one
+/// platform would then fail against a binary built on another. Normalizing here
+/// makes the rendering a property of the source, not of the checkout.
+fn canonical_template(source: &'static str, cache: &'static OnceLock<String>) -> &'static str {
+    cache.get_or_init(|| source.replace("\r\n", "\n"))
+}
+
+fn report_shell() -> &'static str {
+    static CANONICAL: OnceLock<String> = OnceLock::new();
+    canonical_template(REPORT_SHELL, &CANONICAL)
+}
+
+fn report_css() -> &'static str {
+    static CANONICAL: OnceLock<String> = OnceLock::new();
+    canonical_template(REPORT_CSS, &CANONICAL)
+}
+
+fn report_js() -> &'static str {
+    static CANONICAL: OnceLock<String> = OnceLock::new();
+    canonical_template(REPORT_JS, &CANONICAL)
+}
 
 /// Serializable data boundary for a finished reduction report.
 ///
@@ -120,6 +149,8 @@ pub struct ReportModel {
     pub structured_edits: Vec<String>,
     /// Explicit interpretation limitations.
     pub limitations: Vec<String>,
+    /// Overlap between the original and minimized diagnostics, when it was measured.
+    pub diagnostic_drift: Option<DriftEvidence>,
     /// GitHub-ready Markdown derived from the same evidence.
     pub issue_markdown: String,
 }
@@ -161,6 +192,7 @@ impl From<&ReductionEvidence> for ReportModel {
             kept_files: evidence.kept_files.clone(),
             structured_edits: evidence.accepted_structured_edits.clone(),
             limitations: evidence.limitations.clone(),
+            diagnostic_drift: evidence.failure.diagnostic_drift.clone(),
             issue_markdown: render_issue(evidence),
         }
     }
@@ -175,9 +207,9 @@ pub fn render_report(model: &ReportModel) -> String {
     );
     let retained_tenths = percentage_tenths(model.retained_files, model.original_files);
 
-    REPORT_SHELL
-        .replace("{{CSS}}", REPORT_CSS)
-        .replace("{{JS}}", REPORT_JS)
+    report_shell()
+        .replace("{{CSS}}", report_css())
+        .replace("{{JS}}", report_js())
         .replace("{{COMMAND}}", &escape_html(&model.command))
         .replace("{{ORIGINAL_FILES}}", &model.original_files.to_string())
         .replace("{{RETAINED_FILES}}", &model.retained_files.to_string())
@@ -226,6 +258,23 @@ pub fn render_report(model: &ReportModel) -> String {
             &model.normalization_schema.to_string(),
         )
         .replace("{{ORACLE_EVIDENCE}}", &render_oracle_evidence(model))
+        .replace("{{DRIFT_NOTICE}}", &render_drift_notice(model))
+        .replace(
+            "{{STATUS_MODIFIER}}",
+            if drift_reported(model) {
+                " status-review"
+            } else {
+                ""
+            },
+        )
+        .replace(
+            "{{STATUS_TEXT}}",
+            if drift_reported(model) {
+                "Same oracle — review the drift"
+            } else {
+                "Same failure verified"
+            },
+        )
         .replace("{{ISSUE_BASE64}}", &base64(&model.issue_markdown))
         .replace("{{ANCHORS}}", &render_anchors(&model.anchors))
         .replace("{{STAGES}}", &render_stages(model))
@@ -263,6 +312,36 @@ fn render_oracle_evidence(model: &ReportModel) -> String {
         "exit_zero" => "<h3>Exit-zero interestingness</h3><p>The candidate is preserved only when the command exits successfully; timeout, signal, or runner failure is inconclusive.</p>".to_owned(),
         _ => "<p>Unsupported oracle evidence.</p>".to_owned(),
     }
+}
+
+fn drift_reported(model: &ReportModel) -> bool {
+    model
+        .diagnostic_drift
+        .as_ref()
+        .is_some_and(|drift| drift.reportable)
+}
+
+fn render_drift_notice(model: &ReportModel) -> String {
+    let Some(drift) = model
+        .diagnostic_drift
+        .as_ref()
+        .filter(|drift| drift.reportable)
+    else {
+        return String::new();
+    };
+    let sample = render_string_list(&drift.novel_sample, "No sample line was captured.");
+    format!(
+        "\n  <section class=\"drift-notice\" aria-labelledby=\"drift-title\">\
+         <div class=\"section-heading\"><p>Read before trusting this</p>\
+         <h2 id=\"drift-title\">The failure text moved</h2></div>\
+         <p class=\"lede\">{} of the {} diagnostic line(s) this minimized project prints never \
+         appeared when the original failed. Every required expression still matches and every \
+         final verification passed, so the reduction is sound against the oracle it was given \
+         — but an oracle looser than intended can be satisfied by a different cause. \
+         Tighten it and reduce again if these lines look unrelated to the bug.</p>\
+         <ol class=\"diagnostic-list\">{}</ol></section>\n",
+        drift.novel_lines, drift.final_lines, sample,
+    )
 }
 
 fn render_stages(model: &ReportModel) -> String {

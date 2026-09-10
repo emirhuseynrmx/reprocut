@@ -11,8 +11,10 @@ use std::{
 };
 
 use reprocut_adapters::Ecosystem;
-use reprocut_core::{CandidateVerdict, ReductionUnit};
-use reprocut_engine::{EngineError, PreparationMode, ReductionEngine, ReductionRequest};
+use reprocut_core::{CandidateVerdict, OracleError, ReductionUnit};
+use reprocut_engine::{
+    Completion, EngineError, PreflightVerdict, PreparationMode, ReductionEngine, ReductionRequest,
+};
 
 #[test]
 fn real_python_failure_is_stabilized_reduced_and_verified() {
@@ -202,4 +204,163 @@ fn walk_files(root: &Path) -> Vec<std::path::PathBuf> {
         }
     }
     files
+}
+
+#[test]
+fn an_expired_budget_publishes_a_verified_result_instead_of_nothing() {
+    let source = fixture_copy();
+    // A budget that cannot outlive the first baseline run, so exploration is
+    // refused from the very first frontier.
+    let request = ReductionRequest::new(
+        source.path().to_path_buf(),
+        python_executable(),
+        vec![OsString::from("bug.py")],
+        Duration::from_secs(5),
+        64 * 1_024,
+    )
+    .with_max_duration(Duration::ZERO);
+
+    let outcome = ReductionEngine::run(&request).expect("an expired budget still publishes");
+
+    assert_eq!(outcome.completion(), Completion::BudgetExhausted);
+    // The point of the budget is that a time-boxed run yields a verified artifact
+    // rather than being killed with nothing to show.
+    assert_eq!(outcome.final_verifications(), 3);
+    assert!(outcome
+        .final_observations()
+        .iter()
+        .all(|observed| observed.verdict() == CandidateVerdict::Preserved));
+}
+
+#[test]
+fn an_unbudgeted_run_reports_that_the_search_converged() {
+    let source = fixture_copy();
+    let request = ReductionRequest::new(
+        source.path().to_path_buf(),
+        python_executable(),
+        vec![OsString::from("bug.py")],
+        Duration::from_secs(5),
+        64 * 1_024,
+    );
+
+    let outcome = ReductionEngine::run(&request).expect("reduction must complete");
+
+    assert_eq!(outcome.completion(), Completion::Converged);
+}
+
+/// The preflight is only worth reading if it answers for the run it precedes.
+///
+/// Each case pairs one request with what `run` does about it, so a preflight that starts
+/// disagreeing with the reduction fails here rather than in front of a user.
+#[test]
+fn the_preflight_and_the_reduction_agree_about_every_request() {
+    let stable = fixture_copy();
+    let stable_request = ReductionRequest::new(
+        stable.path().to_path_buf(),
+        python_executable(),
+        vec![OsString::from("bug.py")],
+        Duration::from_secs(5),
+        64 * 1_024,
+    );
+    let preflight = ReductionEngine::preflight(&stable_request).expect("preflight must complete");
+    assert!(preflight.is_ready());
+    assert_eq!(preflight.observations().len(), 3);
+    assert_eq!(preflight.runs_planned(), 3);
+    assert!(ReductionEngine::run(&stable_request).is_ok());
+
+    let passing = write_project(&[("ok.py", "print('ok')")]);
+    let passing_request = request_for(passing.path(), "ok.py");
+    let preflight = ReductionEngine::preflight(&passing_request).expect("preflight must complete");
+    assert!(matches!(
+        preflight.verdict(),
+        PreflightVerdict::CommandSucceeded
+    ));
+    // The run that settled the question is reported, not the two that never happened.
+    assert_eq!(preflight.observations().len(), 1);
+    assert!(matches!(
+        ReductionEngine::run(&passing_request),
+        Err(EngineError::BaselineSucceeded)
+    ));
+
+    let empty = tempfile::tempdir().expect("empty project");
+    let empty_request = request_for(empty.path(), "bug.py");
+    assert!(matches!(
+        ReductionEngine::preflight(&empty_request),
+        Err(EngineError::EmptyProject)
+    ));
+    assert!(matches!(
+        ReductionEngine::run(&empty_request),
+        Err(EngineError::EmptyProject)
+    ));
+}
+
+/// Output that repeats exactly but carries no failure is a distinct answer from noise.
+///
+/// This is the shape an environment problem takes: a wrapper prints the same complaint on
+/// every run and the command under test never runs at all.
+#[test]
+fn identical_output_without_a_failure_line_is_reported_as_an_empty_anchor() {
+    let source = write_project(&[(
+        "bug.py",
+        "import sys\nsys.stdout.write('unavailable' + chr(10))\nsys.exit(3)\n",
+    )]);
+    let request = request_for(source.path(), "bug.py");
+
+    let preflight = ReductionEngine::preflight(&request).expect("preflight must complete");
+
+    assert_eq!(preflight.observations().len(), 3);
+    assert!(matches!(
+        preflight.verdict(),
+        PreflightVerdict::NoStableOracle(OracleError::EmptyAnchor)
+    ));
+    assert!(matches!(
+        ReductionEngine::run(&request),
+        Err(EngineError::Oracle(OracleError::EmptyAnchor))
+    ));
+}
+
+/// The preflight reports the program the runner was given, not a second `PATH` lookup.
+#[test]
+fn the_preflight_reports_the_command_it_actually_ran() {
+    let source = write_project(&[("bug.py", "raise ValueError('boom')\n")]);
+    let request = request_for(source.path(), "bug.py");
+
+    let preflight = ReductionEngine::preflight(&request).expect("preflight must complete");
+
+    assert_eq!(preflight.requested_program(), python_executable());
+    assert_eq!(
+        preflight.executed_program(),
+        Some(python_executable().as_path())
+    );
+}
+
+/// A preflight observes; it does not publish, journal, or touch the project.
+#[test]
+fn the_preflight_writes_nothing() {
+    let source = write_project(&[("bug.py", "raise ValueError('boom')\n")]);
+    let before = tree_digest(source.path());
+    let request = request_for(source.path(), "bug.py");
+
+    ReductionEngine::preflight(&request).expect("preflight must complete");
+
+    assert_eq!(tree_digest(source.path()), before);
+    assert!(!source.path().join(".reprocut").exists());
+}
+
+fn write_project(files: &[(&str, &str)]) -> tempfile::TempDir {
+    let source = tempfile::tempdir().expect("source tempdir");
+    for (name, contents) in files {
+        fs::write(source.path().join(name), contents.as_bytes()).expect("fixture");
+    }
+    source
+}
+
+fn request_for(root: &Path, script: &str) -> ReductionRequest {
+    ReductionRequest::new(
+        root.to_path_buf(),
+        python_executable(),
+        vec![OsString::from(script)],
+        Duration::from_secs(5),
+        64 * 1_024,
+    )
 }

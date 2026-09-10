@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "case_id": "openruyi",
+      "repository": "https://github.com/redrose2100/openruyi-precommit-hooks.git",
+      "base_ref": "19d328ca44ee6066afb3909d1533c919681c311b",
+      "head_sha": "1a0e915e4e0daa89cce0b97dc488801fe4225a0e",
+      "ci_url": "https://github.com/redrose2100/openruyi-precommit-hooks/actions/runs/32953003565/job/98128456317",
+      "oracle_argv": [
+        "/usr/local/bin/openruyi-eof-oracle"
+      ],
+      "required_regex": [
+        "files were modified by this hook",
+        "Fixing (tests/)?check_spec_bcond"
+      ],
+      "rejected_regex": [
+        "Could not resolve host",
+        "fatal: unable to access",
+        "Executable .* not found",
+        "No such file or directory"
+      ],
+      "memory": "2g",
+      "timeout_minutes": 30,
+      "attempt_timeout_ms": 120000,
+      "tier": "fast"
+    },
+    {
+      "case_id": "ipe",
+      "repository": "https://github.com/arthurmaciel/ipe-lang.git",
+      "base_ref": "e0ffbbb33b3a9404b14c914e69ee39821e3d0f1a",
+      "head_sha": "072f647ca425694728de3aa6f508f1c3820681f1",
+      "ci_url": "https://github.com/arthurmaciel/ipe-lang/actions/runs/32952534290/job/98127026437",
+      "oracle_argv": [
+        "/usr/local/bin/ipe-regen-oracle"
+      ],
+      "required_regex": [
+        "IPE-ORACLE: exactly 08-notes-app is stale against a fresh transform"
+      ],
+      "rejected_regex": [
+        "IPE-ORACLE: ports are absent",
+        "IPE-ORACLE: a port is missing entries",
+        "IPE-ORACLE: 08-notes-app differs without",
+        "IPE-ORACLE: stale set is",
+        "cannot read manifest",
+        "transform/edits failed",
+        "Could not resolve host",
+        "No such file or directory"
+      ],
+      "memory": "4g",
+      "timeout_minutes": 60,
+      "attempt_timeout_ms": 300000,
+      "tier": "fast"
+    },
+    {
+      "case_id": "bevy",
+      "repository": "https://github.com/bevyengine/bevy.git",
+      "base_ref": "0de26631b0603acdc945aeae5e05b07ce58bc4dc",
+      "head_sha": "762326968f6fac9e69c81a831ab91ab29afb9933",
+      "ci_url": "https://github.com/bevyengine/bevy/actions/runs/32949752940/job/98118277748",
+      "oracle_argv": [
+        "/usr/local/bin/bevy-clippy-oracle"
+      ],
+      "required_regex": [
+        "BEVY-ORACLE: exactly [0-9]+ undocumented unsafe block\\(s\\) in crates/bevy_ecs/src/world/despawn_all\\.rs"
+      ],
+      "rejected_regex": [
+        "failed to (get|download)",
+        "Could not resolve host",
+        "linker .* not found",
+        "pkg-config.*(failed|not found)"
+      ],
+      "memory": "7g",
+      "timeout_minutes": 150,
+      "attempt_timeout_ms": 1800000,
+      "tier": "full"
+    }
+  ]
+}

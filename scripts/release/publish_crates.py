@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-VERSION = "0.1.0"
+VERSION = "0.1.0-alpha.1"
 PUBLISH_ORDER = (
     "reprocut-core",
     "reprocut-report",
@@ -127,7 +127,7 @@ class RegistryClient:
     def _get_json(self, path: str, *, allow_not_found: bool) -> dict[str, object] | None:
         request = urllib.request.Request(
             f"{self.base_url}{path}",
-            headers={"User-Agent": "reprocut-release/0.1.0"},
+            headers={"User-Agent": "reprocut-release/0.1.0-alpha.1"},
         )
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:

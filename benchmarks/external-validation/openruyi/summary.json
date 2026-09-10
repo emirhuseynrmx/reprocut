@@ -1,0 +1,101 @@
+{
+  "case_id": "openruyi",
+  "ci_run": "https://github.com/emirhuseynrmx/reprocut/actions/runs/33730753401",
+  "failure": {
+    "diagnostic_drift": {
+      "baseline_lines": 5,
+      "final_lines": 2,
+      "novel_lines": 0,
+      "novel_sample": [],
+      "reportable": false,
+      "retained_lines": 2
+    },
+    "fingerprint_sha256": "48beeece09e9388a1cd79bf34828e961891155bc4175e259e1bb535cbf8a12f3",
+    "termination": "exit 1"
+  },
+  "isolation": {
+    "capabilities": "none",
+    "cpus": 2,
+    "memory": "2g",
+    "network": "none",
+    "no_new_privileges": true,
+    "pids_limit": 1024,
+    "runtime_uid": 10001
+  },
+  "measurements": {
+    "original": {
+      "bytes": 1501477,
+      "files": 95,
+      "lines": 15749
+    },
+    "reduced_metrics": [
+      "bytes",
+      "files",
+      "lines"
+    ],
+    "retained": {
+      "bytes": 551,
+      "files": 1,
+      "lines": 69
+    }
+  },
+  "oracle": {
+    "argv": [
+      "/usr/local/bin/openruyi-eof-oracle"
+    ],
+    "mode": "regex",
+    "rejected_regex": [
+      "Could not resolve host",
+      "fatal: unable to access",
+      "Executable .* not found",
+      "No such file or directory"
+    ],
+    "required_regex": [
+      "files were modified by this hook",
+      "Fixing (tests/)?check_spec_bcond"
+    ],
+    "spec_sha256": "d53491c11596bf01f00e9456703ea827f82b7acb1b864ed2ac7e79aeeb65cacc",
+    "stream": "combined"
+  },
+  "schema_version": 1,
+  "search": {
+    "attempts": 47,
+    "cache_hits": 0,
+    "completion": "converged",
+    "elapsed_ms": 3248,
+    "evaluation_policy": {
+      "mode": "strict",
+      "required": 3,
+      "runs": 3
+    },
+    "inconclusive_attempts": 0
+  },
+  "source_snapshot_sha256": "e415f340abf781ab6fe0f6cda8d1ef989848aa13f198fa2f4da918e2dfe46341",
+  "upstream": {
+    "base_sha": "19d328ca44ee6066afb3909d1533c919681c311b",
+    "ci_url": "https://github.com/redrose2100/openruyi-precommit-hooks/actions/runs/32953003565/job/98128456317",
+    "head_sha": "1a0e915e4e0daa89cce0b97dc488801fe4225a0e",
+    "repository": "https://github.com/redrose2100/openruyi-precommit-hooks.git"
+  },
+  "verification": {
+    "artifact_id": "a1bb8c7e6475a9685ded1f57e66de4ce24695c862dea8c87944437e6d9e119d2",
+    "final_observations": [
+      {
+        "exit_code": 1,
+        "preserved": true,
+        "run": 1
+      },
+      {
+        "exit_code": 1,
+        "preserved": true,
+        "run": 2
+      },
+      {
+        "exit_code": 1,
+        "preserved": true,
+        "run": 3
+      }
+    ],
+    "verified": true
+  }
+}

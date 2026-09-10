@@ -1,4 +1,4 @@
-# ReproCut 0.1 release artifacts
+# ReproCut 0.1.0-alpha.1 release artifacts
 
 Every platform archive is built from the tagged commit and contains only the
 binary, four generated shell completions, README, the Apache-2.0 license, and a version record
@@ -17,7 +17,7 @@ Verify a downloaded archive without extraction:
 
 ```console
 python scripts/release/verify_archive.py \
-  reprocut-0.1.0-x86_64-unknown-linux-gnu.tar.gz \
+  reprocut-0.1.0-alpha.1-x86_64-unknown-linux-gnu.tar.gz \
   --target x86_64-unknown-linux-gnu \
-  --version 0.1.0
+  --version 0.1.0-alpha.1
 ```
