@@ -12,6 +12,7 @@ use std::{
 };
 
 mod command_line;
+mod doctor;
 
 use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{generate, Shell};
@@ -64,6 +65,15 @@ enum Action {
     Reduce(ReduceArgs),
     /// Continue an exactly compatible interrupted reduction.
     Resume(ReduceArgs),
+    /// Run the checks a reduction runs first, then stop without reducing.
+    ///
+    /// Accepts the same arguments as `reduce`, so a preflight answers for the exact
+    /// request you were about to run. Executes your command in a copy of the project as
+    /// many times as the evaluation policy asks for. Writes no output and cuts nothing.
+    ///
+    /// Exits 0 when reduction can start, 1 when it cannot, and 2 when the request itself
+    /// is invalid. A passing preflight does not guarantee that reduction will succeed.
+    Doctor(ReduceArgs),
     /// Independently verify one completed artifact's complete byte identity.
     Verify(VerifyArgs),
     /// Export a completed artifact into a distribution format.
@@ -444,22 +454,49 @@ enum CliError {
     InvalidArguments(&'static str),
 }
 
+impl CliError {
+    /// Whether the request was rejected before anything about the project was observed.
+    const fn is_invalid_request(&self) -> bool {
+        matches!(
+            self,
+            Self::InvalidArguments(_)
+                | Self::Oracle(_)
+                | Self::Policy(_)
+                | Self::OutputExists(_)
+                | Self::InvalidOutput(_)
+        )
+    }
+}
+
+/// Exit code for a request the command could not act on at all.
+///
+/// Only `doctor` distinguishes this from a failed run, because only `doctor` is meant to
+/// be read as a gate: a caller has to tell "your project is not ready" apart from "I never
+/// understood what you asked". Clap already exits with 2 for arguments it rejects itself.
+const INVALID_REQUEST: u8 = 2;
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let machine_protocol = matches!(&cli.action, Action::Protocol(_));
+    let gated = matches!(&cli.action, Action::Doctor(_));
     match execute(cli) {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(code) => code,
         Err(error) => {
             if !machine_protocol {
                 eprintln!("error: {error}");
             }
-            ExitCode::FAILURE
+            if gated && error.is_invalid_request() {
+                ExitCode::from(INVALID_REQUEST)
+            } else {
+                ExitCode::FAILURE
+            }
         }
     }
 }
 
-fn execute(cli: Cli) -> Result<(), CliError> {
+fn execute(cli: Cli) -> Result<ExitCode, CliError> {
     match cli.action {
+        Action::Doctor(arguments) => return doctor::run(arguments),
         Action::Minimize(arguments) | Action::Reduce(arguments) => reduce_project(arguments, false),
         Action::Resume(arguments) => reduce_project(arguments, true),
         Action::Verify(arguments) => verify_completed_artifact(&arguments),
@@ -471,6 +508,7 @@ fn execute(cli: Cli) -> Result<(), CliError> {
             Ok(())
         }
     }
+    .map(|()| ExitCode::SUCCESS)
 }
 
 fn verify_completed_artifact(arguments: &VerifyArgs) -> Result<(), CliError> {
@@ -894,20 +932,67 @@ fn execute_reduction(
     resume: bool,
     human_progress: bool,
 ) -> Result<CompletedReduction, CliError> {
+    let request = build_request(&mut arguments, resume, RequestPurpose::Reduce)?;
+
+    if human_progress {
+        eprintln!("reprocut: proving a stable baseline and searching safe cuts...");
+    }
+    let outcome = ReductionEngine::run(&request)?;
+    if human_progress {
+        eprintln!(
+            "reprocut: stable baseline preserved; {} → {} files",
+            outcome.original_files(),
+            outcome.snapshot().files().len()
+        );
+    }
+
+    let evidence = build_evidence(&arguments, &outcome)?;
+    evidence.validate().map_err(CliError::InvalidArguments)?;
+    let json = serde_json::to_vec_pretty(&evidence)?;
+    publish_artifact(&arguments, &outcome, &evidence, &json)?;
+
+    Ok(CompletedReduction {
+        arguments,
+        outcome,
+        evidence,
+        json,
+    })
+}
+
+/// What the caller intends to do with the request, which decides what it must reserve.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RequestPurpose {
+    /// Publish an artifact, so the output path must be free and a session is journaled.
+    Reduce,
+    /// Observe only, so nothing is reserved and nothing is written.
+    Inspect,
+}
+
+/// Turns command-line arguments into the request the engine runs.
+///
+/// `doctor` and `reduce` share this so that a preflight answers for the same request the
+/// reduction would build, down to the adapter-supplied command and the oracle contract.
+fn build_request(
+    arguments: &mut ReduceArgs,
+    resume: bool,
+    purpose: RequestPurpose,
+) -> Result<ReductionRequest, CliError> {
     if resume && arguments.restart {
         return Err(CliError::InvalidArguments(
             "resume and --restart are mutually exclusive",
         ));
     }
-    let evaluation_policy = evaluation_policy(&arguments)?;
+    let evaluation_policy = evaluation_policy(arguments)?;
     let oracle_spec = OracleSpec::new(
         arguments.oracle_mode.into(),
         arguments.oracle_stream.into(),
         arguments.failure_patterns.clone(),
         arguments.reject_patterns.clone(),
     )?;
-    let python_isolation = python_isolation_request(&arguments)?;
-    ensure_output_absent(&arguments.output)?;
+    let python_isolation = python_isolation_request(arguments)?;
+    if purpose == RequestPurpose::Reduce {
+        ensure_output_absent(&arguments.output)?;
+    }
     let adapter = Adapter::detect(&arguments.root, arguments.ecosystem.selection())?;
     arguments.ecosystem = adapter.ecosystem().into();
     if let Some(line) = arguments.command_line.take() {
@@ -938,41 +1023,16 @@ fn execute_reduction(
     )
     .with_evaluation(arguments.oracle_stream.into(), evaluation_policy)
     .with_oracle(oracle_spec)
-    .with_runtime(arguments.jobs, session_mode(&arguments, resume))
+    .with_runtime(arguments.jobs, session_mode(arguments, resume, purpose))
     .with_inventory_policy(adapter.inventory_policy().clone())
     .with_ecosystem(adapter.ecosystem(), arguments.prepare.into());
     let request = match arguments.max_duration_secs {
         Some(budget) => request.with_max_duration(Duration::from_secs(budget)),
         None => request,
     };
-    let request = if let Some(isolation) = python_isolation {
-        request.with_python_isolation(isolation)
-    } else {
-        request
-    };
-
-    if human_progress {
-        eprintln!("reprocut: proving a stable baseline and searching safe cuts...");
-    }
-    let outcome = ReductionEngine::run(&request)?;
-    if human_progress {
-        eprintln!(
-            "reprocut: stable baseline preserved; {} → {} files",
-            outcome.original_files(),
-            outcome.snapshot().files().len()
-        );
-    }
-
-    let evidence = build_evidence(&arguments, &outcome)?;
-    evidence.validate().map_err(CliError::InvalidArguments)?;
-    let json = serde_json::to_vec_pretty(&evidence)?;
-    publish_artifact(&arguments, &outcome, &evidence, &json)?;
-
-    Ok(CompletedReduction {
-        arguments,
-        outcome,
-        evidence,
-        json,
+    Ok(match python_isolation {
+        Some(isolation) => request.with_python_isolation(isolation),
+        None => request,
     })
 }
 
@@ -1212,7 +1272,10 @@ fn material_measurement(snapshot: &reprocut_workspace::ProjectSnapshot) -> Mater
     }
 }
 
-fn session_mode(arguments: &ReduceArgs, resume: bool) -> SessionMode {
+fn session_mode(arguments: &ReduceArgs, resume: bool, purpose: RequestPurpose) -> SessionMode {
+    if purpose == RequestPurpose::Inspect {
+        return SessionMode::Ephemeral;
+    }
     let path = arguments
         .state
         .clone()

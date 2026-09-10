@@ -27,6 +27,14 @@ All notable changes to ReproCut are documented here.
   animation.
 - A committed Cargo dependency graph consumed with `--locked` by CI, release,
   crates.io, and PyPI build paths.
+- `reprocut doctor` runs the checks a reduction runs before its first cut and
+  stops there. It takes the same arguments as `reduce` and shares the engine's
+  code path rather than repeating its logic, so its answer is the answer the
+  reduction would give. It executes the command, writes no output directory, and
+  opens no session state. `--json` emits one versioned document on stdout; exit
+  codes are 0 ready, 1 not ready, 2 unusable request. Reports carry a bounded
+  output tail (ten lines per stream per run, 240 bytes per line) declared in
+  `output_disclosure`.
 - `reduce --command-line` splits one command string into argv on documented
   quoting rules, with no expansion of variables, globs, or substitutions.
 - The action uploads the verified artifact, and takes `artifact-name` and
@@ -91,6 +99,11 @@ All notable changes to ReproCut are documented here.
   option, and a client timeout kills the process instead of publishing a result.
 - Diagnostic drift is a warning that the minimized project prints lines the
   original never did. It is not proof that the cause is unchanged.
+- A passing `doctor` means the failure was proven stable and recognizable. It is
+  not a prediction that the search will find a smaller project.
+- `doctor` reports the program the engine handed the runner. It does not perform
+  its own `PATH` resolution and does not diagnose why a program is unusable; it
+  shows what ran and what came back.
 - Normalization does not rewrite Python's `<Thing object at 0x...>` addresses.
   Doing so changes every fingerprint and needs a normalization-schema bump, which
   needs a regenerated demo artifact; that path is blocked (see below).

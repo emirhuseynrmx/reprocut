@@ -165,6 +165,44 @@ reprocut reduce \
 
 The command and its arguments are passed through without shell parsing.
 
+## Checking before you reduce
+
+Most first attempts fail for a reason that has nothing to do with reduction: the
+program on `PATH` is not the one you meant, a dependency does not install
+offline, the failure is already fixed, or the command prints nothing that
+identifies it. `reprocut doctor` runs exactly the checks a reduction runs before
+its first cut and then stops.
+
+```console
+reprocut doctor --root ./failing-project -- python -m pytest tests/test_bug.py
+```
+
+It takes the same arguments as `reduce`, so replacing the verb answers for the
+run you were about to start. It executes your command in a copy of the project
+as many times as the evaluation policy asks for, writes no output directory, and
+opens no session state.
+
+When the failure is stable, it names what will be preserved:
+
+```text
+ok: the failure is stable and recognizable
+  every candidate must keep ending with exit 1 and printing:
+    [stderr] ValueError: boom
+```
+
+When it is not, it prints what each run produced and which rule was not met,
+without choosing a failure contract on your behalf.
+
+`--json` emits one versioned document on stdout and nothing else. Exit codes are
+`0` when reduction can start, `1` when it cannot, and `2` for a request that
+could not be acted on at all, which makes it usable as a CI gate. Command output
+can carry paths and secrets, so reports include a bounded tail — ten lines per
+stream per run, 240 bytes per line — and say so in `output_disclosure`.
+
+A passing preflight does not guarantee that the reduction will succeed. It means
+the failure was proven stable and recognizable, not that a smaller project
+exists or that the search will find it.
+
 ## What it reduces
 
 ReproCut searches several layers until no explored transformation can make the

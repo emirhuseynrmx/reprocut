@@ -1,9 +1,11 @@
 //! End-to-end reduction orchestration for `ReproCut`.
 
 mod pipeline;
+mod preflight;
 mod python_isolation;
 mod scheduler;
 
+pub use preflight::{Preflight, PreflightVerdict};
 pub use python_isolation::{PythonIsolationRequest, PythonPreparationError};
 pub use scheduler::{CandidatePlan, FrontierOutcome, FrontierScheduler, SchedulerError};
 
@@ -499,32 +501,13 @@ impl ReductionEngine {
     #[allow(clippy::too_many_lines)]
     pub fn run(request: &ReductionRequest) -> Result<ReductionOutcome, EngineError> {
         let started = Instant::now();
-        let inventory =
-            ProjectInventory::scan_with_policy(request.source_root(), request.inventory_policy())?;
-        if inventory.units().is_empty() {
-            return Err(EngineError::EmptyProject);
-        }
-        let source_snapshot = ProjectSnapshot::capture(&inventory, request.inventory_policy())?;
+        let Setup {
+            inventory,
+            source_snapshot,
+            python_preparation,
+        } = Setup::capture(request)?;
         let source_digest = source_snapshot.digest();
         let original_measurements = source_snapshot.measurements();
-        let python_preparation = request
-            .python_isolation()
-            .map(|isolation| {
-                FrozenPythonPreparation::capture(
-                    isolation,
-                    request.timeout(),
-                    request.max_output_bytes(),
-                )
-            })
-            .transpose()?;
-        if python_preparation.is_some() {
-            FrozenPythonPreparation::validate_original_program(request.program())?;
-        }
-        if request.preparation_mode() == PreparationMode::IsolatedPython
-            && python_preparation.is_none()
-        {
-            return Err(EngineError::MissingPythonIsolation);
-        }
         let preparation_digest = python_preparation.as_ref().map_or_else(
             || builtin_preparation_digest(request),
             FrozenPythonPreparation::digest,
@@ -535,30 +518,21 @@ impl ReductionEngine {
         let writer = state.as_ref().map(StateStore::writer);
         let all_units = inventory.units().iter().collect::<Vec<_>>();
         let policy = request.evaluation_policy();
-        let mut baselines = Vec::with_capacity(usize::from(policy.runs()));
-
-        for _ in 0..policy.runs() {
-            let observation = match run_candidate(
-                request,
-                &source_snapshot,
-                &all_units,
-                python_preparation.as_ref(),
-            )? {
-                CandidateExecution::Observed(observation) => observation,
-                CandidateExecution::PreparationRejected => {
-                    return Err(EngineError::BaselinePreparationFailed);
-                }
-            };
-            if request.oracle_spec().mode() != OracleMode::ExitZero
-                && policy == EvaluationPolicy::strict()
-                && observation.exit_code() == Some(0)
-                && observation.signal().is_none()
-            {
-                return Err(EngineError::BaselineSucceeded);
+        let (baselines, verdict) = observe_baselines(
+            request,
+            &source_snapshot,
+            &all_units,
+            python_preparation.as_ref(),
+        )?
+        .into_parts();
+        let oracle = match verdict {
+            PreflightVerdict::Ready(oracle) => *oracle,
+            PreflightVerdict::PreparationRejected => {
+                return Err(EngineError::BaselinePreparationFailed)
             }
-            baselines.push(observation);
-        }
-        let oracle = stabilize_oracle(request.oracle_spec(), policy, &baselines)?;
+            PreflightVerdict::CommandSucceeded => return Err(EngineError::BaselineSucceeded),
+            PreflightVerdict::NoStableOracle(error) => return Err(EngineError::Oracle(error)),
+        };
         let first_error = Mutex::new(None::<EngineError>);
         let attempts_by_digest = Mutex::new(HashMap::<ContentDigest, AttemptRecord>::new());
         let memory_cache = Mutex::new(HashMap::<ContentDigest, AttemptRecord>::new());
@@ -820,6 +794,137 @@ impl ReductionEngine {
             diagnostic_drift,
         })
     }
+
+    /// Runs every check [`ReductionEngine::run`] runs before its first cut, and stops there.
+    ///
+    /// This is the same code path, not a second opinion about it. Whatever it reports about
+    /// a request is what `run` would decide about that request, which is the only property
+    /// that makes a preflight worth reading.
+    ///
+    /// It executes the caller's command as many times as the evaluation policy asks for.
+    /// It writes no output directory and opens no session state.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EngineError`] when the project cannot be inventoried, isolated preparation
+    /// cannot be captured, or a command cannot be executed at all. A command that runs and
+    /// disagrees with the request is a verdict, not an error.
+    pub fn preflight(request: &ReductionRequest) -> Result<Preflight, EngineError> {
+        let Setup {
+            inventory,
+            source_snapshot,
+            python_preparation,
+        } = Setup::capture(request)?;
+        let all_units = inventory.units().iter().collect::<Vec<_>>();
+        observe_baselines(
+            request,
+            &source_snapshot,
+            &all_units,
+            python_preparation.as_ref(),
+        )
+    }
+}
+
+/// The project state a reduction reads once, before it runs anything.
+struct Setup {
+    inventory: ProjectInventory,
+    source_snapshot: ProjectSnapshot,
+    python_preparation: Option<FrozenPythonPreparation>,
+}
+
+impl Setup {
+    fn capture(request: &ReductionRequest) -> Result<Self, EngineError> {
+        let inventory =
+            ProjectInventory::scan_with_policy(request.source_root(), request.inventory_policy())?;
+        if inventory.units().is_empty() {
+            return Err(EngineError::EmptyProject);
+        }
+        let source_snapshot = ProjectSnapshot::capture(&inventory, request.inventory_policy())?;
+        let python_preparation = request
+            .python_isolation()
+            .map(|isolation| {
+                FrozenPythonPreparation::capture(
+                    isolation,
+                    request.timeout(),
+                    request.max_output_bytes(),
+                )
+            })
+            .transpose()?;
+        if python_preparation.is_some() {
+            FrozenPythonPreparation::validate_original_program(request.program())?;
+        }
+        if request.preparation_mode() == PreparationMode::IsolatedPython
+            && python_preparation.is_none()
+        {
+            return Err(EngineError::MissingPythonIsolation);
+        }
+        Ok(Self {
+            inventory,
+            source_snapshot,
+            python_preparation,
+        })
+    }
+}
+
+/// Observes the unreduced project until the failure is proven or refused.
+///
+/// The loop returns at the first observation that settles the question, so the reported
+/// run count is what happened rather than what was planned.
+fn observe_baselines(
+    request: &ReductionRequest,
+    source_snapshot: &ProjectSnapshot,
+    all_units: &[&ReductionUnit],
+    python_preparation: Option<&FrozenPythonPreparation>,
+) -> Result<Preflight, EngineError> {
+    let policy = request.evaluation_policy();
+    let spec = request.oracle_spec();
+    let mut baselines = Vec::with_capacity(usize::from(policy.runs()));
+    let mut executed_program = None;
+    let report = |executed, baselines, verdict| {
+        Preflight::new(
+            request.program().to_path_buf(),
+            executed,
+            spec.mode(),
+            spec.channel(),
+            policy.runs(),
+            baselines,
+            verdict,
+        )
+    };
+
+    for _ in 0..policy.runs() {
+        let (program, execution) =
+            run_reported_candidate(request, source_snapshot, all_units, python_preparation)?;
+        executed_program = program.or(executed_program);
+        let observation = match execution {
+            CandidateExecution::Observed(observation) => observation,
+            CandidateExecution::PreparationRejected => {
+                return Ok(report(
+                    executed_program,
+                    baselines,
+                    PreflightVerdict::PreparationRejected,
+                ));
+            }
+        };
+        if spec.mode() != OracleMode::ExitZero
+            && policy == EvaluationPolicy::strict()
+            && observation.exit_code() == Some(0)
+            && observation.signal().is_none()
+        {
+            baselines.push(observation);
+            return Ok(report(
+                executed_program,
+                baselines,
+                PreflightVerdict::CommandSucceeded,
+            ));
+        }
+        baselines.push(observation);
+    }
+    let verdict = match stabilize_oracle(spec, policy, &baselines) {
+        Ok(oracle) => PreflightVerdict::Ready(Box::new(oracle)),
+        Err(error) => PreflightVerdict::NoStableOracle(error),
+    };
+    Ok(report(executed_program, baselines, verdict))
 }
 
 /// One individual command execution used by final same-failure verification.
@@ -916,17 +1021,53 @@ fn run_snapshot_candidate(
     python_preparation: Option<&FrozenPythonPreparation>,
 ) -> Result<CandidateExecution, EngineError> {
     let candidate = CandidateWorkspace::materialize_snapshot(snapshot)?;
-    if !prepare_candidate(request, candidate.root())? {
+    let Some(command) = candidate_command(request, candidate.root(), python_preparation)? else {
         return Ok(CandidateExecution::PreparationRejected);
+    };
+    Ok(CandidateExecution::Observed(ProcessRunner::run(&command)?))
+}
+
+/// Runs one candidate and reports the program the runner was given.
+///
+/// The reduction loop has no use for that path, so only the preflight pays for carrying it.
+fn run_reported_candidate(
+    request: &ReductionRequest,
+    source_snapshot: &ProjectSnapshot,
+    kept: &[&ReductionUnit],
+    python_preparation: Option<&FrozenPythonPreparation>,
+) -> Result<(Option<PathBuf>, CandidateExecution), EngineError> {
+    let snapshot = source_snapshot.subset(kept.iter().copied())?;
+    let candidate = CandidateWorkspace::materialize_snapshot(&snapshot)?;
+    let Some(command) = candidate_command(request, candidate.root(), python_preparation)? else {
+        return Ok((None, CandidateExecution::PreparationRejected));
+    };
+    let program = command.program().to_path_buf();
+    Ok((
+        Some(program),
+        CandidateExecution::Observed(ProcessRunner::run(&command)?),
+    ))
+}
+
+/// Prepares one materialized candidate and builds the command that exercises it.
+///
+/// Returns `None` when preparation refused the candidate, which is not an error: the
+/// caller decides what an unpreparable candidate means.
+fn candidate_command(
+    request: &ReductionRequest,
+    candidate_root: &Path,
+    python_preparation: Option<&FrozenPythonPreparation>,
+) -> Result<Option<CommandSpec>, EngineError> {
+    if !prepare_candidate(request, candidate_root)? {
+        return Ok(None);
     }
     let command = if let Some(preparation) = python_preparation {
         let Some(prepared) = preparation.prepare(
-            candidate.root(),
+            candidate_root,
             request.timeout(),
             request.max_output_bytes(),
         )?
         else {
-            return Ok(CandidateExecution::PreparationRejected);
+            return Ok(None);
         };
         prepared.command_for(
             request.program(),
@@ -938,12 +1079,12 @@ fn run_snapshot_candidate(
         CommandSpec::new(
             request.program.clone(),
             request.arguments.clone(),
-            candidate.root().to_path_buf(),
+            candidate_root.to_path_buf(),
             request.timeout,
             request.max_output_bytes,
         )
     };
-    Ok(CandidateExecution::Observed(ProcessRunner::run(&command)?))
+    Ok(Some(command))
 }
 
 enum CandidateExecution {
