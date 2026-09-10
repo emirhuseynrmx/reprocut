@@ -18,6 +18,8 @@ them.
 
 ![A ReproCut run reducing 18 files to 3](https://raw.githubusercontent.com/emirhuseynrmx/reprocut/main/assets/reprocut-demo.gif)
 
+[Download the evidence-bound 1920×1080 launch image](https://raw.githubusercontent.com/emirhuseynrmx/reprocut/main/assets/reprocut-launch.png).
+
 The GIF is a tiny onboarding fixture: **18 files to 3**, from **55 lines** and
 **1,669 bytes**, in **24 candidate evaluations**, followed by **3/3 final
 verification runs**. Its

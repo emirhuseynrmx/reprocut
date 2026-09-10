@@ -171,6 +171,7 @@ def test_registry_readme_links_and_install_contract_are_release_stable() -> None
 
     assert f"{asset_base}assets/reprocut-banner.svg" in readme
     assert f"{asset_base}assets/reprocut-demo.gif" in readme
+    assert f"{asset_base}assets/reprocut-launch.png" in readme
     assert "/raw/v0.1.0-alpha.1/" not in readme
     assert "packages have not been published" not in readme
     assert "cargo install reprocut --version 0.1.0-alpha.1 --locked" in readme
@@ -178,6 +179,10 @@ def test_registry_readme_links_and_install_contract_are_release_stable() -> None
     # wheel and the sdist are named 0.1.0a1 and the install command must match.
     assert "python -m pip install reprocut==0.1.0a1" in readme
     assert "The Python package does not bundle the Rust reducer CLI." in readme
+
+    release_readme = (ROOT / "release" / "README.md").read_text(encoding="utf-8")
+    assert "reprocut-0.1.0-alpha.1-x86_64-unknown-linux-gnu.tar.gz" in release_readme
+    assert "--version 0.1.0-alpha.1" in release_readme
 
 
 def test_every_publishable_path_dependency_has_the_release_version() -> None:
