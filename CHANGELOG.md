@@ -2,7 +2,7 @@
 
 All notable changes to ReproCut are documented here.
 
-## [0.1.0-alpha.1] - 2026-08-12
+## [0.1.0-alpha.1] - Unreleased
 
 ### Added
 
@@ -72,7 +72,7 @@ All notable changes to ReproCut are documented here.
 
 ### Release status
 
-- Published as `0.1.0-alpha.1`: an alpha, measured on real projects and looking for its first users.
+- Prepared as `0.1.0-alpha.1`: an alpha, measured on real projects and looking for its first users.
 - crates.io/PyPI upload and the `v0.1.0-alpha.1` tag are intentionally left to the user.
 - Native Rust, Miri, sanitizer, wheel, OCI, cross-platform archive, SBOM, and
   provenance gates are configured for clean CI because Windows Application

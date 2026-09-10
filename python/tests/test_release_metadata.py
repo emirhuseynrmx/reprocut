@@ -82,6 +82,9 @@ def test_checked_in_release_surfaces_match_the_locked_contract_versions() -> Non
     assert "evidence schema 4" in release
     assert "normalization schema 5" in release
 
+    assert "## [0.1.0-alpha.1] - Unreleased" in changelog
+    assert "Published as `0.1.0-alpha.1`" not in changelog
+
 
 def test_pypi_metadata_and_console_entrypoint_are_release_complete() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
